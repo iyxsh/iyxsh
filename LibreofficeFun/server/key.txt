@@ -1,0 +1,554 @@
+生成证书 参考说明，可以去深入了解 openssl
+
+以下是基于 Linux 系统生成自签名证书并配置 Nginx 信任该证书的完整步骤：
+
+‌一、生成自签名证书‌
+‌安装 OpenSSL 工具‌
+若未安装，通过包管理器安装：
+
+bash
+Copy Code
+sudo apt install openssl -y  # Debian/Ubuntu‌:ml-citation{ref="2" data="citationList"}
+sudo yum install openssl -y  # CentOS/RHEL‌:ml-citation{ref="1" data="citationList"}
+‌生成私钥和自签名证书‌
+
+‌一步生成方式‌（适用于快速生成）：
+bash
+Copy Code
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /etc/nginx/ssl/nginx-selfsigned.key \
+  -out /etc/nginx/ssl/nginx-selfsigned.crt \
+  -subj "/C=CN/ST=Beijing/L=Beijing/O=Local Development/CN=localhost"‌:ml-citation{ref="1,8" data="citationList"}
+‌分步生成方式‌（需交互输入信息）：
+bash
+Copy Code
+# 生成私钥
+openssl genrsa -out private.key 2048‌:ml-citation{ref="2,5" data="citationList"}
+# 生成证书签名请求（CSR）
+openssl req -new -key private.key -out csr.csr‌:ml-citation{ref="2,5" data="citationList"}
+# 生成自签名证书
+openssl x509 -req -days 365 -in csr.csr -signkey private.key -out certificate.crt‌:ml-citation{ref="2,5" data="citationList"}
+‌处理私钥密码（可选）‌
+若私钥生成时使用了密码，需移除密码以避免 Nginx 重启需手动输入：
+
+bash
+Copy Code
+cp server.key server.key.org
+openssl rsa -in server.key.org -out server.key‌:ml-citation{ref="5,7" data="citationList"}
+‌二、配置 Nginx 使用自签名证书‌
+‌将证书文件放置到 Nginx 目录‌
+
+bash
+Copy Code
+sudo mkdir -p /etc/nginx/ssl
+sudo cp private.key /etc/nginx/ssl/
+sudo cp certificate.crt /etc/nginx/ssl/‌:ml-citation{ref="2,4" data="citationList"}
+‌修改 Nginx 配置文件‌
+编辑站点配置文件（如 /etc/nginx/sites-available/default），添加 HTTPS 配置：
+
+nginx
+Copy Code
+server {
+    listen 443 ssl;
+    server_name localhost;  # 需与证书的 Common Name（CN）一致
+
+    ssl_certificate /etc/nginx/ssl/certificate.crt;
+    ssl_certificate_key /etc/nginx/ssl/private.key;
+
+    # 可选：强制 HTTP 跳转 HTTPS
+    if ($scheme != "https") {
+        return 301 https://$host$request_uri;
+    }
+}‌:ml-citation{ref="4,7" data="citationList"}
+‌重启 Nginx 服务‌
+
+bash
+Copy Code
+sudo nginx -t  # 测试配置语法
+sudo systemctl restart nginx‌:ml-citation{ref="4,7" data="citationList"}
+‌三、配置 Nginx 信任自签名证书‌
+‌将自签名证书加入信任链‌
+若需 Nginx 作为客户端（如反向代理）信任上游服务的自签名证书：
+
+bash
+Copy Code
+# 将证书加入信任链文件
+sudo cp certificate.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates‌:ml-citation{ref="6" data="citationList"}
+‌在反向代理配置中启用证书验证‌
+编辑反向代理配置，启用 SSL 验证：
+
+nginx
+Copy Code
+location / {
+    proxy_pass https://backend_server;
+    proxy_ssl_verify on;  # 开启验证
+    proxy_ssl_trusted_certificate /etc/nginx/ssl/certificate.crt;  # 指定信任的证书链
+    proxy_ssl_verify_depth 2;  # 验证深度
+}‌:ml-citation{ref="6,7" data="citationList"}
+‌四、验证与调试‌
+‌检查 HTTPS 访问‌
+浏览器访问 https://your-domain，忽略证书警告（自签名证书默认不受信任）‌16。
+
+‌查看 Nginx 日志‌
+
+bash
+Copy Code
+tail -f /var/log/nginx/error.log  # 排查证书加载或权限问题‌:ml-citation{ref="7" data="citationList"}
+‌注意事项‌
+‌证书有效期‌：-days 参数指定有效期，生产环境建议定期更新‌15。
+‌证书信息一致性‌：Common Name (CN) 需与域名或 IP 完全匹配，否则触发证书错误‌16。
+‌权限管理‌：确保 Nginx 用户（如 www-data）对证书文件有读取权限‌47。
+‌生产环境限制‌：自签名证书仅推荐用于测试或内部环境，对外服务应使用 CA 签发证书‌
+
+=========================================
+双向认证 CA 证书生成步骤
+一、生成 CA 根证书
+‌生成 CA 私钥‌
+
+bash
+Copy Code
+openssl genrsa -out ca.key 2048  
+生成 2048 位 RSA 私钥作为 CA 根密钥‌18。
+‌生成 CA 根证书‌
+
+bash
+Copy Code
+openssl req -x509 -new -key ca.key -out ca.crt -days 3650  
+-x509：生成自签名证书；
+-days 3650：设置有效期 10 年；
+需填写 CA 机构信息（国家、组织等）‌36。
+二、生成服务端证书
+‌创建服务端私钥‌
+
+bash
+Copy Code
+openssl genrsa -out server.key 2048  
+生成服务端 RSA 私钥‌18。
+‌生成服务端证书签名请求（CSR）‌
+
+bash
+Copy Code
+openssl req -new -key server.key -out server.csr  -addext "subjectAltName=IP:192.168.146.128"
+填写服务端信息（域名需与实际域名一致）‌13。
+‌用 CA 签发服务端证书‌
+
+bash
+Copy Code
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650  
+-CAcreateserial：自动生成证书序列号文件‌68。
+三、生成客户端证书
+‌创建客户端私钥‌
+
+bash
+Copy Code
+openssl genrsa -out client.key 2048  
+生成客户端 RSA 私钥‌18。
+‌生成客户端证书签名请求（CSR）‌
+
+bash
+Copy Code
+openssl req -new -key client.key -out client.csr  
+填写客户端信息（如用户身份标识）‌48。
+‌用 CA 签发客户端证书‌
+
+bash
+Copy Code
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -out client.crt -days 3650  
+客户端证书需与服务端证书使用同一 CA‌48。
+四、验证与部署
+‌检查证书合法性‌
+
+bash
+Copy Code
+openssl x509 -in server.crt -text -noout  # 查看服务端证书信息  
+openssl verify -CAfile ca.crt server.crt  # 验证证书链  
+手动添加到系统信任库
+sudo cp ca.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+确保证书由 CA 签发且信息正确‌36。
+‌服务端配置（以 Nginx 为例）‌
+
+nginx
+Copy Code
+ssl_certificate server.crt;  
+ssl_certificate_key server.key;  
+ssl_client_certificate ca.crt;  # 指定信任的 CA 证书  
+ssl_verify_client on;           # 开启客户端证书验证  
+客户端请求需携带有效证书‌48。
+‌客户端使用示例（curl）‌
+
+bash
+Copy Code
+curl --cert client.crt --key client.key https://your-domain.com  
+强制客户端提交证书完成双向认证‌
+
+
+一键快速生成 支持开发测试
+openssl req -x509 -newkey rsa:2048 -nodes -keyout server-key.pem -out server-cert.pem -days 365 -subj "/CN=localhost" -addext "subjectAltName=IP:192.168.146.128,DNS:localhost"  
+
+如果存在数据无法打开等，看看权限问题，无法生成， 使用 sudo 
+
+windows下配置
+生成自签名证书（在server目录下执行）
+openssl req -x509 -newkey rsa:4096 -nodes -keyout server.key -out server.crt -days 365 -subj "/CN=localhost"
+设置证书权限
+icacls "c:\Users\pc\Desktop\网站\server\server.*" /grant Everyone:(R)
+验证证书配置
+openssl x509 -in server.crt -noout -subject
+openssl rsa -in server.key -check
+
+linux下配置
+# 安装依赖库
+sudo apt-get install build-essential libssl-dev libsqlite3-dev
+
+# 生成自签名证书（在项目目录执行）
+openssl req -x509 -newkey rsa:4096 -nodes \
+    -keyout /home/user/project/server/server.key \
+    -out /home/user/project/server/server.crt \
+    -days 365 -subj "/CN=localhost"
+
+# 设置证书权限（Linux权限设置）
+sudo chmod 600 /home/user/project/server/server.*
+sudo chown $USER:$USER /home/user/project/server/server.*
+
+使用小皮面板ssl   .key .crt 编译，然后拷贝到系统信任 linux 
+# 将CA证书复制到信任目录
+sudo cp ca.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+
+# 验证证书链
+openssl s_client -connect localhost:8443 -CAfile /etc/ssl/certs/ca-certificates.crt
+
+# 测试API请求
+curl -v https://api.example.com/api/data --cert client.crt --key client.key
+
+# 编译服务器程序（添加-Wall显示所有警告）
+gcc server.c -o server -lpthread -lsqlite3 -lssl -lcrypto -Wall
+
+# 运行服务（需要root权限绑定端口）
+sudo ./server
+
+
+# 获取样式
+curl http://localhost/api/get-container-styles
+
+# 更新样式
+curl -X POST -H "Content-Type: application/json" -d '{"width":"90%"}' http://localhost/api/get-container-styles
+
+发送请求出现 ssl 错误 
+
+使用自签名证书，把证书拷贝到windows 下进行安装 ‌转 下面 的 ‌二、证书信任配置‌
+
+# 方法1: 跳过SSL验证 (仅用于测试环境)
+curl -k https://192.168.146.128:8443/api/get-container-styles
+
+# 方法2: 指定服务器证书 (生产环境推荐)
+curl --cacert ./server.crt https://localhost:8443/api/get-container-styles
+
+Windows本地SSL证书配置指南（2025年更新）‌
+‌一、证书生成方法‌
+‌使用OpenSSL生成自签名证书
+
+‌安装OpenSSL‌：下载并安装Windows版OpenSSL，配置环境变量至系统Path‌34。
+‌生成私钥和证书‌：
+bash
+Copy Code
+openssl genpkey -algorithm RSA -out server.key  # 生成RSA私钥‌:ml-citation{ref="3,5" data="citationList"}  
+openssl req -x509 -nodes -key server.key -out server.crt -days 3650  # 生成自签名证书‌:ml-citation{ref="4,5" data="citationList"}  
+‌添加域名/IP‌：创建配置文件（如openssl.cnf）定义subjectAltName，包含DNS:localhost或IP:127.0.0.1等‌5。
+‌使用mkcert工具快速生成‌
+
+‌安装mkcert‌：通过Chocolatey执行choco install mkcert，并初始化本地CA：mkcert -install‌8。
+‌生成证书‌：
+bash
+Copy Code
+mkcert localhost 127.0.0.1 ::1  # 生成包含多域名的PEM格式证书‌:ml-citation{ref="5,8" data="citationList"}  
+输出文件包括localhost+2.pem（证书）和localhost+2-key.pem（私钥），适用于Nginx等服务器‌58。
+‌二、证书信任配置‌
+‌导入系统信任库‌
+
+右键证书文件（.crt或.pem）→ 选择「安装证书」→ 存储位置选「本地计算机」→ 选择「受信任的根证书颁发机构」‌68。
+‌验证‌：通过MMC控制台（Win+R输入mmc）→ 添加「证书」插件 → 确认证书已存在于信任库‌67。
+‌适配浏览器与开发工具‌
+
+重启浏览器或Apifox等工具，确保读取更新后的信任链‌68。
+若需双向认证，上传客户端证书（如.pfx）至工具配置页‌58。
+‌三、服务器SSL配置示例‌
+‌Nginx配置‌
+
+nginx
+Copy Code
+server {
+    listen 443 ssl;
+    server_name localhost;
+    ssl_certificate     C:/certs/server.crt;  # 证书路径‌:ml-citation{ref="4,5" data="citationList"}
+    ssl_certificate_key C:/certs/server.key;  # 私钥路径‌:ml-citation{ref="4,5" data="citationList"}
+}
+‌IIS配置‌
+
+将.pfx证书导入IIS：
+打开IIS管理器 → 选择站点 → 绑定HTTPS → 选择导入的证书‌8。
+确保证书存储位置为「本地计算机」‌
+
+
+在Nginx配置SSL证书与网站后台服务使用自签名证书的场景中，两者不会直接产生冲突，但需注意以下关键点以避免潜在问题：
+
+一、核心关系分析
+‌功能定位差异‌
+
+‌Nginx SSL‌：负责处理客户端（如浏览器）与服务器之间的HTTPS加密通信，通常使用受信任的CA颁发的证书‌13。
+‌后台服务自签名证书‌：用于内部服务间通信加密（如Nginx与后端应用服务器），证书无需浏览器信任‌56。
+‌典型架构场景‌
+
+若Nginx作为反向代理，客户端仅需信任Nginx的证书，而Nginx到后端服务可通过HTTP或HTTPS（自签名证书）通信‌68。
+若后端服务直接暴露，则需客户端信任其自签名证书，否则会触发安全警告‌57。
+二、潜在问题与解决方案
+1. ‌证书信任链问题‌
+‌现象‌：若Nginx代理的后端服务使用自签名证书，且Nginx配置了SSL证书验证（如proxy_ssl_verify on），会因证书不受信任导致连接失败。
+‌解决‌：
+关闭Nginx对后端证书的验证：proxy_ssl_verify off;‌6。
+或将自签名证书的根证书添加到Nginx信任链中：proxy_ssl_trusted_certificate /path/to/ca.crt;‌8。
+2. ‌端口冲突‌
+‌现象‌：若Nginx和后端服务同时监听443端口，会导致端口占用冲突。
+‌解决‌：
+Nginx监听443端口处理外部请求，后端服务使用其他端口（如8443）‌28。
+通过Nginx反向代理将请求转发至后端端口（示例配置）：
+nginx
+Copy Code
+location /api {
+    proxy_pass https://backend:8443;
+    proxy_ssl_verify off;  # 若后端使用自签名证书
+}
+3. ‌浏览器安全警告‌
+‌现象‌：若后端服务直接对外提供HTTPS且使用自签名证书，客户端浏览器会提示“不安全”。
+‌解决‌：
+仅在内部网络暴露后端服务，避免直接对外‌57。
+对必须公开的场景，改用受信任的CA证书‌13。
+三、推荐配置实践
+‌Nginx作为SSL终端‌
+
+使用CA颁发的证书处理客户端HTTPS请求，后端服务通过HTTP或自签名HTTPS运行‌38。
+‌优势‌：简化后端证书管理，避免客户端安全警告。
+‌双向加密通信‌
+
+若需Nginx与后端服务间严格加密：
+后端使用自签名证书，Nginx配置信任该证书‌6。
+添加证书验证逻辑（适用于高安全需求场景）‌68。
+四、操作注意事项
+‌证书路径‌：确保Nginx配置中ssl_certificate和ssl_certificate_key指向正确的文件‌48。
+‌协议与加密套件‌：禁用过时的SSL/TLS协议（如TLSv1.0），优先使用TLSv1.2/1.3‌78。
+‌定期更新‌：CA证书需及时续订，自签名证书可长期使用但需监控有效期‌
+
+
+=============后端使用自签名证书，Nginx配置信任该证书‌
+1、首先更新Nginx配置文件中的代理设置
+location /api/ {
+    proxy_pass https://backend;
+    
+    # 启用证书验证并指定信任证书
+    proxy_ssl_verify on;
+    proxy_ssl_trusted_certificate c:/Users/pc/Desktop/网站/server/server.crt;
+    proxy_ssl_verify_depth 2;
+    
+    # 保持原有配置
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+}
+2. 修改证书生成脚本添加CA扩展：
+# 生成CA证书（如果不存在）
+openssl req -x509 -newkey rsa:4096 -nodes -keyout ca.key -out ca.crt -days 3650 \
+-subj "/CN=MyLocalCA"
+
+# 生成服务器证书签名请求
+openssl req -new -newkey rsa:4096 -nodes -keyout server.key -out server.csr \
+-subj "/CN=internal-server" \
+-addext "subjectAltName=DNS:internal-server,DNS:localhost,IP:127.0.0.1"
+
+# 用CA证书签名
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+-out server.crt -days 365 -extfile <(printf "subjectAltName=DNS:internal-server,DNS:localhost,IP:127.0.0.1")
+
+3. 在Nginx配置中添加CA证书路径：
+http {
+    # 添加CA证书到信任链
+    proxy_ssl_trusted_certificate c:/Users/pc/Desktop/网站/server/ca.crt;
+    
+    # 其他全局配置...
+}
+
+关键验证步骤：
+# 查看证书链（应在输出中看到CA证书）
+openssl s_client -connect 127.0.0.1:8443 -showcerts -CAfile c:\Users\pc\Desktop\网站\server\ca.crt
+
+# 测试带证书验证的请求
+curl --cacert c:\Users\pc\Desktop\网站\server\ca.crt https://api.example.com/api/data
+
+=====================================
+Linux 生成 Windows 兼容的服务器证书指南
+以下步骤结合 OpenSSL 工具，生成包含私钥、SAN（Subject Alternative Name）扩展的服务器证书，并导出为 Windows 支持的 PKCS#12（.p12）格式：
+
+一、生成私钥与 CSR（证书签名请求）
+‌生成 RSA 私钥‌
+
+bash
+Copy Code
+openssl genrsa -out server.key 2048  # 生成 2048 位私钥‌:ml-citation{ref="5,7" data="citationList"}  
+‌创建 CSR 文件（包含 SAN 扩展）‌
+
+bash
+Copy Code
+openssl req -new -key server.key -out server.csr -subj "/C=CN/ST=Shanghai/L=Shanghai/O=MyCompany/CN=example.com" \  
+-addext "subjectAltName=DNS:example.com,DNS:*.example.com,IP:192.168.1.1"  # 定义 SAN 域名和 IP‌:ml-citation{ref="2,5" data="citationList"}  
+‌关键参数‌：
+-subj：设置证书主题（国家、省份、组织等）‌5
+-addext：添加 SAN 扩展，支持多域名和 IP‌2
+二、自签名证书生成（或通过 CA 签发）
+‌自签名证书（测试环境）‌
+
+bash
+Copy Code
+openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt  # 自签名‌:ml-citation{ref="4,7" data="citationList"}  
+‌通过 CA 签发（生产环境）‌
+
+将 server.csr 提交至 Windows CA 或其他受信任 CA，获取签发的 server.crt‌5
+三、导出为 Windows 兼容的 PKCS#12 格式
+‌转换证书为 .p12 格式‌
+bash
+Copy Code
+openssl pkcs12 -export -out server.p12 -inkey server.key -in server.crt -certfile ca.crt  # 包含私钥和证书链‌:ml-citation{ref="2,6" data="citationList"}  
+‌参数说明‌：
+-certfile ca.crt：若需包含 CA 证书链（可选）‌6
+执行后需设置密码保护 .p12 文件‌2
+四、Windows 端证书安装
+‌导入 .p12 文件‌
+双击 server.p12，按提示输入密码，选择存储位置为 本地计算机 -> 个人‌26
+‌信任根证书（若自签名）‌
+将自签名 CA 证书（ca.crt）导入 Windows 的 受信任的根证书颁发机构
+
+
+===============================================
+Linux 下 Nginx 配置自签名 SSL 证书及信任指南
+一、生成自签名证书
+‌创建私钥并生成证书‌
+
+bash
+Copy Code
+# 生成私钥（带密码保护）  
+openssl genrsa -des3 -out server.key 2048 ‌:ml-citation{ref="8" data="citationList"}  
+
+# 创建无密码私钥（避免 Nginx 重启需输入密码）  
+openssl rsa -in server.key -out server.key.nopass ‌:ml-citation{ref="8" data="citationList"}  
+mv server.key.nopass server.key  
+
+# 生成 CSR 文件（包含 SAN 扩展）  
+openssl req -new -key server.key -out server.csr \  
+  -subj "/C=CN/ST=Beijing/L=Beijing/O=LocalDev/CN=example.com" \  
+  -addext "subjectAltName=DNS:example.com,DNS:*.example.com,IP:127.0.0.1" ‌:ml-citation{ref="2,6" data="citationList"}  
+
+# 自签名生成证书（有效期 365 天）  
+openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt ‌:ml-citation{ref="1,8" data="citationList"}  
+‌证书文件说明‌
+
+server.key：私钥文件
+server.crt：自签名证书文件
+‌SAN 扩展必填‌：避免浏览器提示证书不安全 ‌26
+二、配置 Nginx 使用 SSL 证书
+‌检查 Nginx 是否支持 SSL 模块‌
+
+bash
+Copy Code
+nginx -V | grep -o with-http_ssl_module  
+若无输出，需重新编译 Nginx 并添加 --with-http_ssl_module 参数 ‌38
+‌修改 Nginx 配置文件‌
+
+nginx
+Copy Code
+server {  
+  listen 443 ssl;  
+  server_name example.com;  
+
+  # 证书路径配置  
+  ssl_certificate     /etc/nginx/ssl/server.crt;  
+  ssl_certificate_key /etc/nginx/ssl/server.key;  
+
+  # 加密协议优化  
+  ssl_protocols       TLSv1.2 TLSv1.3;  
+  ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;  
+  ssl_prefer_server_ciphers on;  
+  ssl_session_cache   shared:SSL:10m;  
+  ssl_session_timeout 10m;  
+
+  # 反向代理或其他业务配置  
+  location / {  
+    proxy_pass http://backend_service;  
+    # 若需信任后端自签名证书，添加以下配置  
+    proxy_ssl_trusted_certificate /etc/nginx/ssl/ca.crt;  # 后端证书的 CA 文件  
+    proxy_ssl_verify on;  
+  }  
+}  
+
+# HTTP 强制跳转 HTTPS  
+server {  
+  listen 80;  
+  server_name example.com;  
+  return 301 https://$host$request_uri; ‌:ml-citation{ref="5,7" data="citationList"}  
+}  
+‌验证并重启 Nginx‌
+
+bash
+Copy Code
+sudo nginx -t  
+sudo systemctl restart nginx  
+三、信任自签名证书（Nginx 与后端服务通信）
+‌获取后端服务 CA 证书‌
+
+若后端使用自签名证书，需将其根 CA 证书（如 ca.crt）复制到 Nginx 服务器 ‌5
+‌配置 Nginx 信任后端证书‌
+
+nginx
+Copy Code
+location / {  
+  proxy_pass https://backend_service;  
+  proxy_ssl_trusted_certificate /etc/nginx/ssl/ca.crt;  # 指定 CA 证书路径  
+  proxy_ssl_verify on;     # 开启证书验证  
+  proxy_ssl_verify_depth 2;  # 验证深度  
+}  
+‌关键参数‌：
+proxy_ssl_trusted_certificate：指定信任的 CA 证书链 ‌5
+proxy_ssl_verify：启用后端证书合法性验证 ‌5
+四、注意事项
+‌证书路径权限‌
+
+确保 /etc/nginx/ssl 目录权限为 700，避免私钥泄露 ‌8
+‌协议与加密套件‌
+
+禁用不安全的 TLSv1.0/1.1，优先使用 TLSv1.2/1.3 ‌57
+使用强加密套件（如 ECDHE-ECDSA-AES128-GCM-SHA256）‌5
+‌证书有效期管理‌
+
+自签名证书需定期更新（通过 -days 参数调整有效期）‌
+
+=================================
+# API 接口代理  
+    location /api/ {  
+        proxy_pass https://localhost:8443;  
+        proxy_set_header Host $host;  
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_ssl_verify on;  # 证书验证
+        proxy_ssl_trusted_certificate /xp/www/192.168.146.128_8083/server/ca.crt;
+        proxy_ssl_verify_depth 2;
+        
+        # 添加服务器名称指示
+        proxy_ssl_server_name on;
+        proxy_ssl_name internal-server;
+        
+        # 保持连接参数
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        
+        # 超时设置（单位秒）
+        proxy_connect_timeout 60;
+        proxy_read_timeout 300;
+        proxy_send_timeout 300;
+    }

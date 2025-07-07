@@ -1,0 +1,36 @@
+{
+    "description": "此文件用于配置项目的相关信息",
+    "version": "1.0.0",
+    "port": 8443,
+    "databasedata": "../data",
+    "defaultname": "default.db",
+    "logdata": "../log/server.log",
+    "log_max_size": 10,
+    "log_max_backups": 30,
+    "gridcircle": [
+        {
+            "id": 1,
+            "gridname": "默认空间",
+            "x": 100,
+            "y": 100,
+            "width": 900,
+            "height": 500
+        },
+        {
+            "id": 2,
+            "gridname": "默认单元",
+            "x": 100,
+            "y": 100,
+            "width": 30,
+            "height": 30
+        },
+        {
+            "id": 3,
+            "gridname": "默认间格",
+            "x": 130,
+            "y": 130,
+            "width": 5,
+            "height": 5
+        }
+    ]
+}
