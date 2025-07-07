@@ -1,18 +1,5 @@
 #include "filemanager.h"
 #include "../cJSON/cJSON.h"
-// 兼容旧版cJSON宏
-#ifndef cJSON_IsString
-#define cJSON_IsString(item) ((item) && ((item)->type & cJSON_String))
-#endif
-#ifndef cJSON_IsArray
-#define cJSON_IsArray(item) ((item) && ((item)->type & cJSON_Array))
-#endif
-#ifndef cJSON_IsObject
-#define cJSON_IsObject(item) ((item) && ((item)->type & cJSON_Object))
-#endif
-#ifndef cJSON_IsNumber
-#define cJSON_IsNumber(item) ((item) && ((item)->type & cJSON_Number))
-#endif
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -335,12 +322,38 @@ namespace filemanager
     {
         try
         {
-            uno::Reference<uno::XComponentContext> xContext = cppu::defaultBootstrap_InitialComponentContext();
+            // 通过 XUnoUrlResolver 远程连接外部 headless soffice 服务
+            uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
+            uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
+            uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
+                rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+            uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
+            uno::Reference<uno::XInterface> xCtxIface;
+            try {
+                xCtxIface = xUrlResolver->resolve(
+                    rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+            } catch (const uno::Exception &e) {
+                std::cerr << "[UNO] XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                return nullptr;
+            }
+            uno::Reference<uno::XComponentContext> xContext(xCtxIface, uno::UNO_QUERY);
+            if (!xContext.is()) {
+                std::cerr << "[UNO] XComponentContext (socket) is null! 请确保已启动 soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                return nullptr;
+            }
             uno::Reference<lang::XMultiComponentFactory> xMCF_base = xContext->getServiceManager();
+            if (!xMCF_base.is()) {
+                std::cerr << "[UNO] getServiceManager() returned null!" << std::endl;
+                return nullptr;
+            }
             uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
             uno::Reference<frame::XComponentLoader> xLoader(xMCF->createInstance(
                                                                 rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
                                                             uno::UNO_QUERY);
+            if (!xLoader.is()) {
+                std::cerr << "updateSpreadsheetContent: XComponentLoader is null!" << std::endl;
+                return nullptr;
+            }
             rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);

@@ -1,23 +1,7 @@
 /*
-  Copyright (c) 2009 Dave Gamble
- 
-  Permission is hereby granted, free of charge, to any person obtaining a copy
-  of this software and associated documentation files (the "Software"), to deal
-  in the Software without restriction, including without limitation the rights
-  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-  copies of the Software, and to permit persons to whom the Software is
-  furnished to do so, subject to the following conditions:
- 
-  The above copyright notice and this permission notice shall be included in
-  all copies or substantial portions of the Software.
- 
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-  THE SOFTWARE.
+  Copyright (c) 2009-2024 Dave Gamble and cJSON contributors
+  SPDX-License-Identifier: MIT
+  https://github.com/DaveGamble/cJSON
 */
 
 #ifndef cJSON__h
@@ -28,17 +12,33 @@ extern "C"
 {
 #endif
 
+#include <stddef.h>
+#include <stdint.h>
+
 /* cJSON Types: */
-#define cJSON_False 0
-#define cJSON_True 1
-#define cJSON_NULL 2
-#define cJSON_Number 3
-#define cJSON_String 4
-#define cJSON_Array 5
-#define cJSON_Object 6
-	
+#define cJSON_Invalid (0)
+#define cJSON_False   (1 << 0)
+#define cJSON_True    (1 << 1)
+#define cJSON_NULL    (1 << 2)
+#define cJSON_Number  (1 << 3)
+#define cJSON_String  (1 << 4)
+#define cJSON_Array   (1 << 5)
+#define cJSON_Object  (1 << 6)
+#define cJSON_Raw     (1 << 7)
 #define cJSON_IsReference 256
 #define cJSON_StringIsConst 512
+
+/* Macros for type checking */
+#define cJSON_IsInvalid(item) ((item) == NULL)
+#define cJSON_IsFalse(item) ((item) && ((item)->type == cJSON_False))
+#define cJSON_IsTrue(item) ((item) && ((item)->type == cJSON_True))
+#define cJSON_IsBool(item) (cJSON_IsFalse(item) || cJSON_IsTrue(item))
+#define cJSON_IsNull(item) ((item) && ((item)->type == cJSON_NULL))
+#define cJSON_IsNumber(item) ((item) && (((item)->type & 0xFF) == cJSON_Number))
+#define cJSON_IsString(item) ((item) && (((item)->type & 0xFF) == cJSON_String))
+#define cJSON_IsArray(item) ((item) && (((item)->type & 0xFF) == cJSON_Array))
+#define cJSON_IsObject(item) ((item) && (((item)->type & 0xFF) == cJSON_Object))
+#define cJSON_IsRaw(item) ((item) && (((item)->type & 0xFF) == cJSON_Raw))
 
 /* The cJSON structure: */
 typedef struct cJSON {
