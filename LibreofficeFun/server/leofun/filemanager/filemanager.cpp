@@ -29,11 +29,18 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/bridge/UnoUrlResolver.hpp>
 #include <cppuhelper/bootstrap.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <stdexcept>
 #include <iostream>
+#include <cstdlib>
+#if __cplusplus >= 201703L
+#include <filesystem>
+#endif
+#include <sys/stat.h>
+#include <sys/types.h>
 
 using namespace com::sun::star;
 
@@ -101,6 +108,26 @@ namespace filemanager
         }
     }
 
+    // 递归创建目录（兼容无<filesystem>环境）
+    static void make_dirs(const std::string& path) {
+#if __cplusplus >= 201703L
+        std::error_code ec;
+        std::filesystem::create_directories(std::filesystem::path(path), ec);
+        if (ec) {
+            std::cerr << "[saveDocument] Failed to create directory: " << path << " : " << ec.message() << std::endl;
+        }
+#else
+        size_t pos = 0;
+        do {
+            pos = path.find_first_of("/\\", pos + 1);
+            std::string sub = path.substr(0, pos);
+            if (!sub.empty() && sub != "." && sub != "..") {
+                mkdir(sub.c_str(), 0755);
+            }
+        } while (pos != std::string::npos);
+#endif
+    }
+
     void saveDocument(const uno::Reference<uno::XInterface> &docIface, const rtl::OUString &filePath)
     {
         try
@@ -108,12 +135,25 @@ namespace filemanager
             uno::Reference<frame::XStorable> xStorable(docIface, uno::UNO_QUERY);
             if (!xStorable.is())
                 throw std::runtime_error("Invalid storable interface");
+            // 规范路径，自动创建父目录
+            std::string nativePath = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+            std::replace(nativePath.begin(), nativePath.end(), '\\', '/');
+            size_t lastSlash = nativePath.find_last_of('/');
+            if (lastSlash != std::string::npos) {
+                std::string dir = nativePath.substr(0, lastSlash);
+                make_dirs(dir);
+            }
+#if __cplusplus >= 201703L
+            std::string urlPath = std::filesystem::path(nativePath).generic_string();
+#else
+            std::string urlPath = nativePath;
+#endif
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(urlPath.c_str());
             uno::Sequence<beans::PropertyValue> props(2);
             props[0].Name = rtl::OUString::createFromAscii("FilterName");
             props[0].Value <<= rtl::OUString::createFromAscii("calc8");
             props[1].Name = rtl::OUString::createFromAscii("Overwrite");
             props[1].Value <<= true;
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
             xStorable->storeToURL(url, props);
         }
         catch (const uno::Exception &e)
@@ -191,25 +231,77 @@ namespace filemanager
     {
         try
         {
-            uno::Reference<uno::XComponentContext> xContext = cppu::defaultBootstrap_InitialComponentContext();
+            // 检查并输出 URE_BOOTSTRAP 环境变量
+            const char *ure_bootstrap = std::getenv("URE_BOOTSTRAP");
+            if (ure_bootstrap)
+                std::cout << "[UNO] URE_BOOTSTRAP=" << ure_bootstrap << std::endl;
+            else
+                std::cout << "[UNO] URE_BOOTSTRAP not set!" << std::endl;
+            // 通过 XUnoUrlResolver 远程连接外部 headless soffice 服务
+            uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
+            uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
+            uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
+                rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+            uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
+            uno::Reference<uno::XInterface> xCtxIface;
+            try {
+                xCtxIface = xUrlResolver->resolve(
+                    rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+            } catch (const uno::Exception &e) {
+                std::cerr << "[UNO] XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                return nullptr;
+            }
+            uno::Reference<uno::XComponentContext> xContext(xCtxIface, uno::UNO_QUERY);
+            if (!xContext.is()) {
+                std::cerr << "[UNO] XComponentContext (socket) is null! 请确保已启动 soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                return nullptr;
+            }
             uno::Reference<lang::XMultiComponentFactory> xMCF_base = xContext->getServiceManager();
+            if (!xMCF_base.is()) {
+                std::cerr << "[UNO] getServiceManager() returned null!" << std::endl;
+                return nullptr;
+            }
             uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
             uno::Reference<frame::XComponentLoader> xLoader(xMCF->createInstance(
                                                                 rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
                                                             uno::UNO_QUERY);
+            if (!xLoader.is()) {
+                std::cerr << "createNewSpreadsheetFile: XComponentLoader is null!" << std::endl;
+                return nullptr;
+            }
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(
-                                                       rtl::OUString::createFromAscii("private:factory/scalc"), rtl::OUString::createFromAscii("_blank"), 0, args),
-                                                   uno::UNO_QUERY);
+            uno::Reference<uno::XInterface> loadedIface = xLoader->loadComponentFromURL(
+                rtl::OUString::createFromAscii("private:factory/scalc"), rtl::OUString::createFromAscii("_blank"), 0, args);
+            if (!loadedIface.is()) {
+                std::cerr << "createNewSpreadsheetFile: loadComponentFromURL returned null!" << std::endl;
+                return nullptr;
+            }
+            uno::Reference<lang::XComponent> xComp(loadedIface, uno::UNO_QUERY);
+            if (!xComp.is()) {
+                std::cerr << "createNewSpreadsheetFile: loaded interface is not XComponent!" << std::endl;
+                return nullptr;
+            }
             uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            if (!xDoc.is()) {
+                std::cerr << "createNewSpreadsheetFile: loaded component is not a spreadsheet document!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
             uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            sheets->insertNewByName(sheetName, 0);
             uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-            uno::Any any = nameAccess->getByName(sheetName);
             uno::Reference<sheet::XSpreadsheet> sheet;
-            any >>= sheet;
+            if (nameAccess->hasByName(sheetName)) {
+                // 已存在则直接获取
+                uno::Any any = nameAccess->getByName(sheetName);
+                any >>= sheet;
+            } else {
+                // 不存在则插入
+                sheets->insertNewByName(sheetName, 0);
+                uno::Any any = nameAccess->getByName(sheetName);
+                any >>= sheet;
+            }
             // 写入内容
-            if (contentData && cJSON_IsArray(contentData))
+            if (sheet.is() && contentData && cJSON_IsArray(contentData))
             {
                 int row = 0;
                 cJSON *rowItem = nullptr;
@@ -288,6 +380,7 @@ namespace filemanager
 
     void newfileCreate(cJSON *results, const char *body)
     {
+        printf("Creating new spreadsheet file with body: %s\n", body);
         // body 应为 JSON 字符串，包含文件名、sheet名、可选内容
         cJSON *root = cJSON_Parse(body);
         if (!root)
@@ -402,7 +495,7 @@ namespace filemanager
     {
         // body 应为 JSON 字符串，支持批量编辑（如批量写入单元格）
         // 这里实现与 updatefile 类似，支持多单元格写入
-        //updatefile(results, body);
+        // updatefile(results, body);
     }
 
 } // namespace filemanager

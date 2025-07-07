@@ -5,7 +5,15 @@ meta {
 }
 
 post {
-  url: http://192.168.0.3:8443/api/newfile
-  body: none
+  url: https://192.168.0.3:8443/api/newfile
+  body: json
   auth: inherit
+}
+
+body:json {
+  {
+    "filename":"",
+    "sheetname":"",
+    "content":""
+  }
 }
