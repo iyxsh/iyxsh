@@ -56,6 +56,7 @@
         <ChineseCharCard 
           ref="cardRefs"
           :groupId="group.id"
+          :pageSize="currentPageSize"
           @cards-updated="handleCardsUpdated(group.id, $event)"
           @remove-group="removeCardGroup(index)"
         />
@@ -69,6 +70,13 @@ import { ref, computed,onMounted, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ChineseCharCard from './chinesecharcard.vue'
 
+// 定义props，接收pageSize属性
+const props = defineProps({
+  pageSize: {
+    type: Number,
+    default: 10
+  }
+})
 // 卡片管理器全局设置
 const managerSettings = reactive({
   showBorder: true, // 是否显示卡片管理器边框
@@ -79,13 +87,20 @@ const managerSettings = reactive({
   cardGroupWidth: 300, // 卡片组默认宽度
   columnsCount: 0 // 自动计算列数，0表示自动
 })
-
 // 卡片组列表
 const cardGroups = ref([])
 const cardRefs = ref([])
 
 // 控制设置按钮可见性的数组
 const visibleSettingsButtons = ref([])
+
+// 创建响应式的当前页面大小变量
+const currentPageSize = ref(props.pageSize)
+
+// 监听pageSize属性变化并更新内部状态
+watch(() => props.pageSize, (newSize) => {
+  currentPageSize.value = newSize
+})
 
 // 卡片数据存储
 const cardsData = ref({})
@@ -477,7 +492,6 @@ const loadSavedCardGroups = () => {
     // 出错时不自动创建默认卡片组
   }
 }
-
 // 提供方法让父组件可以访问卡片内容
 const loadFormsToAllCards = (forms) => {
   try {
@@ -485,6 +499,9 @@ const loadFormsToAllCards = (forms) => {
       ElMessage.warning('表单内容为空')
       return
     }
+    
+    // 考虑页面大小，如果forms长度大于当前页面大小，则分页处理
+    const formsToLoad = forms.slice(0, currentPageSize.value)
 
     // 清空现有卡片组，确保每个表单都能创建新的卡片组
     // 先备份当前的卡片组，以防用户想保留
@@ -525,8 +542,11 @@ const loadFormsToAllCards = (forms) => {
 
 // 从表单创建卡片组
 const createCardGroupsFromForms = (forms) => {
+  // 使用传入的表单列表，已经在调用处进行了页面大小限制
+  const formsToCreate = forms
+  
   // 首先创建所有卡片组
-  const newGroups = forms.map(form => ({
+  const newGroups = formsToCreate.map(form => ({
     id: Date.now() + Math.random().toString(36).substr(2, 9),
     name: form.title || `表单 ${cardGroups.value.length + 1}`,
     form: form // 将表单与组关联
@@ -561,9 +581,18 @@ const createCardGroupsFromForms = (forms) => {
         }
       }
       
-      ElMessage.success(`已为 ${forms.length} 个表单创建 ${forms.length} 个独立的卡片组`)
+      ElMessage.success(`已为 ${forms.length} 个表单创建 ${newGroups.length} 个独立的卡片组`)
     }
   }, 300) // 增加延迟，确保DOM完全更新
+}
+
+// 添加设置页面大小的方法
+const setPageSize = (size) => {
+  if (typeof size === 'number' && size > 0) {
+    currentPageSize.value = size
+    return true
+  }
+  return false
 }
 
 // 加载管理器设置
@@ -610,7 +639,8 @@ defineExpose({
   updateManagerSize, // 暴露更新尺寸方法
   updateManagerStyle, // 暴露更新样式方法
   updateGridLayout, // 暴露网格布局更新方法
-  openCardSettings // 暴露打开卡片设置方法
+  openCardSettings, // 暴露打开卡片设置方法
+  setPageSize // 暴露设置页面大小方法
 })
 </script>
 

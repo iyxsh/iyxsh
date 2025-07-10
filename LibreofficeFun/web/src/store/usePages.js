@@ -6,8 +6,18 @@ export function usePages() {
   const cache = localStorage.getItem(STORAGE_KEY)
   if (cache) pages.value = JSON.parse(cache)
   watch(pages, v => localStorage.setItem(STORAGE_KEY, JSON.stringify(v)), { deep: true })
-  function addPage(name = '新页面') {
-    pages.value.push({ id: Date.now(), name, forms: [] })
+  function addPage(name = '新页面', pageSize = null) {
+    pages.value.push({ 
+      id: Date.now(), 
+      name, 
+      forms: [],
+      pageSize: pageSize || {
+        name: 'A4',
+        width: 210,
+        height: 297,
+        unit: 'mm'
+      }
+    })
   }
   function removePage(idx) {
     pages.value.splice(idx, 1)

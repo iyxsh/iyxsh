@@ -108,11 +108,23 @@
               />
             </el-form-item>
           </div>
+          <!-- 第四行：文字旋转设置 -->
+          <div class="settings-row">
+            <el-form-item label="文字旋转角度">
+              <el-input-number
+                v-model="globalSettings.textRotation"
+                :min="-180"
+                :max="180"
+                :step="5"
+                style="width: 90px"
+              />
+            </el-form-item>
+          </div>
         </el-form>
       </div>
 
       <!-- 卡片容器 -->
-      <div class="cards-container">
+      <div class="cards-container" :style="cardContainerStyle">
         <draggable 
           v-model="cards" 
           item-key="id"
@@ -206,6 +218,18 @@ import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import { EditPen, Setting } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import { ElMessage } from 'element-plus'
+
+// 定义组件props
+const props = defineProps({
+  groupId: {
+    type: String,
+    default: ''
+  },
+  pageSize: {
+    type: Number,
+    default: 10
+  }
+})
 // 控制设置面板显示
 const showSettings = ref(false)
 
@@ -251,6 +275,44 @@ const globalSettings = reactive({
   showCardStyle: true,
   showGroupBorder: true // 新增：是否显示卡片组边框
 })
+// 根据页面大小计算卡片容器的样式
+const cardContainerStyle = computed(() => {
+  if (!props.pageSize) return {};
+
+  // 检查 pageSize 是否为对象（纸张定义）或数字
+  let width, height;
+  if (typeof props.pageSize === 'object' && props.pageSize !== null) {
+    // 如果是纸张对象，直接使用其宽度和高度
+    width = props.pageSize.width;
+    height = props.pageSize.height;
+    // 检查单位是否为毫米，如果不是则转换
+    const unit = props.pageSize.unit || 'mm';
+    if (unit !== 'mm') {
+      // 如果需要转换单位，这里添加转换逻辑
+      // 例如，如果单位是英寸，转换为毫米
+      if (unit === 'in') {
+        width *= 25.4; // 1英寸 = 25.4毫米
+        height *= 25.4;
+      }
+    }
+  } else {
+    // 如果是数字，假设是英寸，转换为毫米
+    width = props.pageSize * 25.4;
+    height = width * 1.414; // 假设是A系列纸张比例(1:√2)
+  }
+
+  return {
+    width: `${width}mm`,
+    minHeight: `${height}mm`,
+    border: globalSettings.showGroupBorder ? '1px solid #ddd' : '1px solid transparent',
+    backgroundColor: '#ffffff',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+    margin: '20px auto',
+    padding: '10mm', // 添加一些内边距
+    position: 'relative',
+    boxSizing: 'border-box'
+  };
+});
 
 // 卡片数据
 const cards = ref([])
@@ -303,6 +365,31 @@ const toggleSettings = () => {
 
 
 
+// 注意：页面大小监听和更新函数已移至下方统一位置
+/*
+  if (!pageSize) return;
+  
+  let baseFontSize;
+  if (typeof pageSize === 'object' && pageSize !== null) {
+    // 根据纸张大小动态计算一个合适的字体大小
+    // 基本思路：纸张越大，字体越大
+    const paperWidth = pageSize.width || 210; // 默认为A4宽度
+    // 例如：A4纸(210mm宽)设置36px字体大小，其他纸张按比例缩放
+    baseFontSize = Math.max(24, Math.min(48, Math.round(paperWidth / 210 * 36)));
+  } else if (typeof pageSize === 'number') {
+    // 如果页面大小是数字，假设为英寸转毫米
+    const widthInMm = pageSize * 25.4;
+    baseFontSize = Math.max(24, Math.min(48, Math.round(widthInMm / 210 * 36)));
+  } else {
+    // 默认字体大小
+    baseFontSize = 36;
+  }
+  
+  // 更新全局设置中的字体大小
+  globalSettings.fontSize = baseFontSize;
+  console.log('根据页面大小更新字体大小：', baseFontSize);
+}; */
+
 // 导出方法供外部调用
 
 // 定义事件
@@ -353,6 +440,7 @@ const updateCards = () => {
       color: globalSettings.color,
       backgroundColor: globalSettings.backgroundColor,
       layoutDirection: 'vertical', // 明确设置为竖排
+      textRotation: globalSettings.textRotation,
       isEditing: false
     })
   } else {
@@ -371,6 +459,7 @@ const updateCards = () => {
         color: globalSettings.color,
         backgroundColor: globalSettings.backgroundColor,
         layoutDirection: 'horizontal', // 明确设置为横排
+        textRotation: globalSettings.textRotation,
         isEditing: false
       })
     }
@@ -508,6 +597,9 @@ const getCardStyle = (card) => {
 }
 
 const getTextStyle = (card) => {
+  // 获取文字旋转角度，优先使用卡片自身的旋转角度，如果没有则使用全局设置
+  const rotation = card.textRotation !== undefined ? card.textRotation : globalSettings.textRotation;
+
   return {
     color: card.color || globalSettings.color,
     fontFamily: card.fontFamily || globalSettings.fontFamily,
@@ -519,7 +611,9 @@ const getTextStyle = (card) => {
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    height: '100%'
+    height: '100%',
+    transform: `rotate(${rotation}deg)`, // 应用旋转角度
+    transformOrigin: 'center center', // 设置旋转中心
   }
 }
 
@@ -532,6 +626,7 @@ const editingCard = reactive({
   color: '',
   backgroundColor: '',
   layoutDirection: 'horizontal',
+  textRotation: 0, // 新增：文字旋转角度
   useGlobalStyle: true
 })
 const editDialogVisible = ref(false)
@@ -547,6 +642,7 @@ const showEditDialog = (index) => {
     color: card.color,
     backgroundColor: card.backgroundColor,
     layoutDirection: card.layoutDirection || globalSettings.layoutDirection,
+    textRotation: card.textRotation !== undefined ? card.textRotation : globalSettings.textRotation,
     useGlobalStyle: card.useGlobalStyle
   })
   editDialogVisible.value = true
@@ -560,6 +656,7 @@ const applyGlobalStyle = () => {
     editingCard.color = globalSettings.color
     editingCard.backgroundColor = globalSettings.backgroundColor
     editingCard.layoutDirection = globalSettings.layoutDirection
+    editingCard.textRotation = globalSettings.textRotation
   }
 }
 
@@ -582,6 +679,7 @@ const saveCardEdit = () => {
       color: editingCard.color,
       backgroundColor: editingCard.backgroundColor,
       layoutDirection: editingCard.layoutDirection,
+      textRotation: editingCard.textRotation,
       useGlobalStyle: editingCard.useGlobalStyle
     })
     editDialogVisible.value = false
@@ -597,6 +695,7 @@ watch(globalSettings, () => {
       card.color = globalSettings.color
       card.backgroundColor = globalSettings.backgroundColor
       card.layoutDirection = globalSettings.layoutDirection
+      card.textRotation = globalSettings.textRotation
     }
   })
   
@@ -605,6 +704,14 @@ watch(globalSettings, () => {
     updateContainerSize()
   })
 }, { deep: true })
+
+// 监听pageSize变化
+watch(() => props.pageSize, (newPageSize) => {
+  if (newPageSize) {
+    // 当pageSize改变时更新卡片尺寸
+    updateCardSizeBasedOnPageSize(newPageSize);
+  }
+});
 
 // 更新布局方向
 const updateLayoutDirection = (direction) => {
@@ -627,6 +734,51 @@ const updateFontSize = (size) => {
   }
 }
 
+// 根据页面大小更新卡片尺寸
+const updateCardSizeBasedOnPageSize = (pageSize) => {
+  if (!pageSize || pageSize <= 0) return;
+
+  let calculatedFontSize;
+  
+  // 根据页面大小类型计算字体大小
+  if (typeof pageSize === 'object' && pageSize !== null) {
+    // 如果是纸张对象，使用宽度计算
+    const paperWidth = pageSize.width || 210; // 默认为A4宽度
+    // 例如：A4纸(210mm宽)设置36px字体大小，其他纸张按比例缩放
+    calculatedFontSize = Math.max(24, Math.min(48, Math.round(paperWidth / 210 * 36)));
+  } else if (typeof pageSize === 'number') {
+    // 如果是数字（假设为英寸），转换为毫米后计算
+    const widthInMm = pageSize * 25.4;
+    calculatedFontSize = Math.max(24, Math.min(48, Math.round(widthInMm / 210 * 36)));
+  } else {
+    // 默认字体大小
+    calculatedFontSize = 36;
+  }
+
+  // 更新全局设置
+  globalSettings.fontSize = calculatedFontSize;
+
+  // 刷新卡片以应用新的尺寸
+  nextTick(() => {
+    updateCards();
+    // 通知父组件字体大小已更新
+    if (typeof updateFontSize === 'function') {
+      updateFontSize(calculatedFontSize);
+    }
+  });
+  
+  console.log('根据页面大小更新字体大小：', calculatedFontSize, '页面大小：', pageSize);
+}
+
+// 监听页面大小变化
+watch(() => props.pageSize, (newSize) => {
+  if (newSize) {
+    // 当页面大小变化时更新卡片尺寸
+    updateCardSizeBasedOnPageSize(newSize);
+    console.log('页面大小已更新：', newSize);
+  }
+}, { immediate: true });
+
 // 组件挂载时初始化卡片
 onMounted(() => {
   // 初始化时调用默认内容初始化方法
@@ -642,18 +794,29 @@ onMounted(() => {
 const initializeDefaultContent = () => {
   textContent.value = '汉字卡片';
 
+  // 使用 updateCardSizeBasedOnPageSize 方法计算适合的字体大小
+  if (props.pageSize) {
+    updateCardSizeBasedOnPageSize(props.pageSize);
+  }
+
+  // 如果 pageSize 为空，使用默认值
+  const calculatedFontSize = globalSettings.fontSize || 36;
+
   // 重置为默认全局设置
   Object.assign(globalSettings, {
     fontFamily: 'KaiTi',
-    fontSize: 36,
+    fontSize: calculatedFontSize,
     color: '#333333',
     backgroundColor: '#f5f5f5',
     cardSpacing: 10,
     layoutDirection: 'horizontal',
     minCardSize: 12,
     showCardStyle: true,
-    showGroupBorder: true
+    showGroupBorder: true,
+    textRotation: 0
   });
+
+  console.log('初始化卡片，设置字体大小：', calculatedFontSize, '页面大小：', props.pageSize);
 
   // 更新卡片内容
   updateCards();
@@ -673,7 +836,8 @@ defineExpose({
   updateLayoutDirection,
   updateFontSize,
   initializeDefaultContent,
-  refreshContent
+  refreshContent,
+  updateCardSizeBasedOnPageSize
 })
 </script>
 
@@ -751,11 +915,12 @@ defineExpose({
   margin-top: 10px;
   position: relative;
   /* 卡片组边框样式，由showGroupBorder控制显示 */
-  border: 1px solid transparent;
   border-radius: 8px;
   padding: 10px;
   transition: all 0.3s ease;
-  /* 设置容器大小为卡片总尺寸的1.0倍比例 */
+  /* 纸张样式 */
+  background-color: #ffffff;
+  /* 使用CSS变量来控制尺寸，允许通过:style覆盖 */
   width: var(--container-width, fit-content);
   min-width: calc(var(--card-base-size, 36px) * 1.0);
   height: var(--container-height, auto);
@@ -814,12 +979,13 @@ defineExpose({
 }
 
 .char-card:hover {
-  transform: translateY(-5px);
+  /* 移除可能与文字旋转冲突的transform效果 */
+  /* transform: translateY(-5px); */
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
 .char-content {
-  display: flex;
+  display: inline-block; /* 更改为inline-block，更好地支持旋转 */
   align-items: center;
   justify-content: center;
   width: 100%;
@@ -829,10 +995,11 @@ defineExpose({
   white-space: nowrap; /* 防止文字换行 */
   font-size: inherit;
   line-height: normal;
-  /* 确保内容继承父元素的writing-mode和text-orientation */
-  writing-mode: inherit;
-  text-orientation: inherit;
-  direction: inherit; /* 确保继承方向设置 */
+  /* 删除可能干扰旋转的属性 */
+  /* writing-mode: inherit; */
+  /* text-orientation: inherit; */
+  /* direction: inherit; */
+  transform-origin: center center; /* 确保旋转的中心点在文字中央 */
 }
 
 .card-controls {

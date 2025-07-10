@@ -63,6 +63,7 @@
           v-model="pages[currentPageIdx].forms"
           :editable="editPageIdx === currentPageIdx"
           :cardStyleOn="cardStyleOn"
+          :pageSize="pages[currentPageIdx]?.pageSize"
           ref="formGridRef"
         />
         <FloatingBar v-show="currentPageType === 'form'"
@@ -75,13 +76,53 @@
       </template>
       
       <!-- Chinese Card Page -->
-      <ChineseCardManager v-show="currentPageType === 'char'" ref="charCardRef" :key="`${currentPageType}-${currentPageIdx}`" />
+      <ChineseCardManager v-show="currentPageType === 'char'" ref="charCardRef" :key="`${currentPageType}-${currentPageIdx}`" :pageSize="pages[currentPageIdx]?.pageSize" />
     </el-main>
   </el-container>
+
+  <!-- 纸张尺寸选择对话框 -->
+  <el-dialog
+    v-model="showPageSizeDialog"
+    title="选择纸张尺寸"
+    width="500px"
+  >
+    <div class="page-size-selector">
+      <el-form label-position="top">
+        <el-form-item label="页面名称">
+          <el-input v-model="newPageName" placeholder="输入页面名称"></el-input>
+        </el-form-item>
+        <el-form-item label="纸张尺寸">
+          <el-radio-group v-model="selectedPageSize">
+            <div class="paper-options-grid">
+              <div v-for="(papers, category) in groupedPaperSizes" :key="category" class="paper-category">
+                <div class="category-title">{{ category }}系列</div>
+                <div class="papers-group">
+                  <div v-for="paper in papers" :key="paper.name" class="paper-option-compact">
+                    <el-radio :label="paper.name">
+                      <div class="paper-preview-compact" :style="getPaperPreviewStyle(paper)">
+                        <span>{{ paper.name }}</span>
+                        <span class="paper-dimensions">{{ paper.width }}×{{ paper.height }} {{ paper.unit }}</span>
+                      </div>
+                    </el-radio>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+    </div>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="showPageSizeDialog = false">取消</el-button>
+        <el-button type="primary" @click="createNewPage">创建</el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
-import { ref, reactive, nextTick } from 'vue'
+import { ref, reactive, nextTick, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { usePages } from '../store/usePages'
 import FormGrid from '../components/FormGrid.vue'
@@ -98,6 +139,88 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const charCardRef = ref(null) // 现在引用的是ChineseCardManager组件
 const currentPageType = ref('form') // 当前页面类型：form 或 char
+
+// 纸张尺寸选择对话框相关
+const showPageSizeDialog = ref(false)
+const newPageName = ref('新页面')
+const selectedPageSize = ref('A4')
+
+// 预定义纸张尺寸列表
+const paperSizes = [
+  { name: 'A3', width: 297, height: 420, unit: 'mm', category: 'A' },
+  { name: 'A4', width: 210, height: 297, unit: 'mm', category: 'A' },
+  { name: 'A5', width: 148, height: 210, unit: 'mm', category: 'A' },
+  { name: 'B4', width: 250, height: 353, unit: 'mm', category: 'B' },
+  { name: 'B5', width: 176, height: 250, unit: 'mm', category: 'B' },
+  { name: 'Letter', width: 216, height: 279, unit: 'mm', category: '国际' },
+  { name: 'Legal', width: 216, height: 356, unit: 'mm', category: '国际' },
+  { name: 'Tabloid', width: 279, height: 432, unit: 'mm', category: '国际' },
+  { name: '常见信纸', width: 148, height: 210, unit: 'mm', category: '其他' },
+]
+
+// 根据纸张尺寸生成预览样式
+const getPaperPreviewStyle = (paper) => {
+  // 计算比例，确保预览可以在界面上显示
+  const maxWidth = 80
+  const maxHeight = 100
+  const ratio = Math.min(maxWidth / paper.width, maxHeight / paper.height)
+  
+  return {
+    width: `${paper.width * ratio}px`,
+    height: `${paper.height * ratio}px`,
+    border: '1px solid #dcdfe6',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: '3px',
+    fontSize: '10px',
+    color: '#606266',
+    backgroundColor: 'white',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s ease',
+    borderRadius: '2px'
+  }
+}
+
+// 添加分组的纸张列表计算属性
+const groupedPaperSizes = computed(() => {
+  const groups = {};
+  paperSizes.forEach(paper => {
+    if (!groups[paper.category]) {
+      groups[paper.category] = [];
+    }
+    groups[paper.category].push(paper);
+  });
+  return groups;
+});
+
+// 创建新页面
+const createNewPage = () => {
+  // 获取所选纸张尺寸对象
+  const pageSizeObj = paperSizes.find(p => p.name === selectedPageSize.value)
+  
+  // 创建页面
+  addPage(newPageName.value || '新页面', pageSizeObj)
+  
+  // 自动将新页面设置为可编辑状态
+  nextTick(() => {
+    const newPageIdx = pages.value.length - 1
+    currentPageIdx.value = newPageIdx
+    editPageIdx.value = newPageIdx
+    // 关闭对话框
+    showPageSizeDialog.value = false
+    // 重置输入
+    newPageName.value = '新页面'
+    
+    // 无论选择哪种页面类型（表单或卡片），都应用选定的纸张大小
+    if (currentPageType.value === 'char' && charCardRef.value && pageSizeObj) {
+      nextTick(() => {
+        charCardRef.value.setPageSize(pageSizeObj)
+      })
+    }
+  })
+}
 
 // 切换卡片样式
 function onToggleCardStyle() {
@@ -134,15 +257,8 @@ function toggleEditPage(idx) {
   editPageIdx.value = editPageIdx.value === idx ? -1 : idx
 }
 function onAddPage() {
-  addPage('new page')
-  // 自动将新页面设置为可编辑状态
-  nextTick(() => {
-    const newPageIdx = pages.value.length - 1
-    currentPageIdx.value = newPageIdx
-    editPageIdx.value = newPageIdx
-    // 确保新页面类型为表单模式
-    currentPageType.value = 'form'
-  })
+  // 显示纸张选择对话框
+  showPageSizeDialog.value = true
 }
 function clearAllPages() {
   localStorage.removeItem('form-pages')
@@ -197,6 +313,10 @@ function convertFormsToCharCards() {
   nextTick(() => {
     // 确保汉字卡片管理组件已加载
     if (charCardRef.value) {
+      // 先传递当前选择的纸张大小
+      if (pages.value[currentPageIdx.value].pageSize) {
+        charCardRef.value.setPageSize(pages.value[currentPageIdx.value].pageSize)
+      }
       // 将表单内容传递给汉字卡片管理组件，该组件会自动分配表单到多个卡片组
       charCardRef.value.loadFormsToAllCards(pages.value[currentPageIdx.value].forms)
     } else {
@@ -219,5 +339,44 @@ function convertFormsToCharCards() {
   padding: 0 10px;
   display: flex;
   justify-content: center;
+}
+
+/* 纸张尺寸选择对话框样式 */
+.page-size-selector {
+  width: 100%;
+}
+
+.paper-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.paper-option {
+  display: flex;
+  flex-direction: column;
+}
+
+.paper-preview {
+  margin: 5px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s;
+}
+
+.paper-preview:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.paper-dimensions {
+  display: block;
+  font-size: 10px;
+  margin-top: 5px;
+}
+
+/* 活动选择项样式 */
+:deep(.el-radio__input.is-checked + .el-radio__label) .paper-preview {
+  border: 2px solid #409eff !important;
+  box-shadow: 0 4px 8px rgba(64, 158, 255, 0.3);
 }
 </style>

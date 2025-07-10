@@ -1,5 +1,5 @@
 <template>
-  <draggable v-model="forms" item-key="id" class="form-grid" :animation="200">
+  <draggable v-model="forms" item-key="id" class="form-grid" :style="gridContainerStyle" :animation="200">
     <template #item="{ element, index }">
       <div class="form-card-wrapper" @contextmenu.prevent="openMenu(index, $event)">
         <el-card v-if="showDetail[index] !== true" :class="['form-card-mini', cardStyleOn ? '' : 'no-style']" @dblclick="openDetail(index)"
@@ -47,6 +47,7 @@ import draggable from 'vuedraggable'
 import FormCard from './FormCard.vue'
 const props = defineProps({
   modelValue: Array,
+  pageSize: Object, // 页面尺寸
   addForm: Function,
   editable: Boolean,
   cardStyleOn: {
@@ -58,6 +59,30 @@ const emit = defineEmits(['update:modelValue'])
 const forms = computed({
   get: () => props.modelValue,
   set: v => emit('update:modelValue', v)
+})
+
+// 根据页面尺寸计算表单容器样式
+const gridContainerStyle = computed(() => {
+  // 如果提供了页面尺寸，就应用页面尺寸
+  if (props.pageSize) {
+    const { width, height, unit } = props.pageSize
+    
+    // 将尺寸应用于网格容器，添加边距给内容
+    return {
+      width: `${width}${unit}`,
+      minHeight: `${height}${unit}`,
+      margin: '0 auto',
+      border: '1px dashed #ccc',
+      padding: '10px',
+      backgroundColor: 'white',
+      boxSizing: 'border-box',
+      position: 'relative',
+      overflow: 'auto'
+    }
+  }
+  
+  // 默认样式
+  return {}
 })
 const showDetail = ref([])
 const menuIndex = ref(-1)
@@ -224,6 +249,10 @@ function cancelAddForm() {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
+  background-color: #fff;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+  margin: 0 auto;
 }
 .form-card-wrapper {
   position: relative;
