@@ -631,6 +631,47 @@ onMounted(() => {
 })
 
 // 暴露给父组件的方法
+// 根据纸张方向调整内容布局的方法
+const adjustContentForOrientation = (isLandscape) => {
+  try {
+    // 获取卡片管理器的根元素
+    const containerElement = document.querySelector('.card-manager-container')
+    if (!containerElement) return
+
+    // 更新布局方向 - 横向纸张通常使用竖排布局更合理
+    const newLayoutDirection = isLandscape ? 'vertical' : 'horizontal'
+
+    // 更新管理器设置
+    managerSettings.layoutDirection = newLayoutDirection
+
+    // 应用布局调整
+    updateCardLayoutDirection()
+
+    // 调整容器样式以适应新的纸张尺寸
+    nextTick(() => {
+      // 更新边距和内部布局
+      updateManagerStyle()
+      // 更新网格布局
+      updateGridLayout()
+
+      // 可能需要调整字体大小以适应新的纸张尺寸
+      if (isLandscape) {
+        // 横向纸张可能需要稍小的字体
+        if (managerSettings.fontSize > 24) {
+          updateManagerSize(managerSettings.fontSize - 4)
+        }
+      } else {
+        // 纵向纸张可以使用更大的字体
+        updateManagerSize(managerSettings.fontSize + 4)
+      }
+    })
+  } catch (error) {
+    console.error('调整内容布局时出错:', error)
+  }
+}
+
+
+
 defineExpose({
   loadFormsToAllCards,
   addNewCardGroup,
@@ -640,7 +681,8 @@ defineExpose({
   updateManagerStyle, // 暴露更新样式方法
   updateGridLayout, // 暴露网格布局更新方法
   openCardSettings, // 暴露打开卡片设置方法
-  setPageSize // 暴露设置页面大小方法
+  setPageSize, // 暴露设置页面大小方法
+  adjustContentForOrientation // 暴露根据纸张方向调整内容布局的方法
 })
 </script>
 
@@ -740,6 +782,34 @@ defineExpose({
   padding-bottom: 10px;
   border-bottom: 1px solid #eaeaea;
 }
+
+/* 纸张方向变化的过渡效果 */
+.card-manager-container {
+  transition: width 0.6s ease, height 0.6s ease, margin 0.3s ease, transform 0.5s ease;
+  transform-origin: center center;
+}
+
+/* 添加容器尺寸过渡 */
+.card-groups-container {
+  transition: all 0.6s ease;
+}
+
+/* 纸张方向调整时的控制面板过渡 */
+.controls-section {
+  transition: all 0.3s ease;
+}
+
+/* 纸张尺寸变化时的平滑过渡 */
+@keyframes paper-resize {
+  from { opacity: 0.7; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.paper-resizing {
+  animation: paper-resize 0.5s ease-out;
+}
+
+
 
 .card-group-actions {
   display: flex;

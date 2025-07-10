@@ -1,6 +1,11 @@
 <template>
   <el-container>
-    <Toolbar :onAddPage="onAddPage" :clearAllPages="clearAllPages" />
+    <Toolbar 
+      :onAddPage="onAddPage" 
+      :clearAllPages="clearAllPages" 
+      :rotatePage="rotateCurrentPage"
+      :showRotateButton="pages.length > 0"
+    />
     <el-aside width="220px">
       <el-menu :default-active="String(currentPageIdx)" @select="onSelectPage">
         <el-menu-item
@@ -35,6 +40,14 @@
           <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="toggleEditPage(idx)">
             <Lock v-if="editPageIdx !== idx" />
             <svg v-else width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor"><path d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v384c0 17.7-14.3 32-32 32H320c-17.7 0-32-14.3-32-32V448h480z"/></svg>
+          </el-icon>
+          <!-- 添加旋转按钮 -->
+          <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="rotatePage(idx)" title="旋转页面">
+            <svg width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
+              <path d="M784 464h-80c-35.3 0-64 28.7-64 64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm-80 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64h-80c-35.3 0-64 28.7-64 64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
+              <path d="M756 872H268c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10h488c5.5 0 10-4.5 10-10v-46c0-5.5-4.5-10-10-10zM258 114h508c5.5 0 10-4.5 10-10V58c0-5.5-4.5-10-10-10H258c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10z" />
+              <animateTransform attributeName="transform" type="rotate" from="0 512 512" to="360 512 512" dur="1s" begin="mouseover" fill="freeze" />
+            </svg>
           </el-icon>
         </el-menu-item>
       </el-menu>
@@ -130,7 +143,7 @@ import Toolbar from '../components/Toolbar.vue'
 import FloatingBar from '../components/FloatingBar.vue'
 import ChineseCardManager from '../components/chinesecardmanager.vue'
 import { Edit, Delete, Lock, Connection } from '@element-plus/icons-vue'
-const { pages, addPage, updatePage, removePage } = usePages()
+const { pages, addPage, updatePage, removePage, rotatePageOrientation } = usePages()
 const currentPageIdx = ref(0)
 const editIdxMap = reactive({})
 const editName = ref('')
@@ -256,6 +269,109 @@ function deletePage(idx) {
 function toggleEditPage(idx) {
   editPageIdx.value = editPageIdx.value === idx ? -1 : idx
 }
+
+// 添加旋转页面方法
+function rotatePage(idx) {
+  if (idx < 0 || idx >= pages.value.length) return
+
+  // 获取要旋转的页面
+  const page = pages.value[idx]
+  if (!page) return
+
+  // 判断是否为当前页面
+  if (idx !== currentPageIdx.value) {
+    // 如果不是当前页面，只交换尺寸不做视觉效果
+    rotatePageOrientation(idx)
+    ElMessage.success(`页面"${page.name}"已旋转`)
+    return
+  }
+
+  // 交换页面尺寸的宽高
+  rotatePageOrientation(idx)
+
+  // 获取新的方向状态
+  const isLandscape = page.orientation === 'landscape'
+
+  // 获取需要旋转的内容容器 - 针对不同类型的页面获取相应的容器
+  let contentContainer = null
+  if (currentPageType.value === 'form') {
+    // 表单页面
+    contentContainer = document.querySelector('.form-grid')
+  } else if (currentPageType.value === 'char') {
+    // 汉字卡片页面
+    contentContainer = document.querySelector('.card-manager-container')
+  } else if (currentPageType.value === 'cards') {
+    // Cards页面
+    contentContainer = document.querySelector('.cards-container')
+  } else if (currentPageType.value === 'convert') {
+    // Convert to Cards页面
+    contentContainer = document.querySelector('.convert-container')
+  }
+
+  // 如果找到内容容器，旋转整个容器
+  if (contentContainer) {
+    // 为容器添加整体旋转样式
+    contentContainer.style.transform = isLandscape ? 'rotate(90deg)' : ''
+    contentContainer.style.transformOrigin = 'center center'
+    contentContainer.style.transition = 'transform 0.3s ease'
+
+    // 调整容器位置，使旋转后居中
+    if (isLandscape) {
+      // 横向模式时添加额外空间
+      contentContainer.style.margin = '80px auto'
+      contentContainer.style.maxWidth = 'calc(100% - 160px)' // 确保旋转后不超出视图
+    } else {
+      // 纵向模式恢复正常
+      contentContainer.style.margin = '0 auto'
+      contentContainer.style.maxWidth = '100%'
+    }
+
+    // 为所有卡片应用适当的样式，确保在旋转后仍然可读
+    const cards = contentContainer.querySelectorAll('.form-card-mini, .chinese-char-card, .card-item')
+    if (cards && cards.length > 0) {
+      cards.forEach(card => {
+        card.style.transition = 'all 0.3s ease'
+        // 可以在这里添加卡片级别的额外样式调整
+      })
+    }
+  }
+
+  // 显示旋转提示
+  ElMessage.success(`页面"${page.name}"已旋转为${isLandscape ? '横向' : '纵向'}模式`)
+
+  // 更新页面渲染
+  nextTick(() => {
+    // 更新页面内容尺寸 - 针对所有类型的页面
+    if (currentPageType.value === 'form' && formGridRef.value) {
+      // FormGrid会自动使用最新的页面尺寸
+    } else if (currentPageType.value === 'char' && charCardRef.value) {
+      // 更新汉字卡片管理器
+      if (page && page.pageSize) {
+        charCardRef.value.setPageSize(page.pageSize)
+      }
+    } else if (currentPageType.value === 'cards' || currentPageType.value === 'convert') {
+      // 对Cards和Convert to Cards页面的特殊处理
+      // 如果有专门的引用可以在这里调用其方法
+      const containerElement = document.querySelector(
+        currentPageType.value === 'cards' ? '.cards-container' : '.convert-container'
+      )
+      if (containerElement) {
+        // 应用额外的调整以确保卡片在旋转后显示正确
+        containerElement.dispatchEvent(new Event('resize'))
+      }
+    }
+  })
+}
+
+// 添加旋转当前页面的方法（供Toolbar使用）
+function rotateCurrentPage() {
+  if (pages.value.length === 0) {
+    ElMessage.warning('没有可旋转的页面')
+    return
+  }
+
+  rotatePage(currentPageIdx.value)
+}
 function onAddPage() {
   // 显示纸张选择对话框
   showPageSizeDialog.value = true
@@ -379,4 +495,46 @@ function convertFormsToCharCards() {
   border: 2px solid #409eff !important;
   box-shadow: 0 4px 8px rgba(64, 158, 255, 0.3);
 }
+
+
+/* 旋转页面的基本样式 */
+.el-main {
+  overflow: auto;
+  position: relative;
+  min-height: 400px;
+  padding: 20px;
+  transition: padding 0.3s ease;
+}
+
+/* 所有可旋转容器的基本过渡效果 */
+.form-grid, .card-manager-container, .cards-container, .convert-container {
+  transition: transform 0.3s ease, margin 0.3s ease, max-width 0.3s ease;
+  transform-origin: center center;
+}
+
+/* 确保在旋转状态下内容居中 */
+.el-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* 横向模式下容器内的卡片组调整 */
+[class*="-container"][style*="rotate(90deg)"] .card-group,
+[class*="-container"][style*="rotate(90deg)"] .cards-grid,
+[class*="-container"][style*="rotate(90deg)"] .convert-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 确保卡片在旋转容器中正确显示 */
+[class*="-container"][style*="rotate(90deg)"] .card-item,
+[class*="-container"][style*="rotate(90deg)"] .form-card-mini,
+[class*="-container"][style*="rotate(90deg)"] .chinese-char-card {
+  margin: 10px;
+  transition: all 0.3s ease;
+}
+
 </style>
