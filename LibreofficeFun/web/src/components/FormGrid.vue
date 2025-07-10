@@ -9,9 +9,9 @@
           <div v-if="element.showRemark !== false && element.remark" :style="{fontSize: (element.remarkFontSize || 14) + 'px', color: element.remarkColor || '#666'}">{{ element.remark }}</div>
           <div v-if="menuIndex === index" class="card-menu">
             <div class="menu-grid">
-              <el-button icon="el-icon-edit" :disabled="!editable" @click.stop="editForm(index)">Edit</el-button>
-              <el-button icon="el-icon-view" @click.stop="openDetail(index)">Detail</el-button>
-              <el-button icon="el-icon-delete" type="danger" :disabled="!editable" @click.stop="onDelete(index)">Delete</el-button>
+              <el-button :disabled="!editable" @click.stop="editForm(index)"><el-icon><EditPen /></el-icon>Edit</el-button>
+              <el-button @click.stop="openDetail(index)"><el-icon><View /></el-icon>Detail</el-button>
+              <el-button type="danger" :disabled="!editable" @click.stop="onDelete(index)"><el-icon><Delete /></el-icon>Delete</el-button>
             </div>
           </div>
           <div class="resize-handle" @mousedown.stop="startResize($event, index)"></div>
@@ -33,11 +33,16 @@
       </div>
     </template>
   </draggable>
+  <!-- 将添加表单的弹窗移到最外层 -->
+  <el-dialog v-model="showAddDialog" title="Add Form" width="640px" @close="cancelAddForm" append-to-body destroy-on-close>
+    <FormCard v-if="addFormData" v-model="addFormData" :editable="true" @save="saveAddForm" @delete="cancelAddForm" />
+  </el-dialog>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, computed, reactive } from 'vue'
+import { ref, watch, onMounted, computed, reactive, nextTick } from 'vue'
 import { ElButton, ElDialog, ElMessageBox } from 'element-plus'
+import { EditPen, View, Delete } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import FormCard from './FormCard.vue'
 const props = defineProps({
@@ -133,6 +138,85 @@ watch(forms, (v) => {
 onMounted(() => {
   document.addEventListener('scroll', closeMenu)
 })
+function getDisplayChars(element) {
+  const chars = []
+  if (element.showTitle !== false && element.title) {
+    for (const c of element.title) {
+      chars.push({ char: c, type: 'title' })
+    }
+  }
+  if (element.showValue !== false && element.value) {
+    for (const c of element.value) {
+      chars.push({ char: c, type: 'value' })
+    }
+  }
+  if (element.showRemark !== false && element.remark) {
+    for (const c of element.remark) {
+      chars.push({ char: c, type: 'remark' })
+    }
+  }
+  return chars
+}
+function getCharStyle(element, type) {
+  if (type === 'title') {
+    return { fontSize: (element.titleFontSize || 16) + 'px', color: element.titleColor || '#333', textAlign: 'center' }
+  }
+  if (type === 'value') {
+    return { fontSize: (element.valueFontSize || 16) + 'px', color: element.valueColor || '#333', textAlign: 'center' }
+  }
+  if (type === 'remark') {
+    return { fontSize: (element.remarkFontSize || 14) + 'px', color: element.remarkColor || '#666', textAlign: 'center' }
+  }
+  return {}
+}
+const showAddDialog = ref(false)
+const addFormData = ref(null)
+function handleAddForm() {
+  console.log('FormGrid.handleAddForm called');
+  addFormData.value = {
+    id: Date.now(),
+    title: '',
+    value: '',
+    remark: '',
+    media: '',
+    showTitle: true,
+    showValue: true,
+    showRemark: false,
+    showMedia: false,
+    titleFontSize: 16,
+    valueFontSize: 16,
+    remarkFontSize: 14,
+    titleColor: '#333',
+    valueColor: '#333',
+    remarkColor: '#666'
+  }
+  // 确保使用nextTick来等待DOM更新
+  showAddDialog.value = true;
+  console.log('showAddDialog set to:', showAddDialog.value);
+  
+  // 使用Vue的nextTick确保DOM已更新
+  nextTick(() => {
+    console.log('showAddDialog in nextTick:', showAddDialog.value);
+  });
+}
+defineExpose({ handleAddForm })
+function saveAddForm(form) {
+  // 不允许空卡片，必须至少填写 title、value 或 remark
+  if (!(form.title && form.title.trim()) && !(form.value && form.value.trim()) && !(form.remark && form.remark.trim())) {
+    ElMessageBox.alert('Please fill in at least one field (Title, Value or Remark) before saving.', 'Warning', {
+      confirmButtonText: 'OK',
+      type: 'warning',
+    })
+    return
+  }
+  forms.value.push({ ...form })
+  showAddDialog.value = false
+  addFormData.value = null
+}
+function cancelAddForm() {
+  showAddDialog.value = false
+  addFormData.value = null
+}
 </script>
 
 <style scoped>
