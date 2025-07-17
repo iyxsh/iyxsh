@@ -183,9 +183,17 @@ const saveCardEdit = () => {
   }
 }
 
+// 新增页面尺寸处理方法
+const setPageSize = (size) => {
+  if (size) {
+    converterSettings.fontSize = Math.min(size.width, size.height) * 0.8
+  }
+}
+
 // 导出组件方法
 defineExpose({
-  convertFormsToCards
+  convertFormsToCards,
+  setPageSize
 })
 </script>
 

@@ -1,57 +1,48 @@
 <template>
   <el-container>
-    <Toolbar 
-      :onAddPage="onAddPage" 
-      :clearAllPages="clearAllPages" 
-      :rotatePage="rotateCurrentPage"
-      :showRotateButton="pages.length > 0"
-    />
+    <Toolbar :onAddPage="onAddPage" :clearAllPages="clearAllPages" :rotatePage="rotateCurrentPage"
+      :showRotateButton="pages.length > 0" />
     <el-aside width="220px">
       <el-menu :default-active="String(currentPageIdx)" @select="onSelectPage">
-        <el-menu-item
-          v-for="(page, idx) in pages"
-          :key="page.id"
-          :index="String(idx)"
-          style="display:flex;align-items:center;justify-content:space-between;"
-        >
+        <el-menu-item v-for="(page, idx) in pages" :key="page.id" :index="String(idx)"
+          style="display:flex;align-items:center;justify-content:space-between;">
           <span v-if="!editIdxMap[idx]" @dblclick="editPageName(idx)">
             {{ page.name || 'New Page' }}
-            <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="editPageName(idx)"><edit /></el-icon>
+            <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="editPageName(idx)">
+              <edit />
+            </el-icon>
           </span>
-          <el-input
-            v-else
-            v-model="editName"
-            size="small"
-            @blur="savePageName(idx)"
-            @keyup.enter="savePageName(idx)"
-            style="width:120px;"
-            autofocus
-          />
-          <el-popconfirm
-            title="Are you sure to delete this page?"
-            @confirm="deletePage(idx)"
-            confirm-button-text="Delete"
-            cancel-button-text="Cancel"
-          >
+          <el-input v-else v-model="editName" size="small" @blur="savePageName(idx)" @keyup.enter="savePageName(idx)"
+            style="width:120px;" autofocus />
+          <el-popconfirm title="Are you sure to delete this page?" @confirm="deletePage(idx)"
+            confirm-button-text="Delete" cancel-button-text="Cancel">
             <template #reference>
-              <el-icon style="margin-left:8px;cursor:pointer;color:#f56c6c;"><delete /></el-icon>
+              <el-icon style="margin-left:8px;cursor:pointer;color:#f56c6c;">
+                <delete />
+              </el-icon>
             </template>
           </el-popconfirm>
           <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="toggleEditPage(idx)">
             <Lock v-if="editPageIdx !== idx" />
-            <svg v-else width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor"><path d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v384c0 17.7-14.3 32-32 32H320c-17.7 0-32-14.3-32-32V448h480z"/></svg>
+            <svg v-else width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
+              <path
+                d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v384c0 17.7-14.3 32-32 32H320c-17.7 0-32-14.3-32-32V448h480z" />
+            </svg>
           </el-icon>
           <!-- 添加旋转按钮 -->
           <el-icon style="margin-left:4px;cursor:pointer;" @click.stop="rotatePage(idx)" title="旋转页面">
             <svg width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
-              <path d="M784 464h-80c-35.3 0-64 28.7-64 64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm-80 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64h-80c-35.3 0-64 28.7-64 64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
-              <path d="M756 872H268c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10h488c5.5 0 10-4.5 10-10v-46c0-5.5-4.5-10-10-10zM258 114h508c5.5 0 10-4.5 10-10V58c0-5.5-4.5-10-10-10H258c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10z" />
-              <animateTransform attributeName="transform" type="rotate" from="0 512 512" to="360 512 512" dur="1s" begin="mouseover" fill="freeze" />
+              <path
+                d="M784 464h-80c-35.3 0-64 28.7-64 64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm-80 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64h-80c-35.3 0-64 28.7-64 64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
+              <path
+                d="M756 872H268c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10h488c5.5 0 10-4.5 10-10v-46c0-5.5-4.5-10-10-10zM258 114h508c5.5 0 10-4.5 10-10V58c0-5.5-4.5-10-10-10H258c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10z" />
+              <animateTransform attributeName="transform" type="rotate" from="0 512 512" to="360 512 512" dur="1s"
+                begin="mouseover" fill="freeze" />
             </svg>
           </el-icon>
         </el-menu-item>
       </el-menu>
-      
+
       <!-- 页面类型选择 -->
       <div class="page-type-selector">
         <el-radio-group v-model="currentPageType" size="small" @change="handlePageTypeChange">
@@ -63,34 +54,22 @@
     <el-main>
       <!-- Form Page -->
       <template v-if="currentPageType === 'form'">
-        <FormGrid v-show="currentPageType === 'form'"
-          v-if="pages[currentPageIdx]"
-          v-model="pages[currentPageIdx].forms"
-          :editable="editPageIdx === currentPageIdx"
-          :cardStyleOn="cardStyleOn"
-          :pageSize="pages[currentPageIdx]?.pageSize"
-          ref="formGridRef"
-        />
-        <FloatingBar v-show="currentPageType === 'form'"
-          v-if="pages[currentPageIdx]"
-          :clearCurrentPageForms="clearCurrentPageForms"
-          :editable="editPageIdx === currentPageIdx"
-          :onToggleCardStyle="onToggleCardStyle"
-          @add-form="onAddForm"
-        />
+        <FormGrid v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]" v-model="pages[currentPageIdx].forms"
+          :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
+          :pageSize="pages[currentPageIdx]?.pageSize" ref="formGridRef" />
+        <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
+          :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
+          :onToggleCardStyle="onToggleCardStyle" @add-form="onAddForm" />
       </template>
-      
+
       <!-- Card Converter Page -->
-      <SimpleCardConverter v-show="currentPageType === 'cards'" ref="cardConverterRef" :key="`${currentPageType}-${currentPageIdx}`" />
+      <SimpleCardConverter v-show="currentPageType === 'cards'" ref="cardConverterRef"
+        :key="`${currentPageType}-${currentPageIdx}`" />
     </el-main>
   </el-container>
 
   <!-- 纸张尺寸选择对话框 -->
-  <el-dialog
-    v-model="showPageSizeDialog"
-    title="选择纸张尺寸"
-    width="500px"
-  >
+  <el-dialog v-model="showPageSizeDialog" title="选择纸张尺寸" width="500px">
     <div class="page-size-selector">
       <el-form label-position="top">
         <el-form-item label="页面名称">
@@ -134,7 +113,7 @@ import FormGrid from '../components/FormGrid.vue'
 import Toolbar from '../components/Toolbar.vue'
 import FloatingBar from '../components/FloatingBar.vue'
 import SimpleCardConverter from '../components/SimpleCardConverter.vue'
-import { Edit, Delete, Lock, Connection } from '@element-plus/icons-vue'
+import { Edit, Delete, Lock } from '@element-plus/icons-vue'
 const { pages, addPage, updatePage, removePage, rotatePageOrientation } = usePages()
 const currentPageIdx = ref(0)
 const editIdxMap = reactive({})
@@ -169,7 +148,7 @@ const getPaperPreviewStyle = (paper) => {
   const maxWidth = 80
   const maxHeight = 100
   const ratio = Math.min(maxWidth / paper.width, maxHeight / paper.height)
-  
+
   return {
     width: `${paper.width * ratio}px`,
     height: `${paper.height * ratio}px`,
@@ -204,10 +183,10 @@ const groupedPaperSizes = computed(() => {
 const createNewPage = () => {
   // 获取所选纸张尺寸对象
   const pageSizeObj = paperSizes.find(p => p.name === selectedPageSize.value)
-  
+
   // 创建页面
   addPage(newPageName.value || '新页面', pageSizeObj)
-  
+
   // 自动将新页面设置为可编辑状态
   nextTick(() => {
     const newPageIdx = pages.value.length - 1
@@ -217,11 +196,11 @@ const createNewPage = () => {
     showPageSizeDialog.value = false
     // 重置输入
     newPageName.value = '新页面'
-    
+
     // 无论选择哪种页面类型（表单或卡片），都应用选定的纸张大小
-    if (currentPageType.value === 'char' && charCardRef.value && pageSizeObj) {
+    if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj) {
       nextTick(() => {
-        charCardRef.value.setPageSize(pageSizeObj)
+        cardConverterRef.value.setPageSize(pageSizeObj)
       })
     }
   })
@@ -234,7 +213,7 @@ function onToggleCardStyle() {
 function onSelectPage(idx) {
   const numIdx = Number(idx)
   currentPageIdx.value = numIdx
-  
+
   // 如果当前页面被选中并且是编辑状态，保持编辑状态
   // 否则维持原有的锁定状态
   if (editPageIdx.value === currentPageIdx.value) {
@@ -336,21 +315,8 @@ function rotatePage(idx) {
     // 更新页面内容尺寸 - 针对所有类型的页面
     if (currentPageType.value === 'form' && formGridRef.value) {
       // FormGrid会自动使用最新的页面尺寸
-    } else if (currentPageType.value === 'char' && charCardRef.value) {
-      // 更新汉字卡片管理器
-      if (page && page.pageSize) {
-        charCardRef.value.setPageSize(page.pageSize)
-      }
-    } else if (currentPageType.value === 'cards' || currentPageType.value === 'convert') {
-      // 对Cards和Convert to Cards页面的特殊处理
-      // 如果有专门的引用可以在这里调用其方法
-      const containerElement = document.querySelector(
-        currentPageType.value === 'cards' ? '.cards-container' : '.convert-container'
-      )
-      if (containerElement) {
-        // 应用额外的调整以确保卡片在旋转后显示正确
-        containerElement.dispatchEvent(new Event('resize'))
-      }
+    } else if (currentPageType.value === 'cards' && cardConverterRef.value) {
+      cardConverterRef.value.setPageSize(page.pageSize)
     }
   })
 }
@@ -384,59 +350,37 @@ function onAddForm() {
     ElMessage.warning('Please unlock the page before adding forms')
     return
   }
-  
+
   // 确保 formGridRef 存在并且已正确加载
   if (!formGridRef.value) {
     console.error('FormGrid reference is not available');
     ElMessage.error('Unable to add form: Form editor is not ready');
     return;
   }
-  
+
   // 确保 handleAddForm 方法存在
   if (typeof formGridRef.value.handleAddForm !== 'function') {
     console.error('handleAddForm method not found in FormGrid');
     ElMessage.error('Unable to add form: Form editor method not available');
     return;
   }
-  
+
   // 调用 FormGrid 的 handleAddForm 方法
   formGridRef.value.handleAddForm()
 }
-// 仅作为回调传递给 FormGrid，由 FormGrid 控制弹窗和添加
-// 将表单内容转换为汉字卡片
-function convertFormsToCharCards() {
-  // 确保当前页面有表单内容
-  if (!pages.value[currentPageIdx.value] || !pages.value[currentPageIdx.value].forms || pages.value[currentPageIdx.value].forms.length === 0) {
-    ElMessage.warning('当前页面没有表单内容')
-    return
-  }
-
-  // 切换到汉字卡片模式
-  currentPageType.value = 'char'
-  
-  // 自动解锁页面以便编辑卡片
-  editPageIdx.value = currentPageIdx.value
-
-  // 等待组件加载完成
-  nextTick(() => {
-    // 确保汉字卡片管理组件已加载
-    if (charCardRef.value) {
-      // 先传递当前选择的纸张大小
-      if (pages.value[currentPageIdx.value].pageSize) {
-        charCardRef.value.setPageSize(pages.value[currentPageIdx.value].pageSize)
-      }
-      // 将表单内容传递给汉字卡片管理组件，该组件会自动分配表单到多个卡片组
-      charCardRef.value.loadFormsToAllCards(pages.value[currentPageIdx.value].forms)
-    } else {
-      ElMessage.error('汉字卡片管理组件未加载')
-    }
-  })
-}
 
 function handlePageTypeChange(newType) {
+  console.log('切换页面类型:', newType, '当前页面类型:', currentPageType.value)
   if (newType === 'cards') {
-    convertFormsToCards()
+    if (pages.value[currentPageIdx.value]?.forms?.length) {
+      convertFormsToCards()
+    } else {
+      ElMessage.warning('当前页面没有可转换的表单内容')
+      currentPageType.value = 'form'
+      return
+    }
   }
+  currentPageType.value = newType
 }
 
 function convertFormsToCards() {
@@ -445,6 +389,8 @@ function convertFormsToCards() {
     ElMessage.warning('当前页面没有表单内容')
     return
   }
+
+  console.log('Converting forms to cards:', currentPage.forms)
 
   nextTick(() => {
     if (cardConverterRef.value) {
@@ -522,7 +468,8 @@ function convertFormsToCards() {
 }
 
 /* 所有可旋转容器的基本过渡效果 */
-.form-grid, .card-manager-container, .cards-container, .convert-container {
+.form-grid,
+.cards-container {
   transition: transform 0.3s ease, margin 0.3s ease, max-width 0.3s ease;
   transform-origin: center center;
 }
@@ -551,5 +498,4 @@ function convertFormsToCards() {
   margin: 10px;
   transition: all 0.3s ease;
 }
-
 </style>
