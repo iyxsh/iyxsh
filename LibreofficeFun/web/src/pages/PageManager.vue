@@ -54,18 +54,10 @@
       
       <!-- 页面类型选择 -->
       <div class="page-type-selector">
-        <el-radio-group v-model="currentPageType" size="small">
+        <el-radio-group v-model="currentPageType" size="small" @change="handlePageTypeChange">
           <el-radio-button label="form">Form</el-radio-button>
-          <el-radio-button label="char">Cards</el-radio-button>
+          <el-radio-button label="cards">Cards</el-radio-button>
         </el-radio-group>
-      </div>
-      
-      <!-- 添加表单转汉字卡片的按钮 -->
-      <div class="convert-button-container" v-if="currentPageType === 'form' && pages[currentPageIdx]?.forms?.length > 0">
-        <el-button type="primary" size="small" @click="convertFormsToCharCards">
-          <el-icon><Connection /></el-icon>
-          Convert to Cards
-        </el-button>
       </div>
     </el-aside>
     <el-main>
@@ -88,8 +80,8 @@
         />
       </template>
       
-      <!-- Chinese Card Page -->
-      <ChineseCardManager v-show="currentPageType === 'char'" ref="charCardRef" :key="`${currentPageType}-${currentPageIdx}`" :pageSize="pages[currentPageIdx]?.pageSize" />
+      <!-- Card Converter Page -->
+      <SimpleCardConverter v-show="currentPageType === 'cards'" ref="cardConverterRef" :key="`${currentPageType}-${currentPageIdx}`" />
     </el-main>
   </el-container>
 
@@ -141,7 +133,7 @@ import { usePages } from '../store/usePages'
 import FormGrid from '../components/FormGrid.vue'
 import Toolbar from '../components/Toolbar.vue'
 import FloatingBar from '../components/FloatingBar.vue'
-import ChineseCardManager from '../components/chinesecardmanager.vue'
+import SimpleCardConverter from '../components/SimpleCardConverter.vue'
 import { Edit, Delete, Lock, Connection } from '@element-plus/icons-vue'
 const { pages, addPage, updatePage, removePage, rotatePageOrientation } = usePages()
 const currentPageIdx = ref(0)
@@ -150,8 +142,8 @@ const editName = ref('')
 const editPageIdx = ref(-1)
 const cardStyleOn = ref(true)
 const formGridRef = ref(null)
-const charCardRef = ref(null) // 现在引用的是ChineseCardManager组件
-const currentPageType = ref('form') // 当前页面类型：form 或 char
+const cardConverterRef = ref(null) // SimpleCardConverter组件引用
+const currentPageType = ref('form') // 当前页面类型：form 或 cards
 
 // 纸张尺寸选择对话框相关
 const showPageSizeDialog = ref(false)
@@ -437,6 +429,29 @@ function convertFormsToCharCards() {
       charCardRef.value.loadFormsToAllCards(pages.value[currentPageIdx.value].forms)
     } else {
       ElMessage.error('汉字卡片管理组件未加载')
+    }
+  })
+}
+
+function handlePageTypeChange(newType) {
+  if (newType === 'cards') {
+    convertFormsToCards()
+  }
+}
+
+function convertFormsToCards() {
+  const currentPage = pages.value[currentPageIdx.value]
+  if (!currentPage?.forms?.length) {
+    ElMessage.warning('当前页面没有表单内容')
+    return
+  }
+
+  nextTick(() => {
+    if (cardConverterRef.value) {
+      cardConverterRef.value.convertFormsToCards(currentPage.forms)
+      ElMessage.success(`已转换 ${currentPage.forms.length} 个表单`)
+    } else {
+      ElMessage.error('卡片转换组件未加载')
     }
   })
 }
