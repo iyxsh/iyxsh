@@ -198,11 +198,14 @@ const createNewPage = () => {
     newPageName.value = '新页面'
 
     // 无论选择哪种页面类型（表单或卡片），都应用选定的纸张大小
-    if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj) {
-      nextTick(() => {
-        cardConverterRef.value.setPageSize(pageSizeObj)
-      })
-    }
+    nextTick(() => {
+      if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj) {
+        cardConverterRef.value.setPageSize({
+          ...pageSizeObj,
+          orientation: pages.value[newPageIdx].orientation
+        })
+      }
+    })
   })
 }
 
@@ -268,15 +271,9 @@ function rotatePage(idx) {
   if (currentPageType.value === 'form') {
     // 表单页面
     contentContainer = document.querySelector('.form-grid')
-  } else if (currentPageType.value === 'char') {
-    // 汉字卡片页面
-    contentContainer = document.querySelector('.card-manager-container')
   } else if (currentPageType.value === 'cards') {
     // Cards页面
     contentContainer = document.querySelector('.cards-container')
-  } else if (currentPageType.value === 'convert') {
-    // Convert to Cards页面
-    contentContainer = document.querySelector('.convert-container')
   }
 
   // 如果找到内容容器，旋转整个容器
@@ -316,7 +313,10 @@ function rotatePage(idx) {
     if (currentPageType.value === 'form' && formGridRef.value) {
       // FormGrid会自动使用最新的页面尺寸
     } else if (currentPageType.value === 'cards' && cardConverterRef.value) {
-      cardConverterRef.value.setPageSize(page.pageSize)
+      cardConverterRef.value.setPageSize({
+        ...page.pageSize,
+        orientation: page.orientation // 添加方向参数
+      })
     }
   })
 }
@@ -374,6 +374,16 @@ function handlePageTypeChange(newType) {
   if (newType === 'cards') {
     if (pages.value[currentPageIdx.value]?.forms?.length) {
       convertFormsToCards()
+      // 添加页面尺寸同步
+      nextTick(() => {
+        const page = pages.value[currentPageIdx.value]
+        if (page?.pageSize && cardConverterRef.value) {
+          cardConverterRef.value.setPageSize({
+            ...page.pageSize,
+            orientation: page.orientation
+          })
+        }
+      })
     } else {
       ElMessage.warning('当前页面没有可转换的表单内容')
       currentPageType.value = 'form'
