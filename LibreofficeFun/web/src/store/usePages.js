@@ -17,7 +17,7 @@ export function usePages() {
         height: 297,
         unit: 'mm'
       },
-      orientation: 'portrait'
+      orientation: 'portrait'  // 确保包含初始方向值
     })
   }
   function removePage(idx) {

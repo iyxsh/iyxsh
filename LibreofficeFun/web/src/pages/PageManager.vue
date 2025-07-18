@@ -55,7 +55,7 @@
       <!-- Form Page -->
       <template v-if="currentPageType === 'form'">
         <FormGrid v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]" v-model="pages[currentPageIdx].forms"
-          :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
+          @update:modelValue="handleFormUpdate" :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
           :pageSize="pages[currentPageIdx]?.pageSize" ref="formGridRef" />
         <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
           :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
@@ -178,6 +178,11 @@ const groupedPaperSizes = computed(() => {
   });
   return groups;
 });
+
+// 添加处理函数
+function handleFormUpdate(updatedForms) {
+    localStorage.setItem('form-pages', JSON.stringify(pages.value))
+}
 
 // 创建新页面
 const createNewPage = () => {
