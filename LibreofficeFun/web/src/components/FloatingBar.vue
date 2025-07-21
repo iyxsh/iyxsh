@@ -41,14 +41,23 @@
 </template>
 <script setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Delete, Plus, Grid, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, ElDialog } from 'element-plus'  // 添加了 ElMessageBox 和 ElDialog 导入
+import { useEventBus } from '../utils/eventBus'
+
+// 添加组件加载调试信息
+console.log('FloatingBar component initializing');
+
+// 定义props
 const props = defineProps({
   clearCurrentPageForms: Function,
   editable: Boolean,
   onToggleCardStyle: Function // 新增回调
 })
+
+// 定义emits
 const emit = defineEmits(['add-form'])
+
+// 本地状态
 const visible = ref(true)
 const cardStyleOn = ref(true)
 let drag = false, offsetX = 0, offsetY = 0
@@ -101,15 +110,64 @@ function showUnlockMessage() {
   // 使用导入的 Element Plus 消息提示组件
   ElMessage.warning('Please unlock the page before performing this action');
 }
-onMounted(() => {
-  // Ensure initial position is within window
-  barStyle.left = Math.min(window.innerWidth - 200, parseInt(barStyle.left)) + 'px'
-})
 
+// 资源清理
+const cleanupTasks = []
+
+// 添加内存泄漏检查
+function checkMemoryUsage() {
+  if (performance.memory) {
+    const memoryUsage = performance.memory
+    console.log('FloatingBar Memory Usage:', {
+      usedJSHeapSize: formatBytes(memoryUsage.usedJSHeapSize),
+      totalJSHeapSize: formatBytes(memoryUsage.totalJSHeapSize),
+      jsHeapSizeLimit: formatBytes(memoryUsage.jsHeapSizeLimit)
+    })
+    
+    // 如果内存使用超过阈值，触发警告
+    if (memoryUsage.usedJSHeapSize / memoryUsage.jsHeapSizeLimit > 0.7) {
+      console.warn('FloatingBar: Memory usage is high, consider optimizing')
+    }
+  }
+}
+
+// 格式化字节大小
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 添加内存泄漏检查
+function setupMemoryLeakCheck() {
+  // 检查内存使用情况
+  const memoryCheckInterval = setInterval(() => {
+    checkMemoryUsage()
+  }, 5 * 60 * 1000)
+  
+  // 添加清理任务
+  cleanupTasks.push(() => clearInterval(memoryCheckInterval))
+}
+
+// 添加资源清理
+function cleanupResources() {
+  // 清理内存检查
+  cleanupTasks.forEach(task => task())
+}
+
+// 在组件挂载时添加调试信息
+onMounted(() => {
+  console.log('FloatingBar component mounted', {
+    editable: props.editable
+  });
+});
+
+// 在组件卸载前添加调试信息
 onBeforeUnmount(() => {
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
-})
+  console.log('FloatingBar component about to be unmounted');
+});
 </script>
 <style scoped>
 .floating-bar {

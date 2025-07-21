@@ -1,544 +1,799 @@
-<template>
-  <div class="form-grid" :style="gridContainerStyle">
-    <div v-for="(element, index) in forms" :key="element.id" class="form-card-wrapper"
-      @contextmenu.prevent="openMenu(index, $event)" @mousedown.stop="startDrag($event, element, index)"
-      :style="getCardAutoStyle(index, element)">
-      <el-card v-if="showDetail[index] !== true" :class="['form-card-mini', cardStyleOn ? '' : 'no-style']"
-        @dblclick="openDetail(index)" :body-style="{ padding: '8px' }" :style="{
-          position: 'absolute',
-          left: (positions[element.id]?.x || 0) + 'px',
-          top: (positions[element.id]?.y || 0) + 'px',
-          zIndex: element.zIndex,
-          transform: 'none'
-        }">
-        <div ref="setContentRef" :data-id="element.id" :style="{ display: 'inline-block' }">
-          <div v-if="element.showTitle !== false"
-            :style="{ fontSize: (element.titleFontSize || 16) + 'px', color: element.titleColor || '#333' }"><b>{{
-              element.title }}</b></div>
-          <div v-if="element.showValue !== false"
-            :style="{ fontSize: (element.valueFontSize || 16) + 'px', color: element.valueColor || '#333' }">{{
-              element.value }}</div>
-          <div v-if="element.showRemark !== false && element.remark"
-            :style="{ fontSize: (element.remarkFontSize || 14) + 'px', color: element.remarkColor || '#666' }">{{
-              element.remark }}</div>
-          <div v-if="menuIndex === index" class="card-menu">
-            <div class="menu-grid">
-              <el-button :disabled="!editable" @click.stop="editForm(index)"><el-icon>
-                  <EditPen />
-                </el-icon>Edit</el-button>
-              <el-button @click.stop="openDetail(index)"><el-icon>
-                  <View />
-                </el-icon>Detail</el-button>
-              <el-button type="danger" :disabled="!editable" @click.stop="onDelete(index)"><el-icon>
-                  <Delete />
-                </el-icon>Delete</el-button>
-            </div>
-          </div>
-        </div>
-        <div class="resize-handle" @mousedown.stop="startResize($event, index)"></div>
-      </el-card>
-      <el-dialog v-else v-model="showDetail[index]" title="Form Detail" width="640px" @close="closeDetail(index)">
-        <FormCard v-model="forms[index]" :editable="editable" @save="onSaveDetail(index, $event)"
-          @delete="onDelete(index); closeDetail(index)" />
-      </el-dialog>
-    </div>
-  </div>
-  <!-- 将添加表单的弹窗移到最外层 -->
-  <el-dialog v-model="showAddDialog" title="Add Form" width="640px" @close="cancelAddForm" append-to-body
-    destroy-on-close>
-    <FormCard v-if="addFormData" v-model="addFormData" :editable="true" @save="saveAddForm" @delete="cancelAddForm" />
-  </el-dialog>
-</template>
-
 <script setup>
-import { debounce } from 'lodash-es'
-import { ref, watch, onMounted, computed, reactive, onBeforeUnmount } from 'vue'
-import { ElButton, ElDialog, ElMessageBox, ElMessage } from 'element-plus'
-import { EditPen, View, Delete } from '@element-plus/icons-vue'
+// =====================================================
+// = 1. 导入依赖 
+// =====================================================
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import FormCard from './FormCard.vue'
+import FormEditor from './FormEditor.vue'
+import { calculateCardStyle, getDefaultCardStyles } from '@/services/cardStyleService'
+import { handleDragStart, handleDragEnd, handleDragOver, handleDrop } from '@/services/dragDropService'
+import { validateForm, validateAllForms } from '@/services/formValidationService'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
-const contentRefs = new Map()
-const observedIds = new Set()
+// 新增错误日志服务
+import errorLogService from '@/services/errorLogService'
 
-function setContentRef(el) {
-  if (el && el.dataset && el.dataset.id) {
-    contentRefs.set(el.dataset.id, el)
-    observeContentSize(el.dataset.id, el)
-  }
-}
+// =====================================================
+// = 2. 定义 props 和 emits
+// =====================================================
+// 定义 emits
+const emit = defineEmits(['update:modelValue'])
 
-let resizeObserver = null
-function observeContentSize(id, el) {
-  if (!resizeObserver) {
-    resizeObserver = new ResizeObserver(entries => {
-      for (const entry of entries) {
-        const id = entry.target.dataset.id
-        if (id) {
-          const { width, height } = entry.contentRect
-          cardSizes[id] = {
-            width: Math.ceil(width) + 16,  // 适当加点padding
-            height: Math.ceil(height) + 16
-          }
-        }
-      }
-    })
-  }
-  if (!observedIds.has(id)) {
-    resizeObserver.observe(el)
-    observedIds.add(id)
-  }
-}
-
-onBeforeUnmount(() => {
-  if (resizeObserver) resizeObserver.disconnect()
-})
-
-// 用表单id做key，保证顺序变化后位置不丢失
-const positions = reactive({}) // { [id]: { x, y } }
-const cardSizes = reactive({}) // { [id]: { width, height } }
-const minSize = { width: 180, height: 120 }
-const maxSize = { width: 400, height: 300 }
-
+// 定义 props
 const props = defineProps({
-  modelValue: Array,
-  pageSize: Object,
-  addForm: Function,
-  editable: Boolean,
-  cardStyleOn: {
+  editable: {
     type: Boolean,
     default: true
+  },
+  modelValue: {
+    type: Array,
+    default: () => []
   }
 })
-const emit = defineEmits(['update:modelValue', 'position-change'])
-const forms = ref(props.modelValue)
-watch(() => props.modelValue, v => {
-  forms.value = v
-})
-watch(forms, v => emit('update:modelValue', v), { deep: true })
 
-const gridContainerStyle = computed(() => {
-  if (props.pageSize) {
-    const { width, height, unit } = props.pageSize
+// =====================================================
+// = 3. 服务初始化 
+// =====================================================
+
+// 使用表单验证服务
+// 添加对新创建的 formStyleService 的导入
+import { getFormStyle, getCardStyle, applyFormStyles } from '@/services/formStyleService'
+
+// 错误处理相关
+const error = ref(null)
+const errorInfo = ref('')
+
+// 错误处理方法
+const handleError = (err, info) => {
+  error.value = err
+  errorInfo.value = info
+  ElMessage.error(`发生错误：${info}`)
+  console.error(`[FormGrid Error] ${info}:`, err)
+  
+  // 使用错误日志服务
+  errorLogService.addErrorLog({
+    error: err,
+    info: info,
+    level: 'error'
+  })
+  
+  return false // 返回 false 表示错误已处理
+}
+
+// =====================================================
+// = 6. 缺失的响应式变量定义 
+// =====================================================
+
+// 添加拖拽服务作为响应式变量
+// 初始化样式
+const formStyles = ref({})
+
+// =====================================================
+// = 5. 计算属性
+// =====================================================
+// 计算表单样式
+const computedStyles = computed(() => {
+  return (form) => {
     return {
-      width: `${width}${unit}`,
-      minHeight: `${height}${unit}`,
-      margin: '0 auto',
-      border: '1px dashed #ccc',
-      padding: '10px',
-      backgroundColor: 'white',
-      boxSizing: 'border-box',
-      position: 'relative',
-      overflow: 'auto'
+      ...getFormStyle(form),
+      ...getCardStyle(positions.value, form)
     }
   }
-  return {}
 })
 
-const showDetail = ref([])
+// 计算可编辑状态
+const isEditMode = computed(() => {
+  return () => {
+    return editable.value
+  }
+})
+
+
+// 响应式数据
+const forms = ref([])
+const visibleForms = computed(() => {
+  return forms.value.filter(form => !form.hidden)
+})
+
+// 更新表单样式
+const updateFormStyle = () => {
+  if (applyFormStyles) {
+    const newStyle = applyFormStyles(forms.value, positions.value)
+    // 应用新的样式
+    // 这里可以添加额外的样式应用逻辑
+  }
+}
+
+// 监听 props.modelValue 的变化
+watch(
+  () => props.modelValue,
+  (newVal) => {
+    if (Array.isArray(newVal)) {
+      forms.value = newVal
+    } else {
+      handleError(new Error('Model value is not an array'), '数据绑定错误')
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+// =====================================================
+// = 6. 缺失的响应式变量定义 
+// =====================================================
+// 定义缺失的响应式变量
+const positions = ref({})
+const showDetail = ref({})
 const menuIndex = ref(-1)
-
-function onSaveDetail(index, data) {
-  ElMessageBox.confirm('Please check the information carefully and click Confirm to save if there are no errors.', 'Save Confirmation', {
-    confirmButtonText: 'Confirm',
-    cancelButtonText: 'Cancel',
-    type: 'warning',
-  }).then(() => {
-    forms.value[index] = { ...data }
-    closeDetail(index)
-    validatePositionById(forms.value[index].id)
-    debouncedSavePositions()
-  }).catch((error) => {
-    if (error !== 'cancel') {
-      console.error('保存错误:', error)
-      ElMessage.error('保存失败')
-    }
-  })
-}
-
-function onDelete(index) {
-  const id = forms.value[index].id
-  forms.value.splice(index, 1)
-  showDetail.value.splice(index, 1)
-  delete positions[id]
-  delete cardSizes[id]
-  menuIndex.value = -1
-  debouncedSavePositions()
-}
-function openDetail(index) {
-  showDetail.value[index] = true
-  menuIndex.value = -1
-}
-function closeDetail(index) {
-  showDetail.value[index] = false
-}
-function openMenu(index, e) {
-  menuIndex.value = index
-  document.addEventListener('click', closeMenu)
-}
-function closeMenu() {
-  menuIndex.value = -1
-  document.removeEventListener('click', closeMenu)
-}
-function editForm(index) {
-  openDetail(index)
-}
-
-// 拖拽相关
-let draggingId = null, dragStart = { x: 0, y: 0 }, mouseStart = { x: 0, y: 0 }
-let resizingId = null, resizeStart = { width: 0, height: 0 }, resizeMouseStart = { x: 0, y: 0 }
-
-function startDrag(e, element, index) {
-  if (!props.editable || e.target.classList.contains('resize-handle')) return
-  draggingId = element.id
-  mouseStart = { x: e.clientX, y: e.clientY }
-  dragStart = { ...(positions[draggingId] || { x: 0, y: 0 }) }
-  // 拖动时锁定宽高
-  const size = cardSizes[draggingId] || { width: 180, height: 60 }
-  cardSizes[draggingId] = { ...size }
-  // 拖动前移除监听
-  const el = contentRefs.get(draggingId)
-  if (resizeObserver && el) resizeObserver.unobserve(el)
-  document.addEventListener('mousemove', onDragging)
-  document.addEventListener('mouseup', stopDrag)
-}
-function onDragging(e) {
-  if (!draggingId) return
-  const dx = e.clientX - mouseStart.x
-  const dy = e.clientY - mouseStart.y
-  const baseOffset = 10
-  positions[draggingId] = {
-    x: Math.max(baseOffset, dragStart.x + dx),
-    y: Math.max(baseOffset, dragStart.y + dy)
-  }
-}
-function stopDrag() {
-  if (draggingId) {
-    // 拖动结束后恢复监听
-    const el = contentRefs.get(draggingId)
-    if (resizeObserver && el) resizeObserver.observe(el)
-    debouncedSavePositions()
-  }
-  draggingId = null
-  document.removeEventListener('mousemove', onDragging)
-  document.removeEventListener('mouseup', stopDrag)
-}
-
-function startResize(e, index) {
-  if (!props.editable) return
-  e.stopPropagation()
-  const element = forms.value[index]
-  resizingId = element.id
-  resizeMouseStart = { x: e.clientX, y: e.clientY }
-  const size = cardSizes[resizingId] || { width: 180, height: 60 }
-  resizeStart = { width: size.width, height: size.height }
-  // 缩放前移除监听
-  const el = contentRefs.get(resizingId)
-  if (resizeObserver && el) resizeObserver.unobserve(el)
-  document.addEventListener('mousemove', onResizing)
-  document.addEventListener('mouseup', stopResize)
-}
-function onResizing(e) {
-  if (!resizingId) return
-  const dx = e.clientX - resizeMouseStart.x
-  const dy = e.clientY - resizeMouseStart.y
-  cardSizes[resizingId] = {
-    width: Math.max(60, resizeStart.width + dx),
-    height: Math.max(40, resizeStart.height + dy)
-  }
-}
-function stopResize() {
-  if (resizingId) {
-    // 缩放结束后恢复监听
-    const el = contentRefs.get(resizingId)
-    if (resizeObserver && el) resizeObserver.observe(el)
-    debouncedSavePositions()
-  }
-  resizingId = null
-  document.removeEventListener('mousemove', onResizing)
-  document.removeEventListener('mouseup', stopResize)
-}
-
-// 添加防抖的存储函数
-const debouncedSavePositions = debounce(() => {
-  requestIdleCallback(() => {
-    localStorage.setItem('formPositions', JSON.stringify(positions))
-    localStorage.setItem('formSizes', JSON.stringify(cardSizes))
-  })
-}, 300)
-
-function savePositions() {
-  localStorage.setItem('formPositions', JSON.stringify(positions))
-  localStorage.setItem('formSizes', JSON.stringify(cardSizes))
-}
-function loadPositions() {
-  const savedPositions = localStorage.getItem('formPositions')
-  const savedSizes = localStorage.getItem('formSizes')
-  // 先清空再赋值，保证响应式
-  Object.keys(positions).forEach(k => delete positions[k])
-  Object.keys(cardSizes).forEach(k => delete cardSizes[k])
-  if (savedPositions) {
-    const obj = JSON.parse(savedPositions)
-    Object.keys(obj).forEach(k => positions[k] = obj[k])
-  }
-  if (savedSizes) {
-    const obj = JSON.parse(savedSizes)
-    Object.keys(obj).forEach(k => cardSizes[k] = obj[k])
-  }
-  forms.value.forEach(f => validatePositionById(f.id))
-}
-function validatePositionById(id) {
-  if (!props.pageSize) return
-  const containerWidth = props.pageSize.width
-  const containerHeight = props.pageSize.height
-  const pos = positions[id] || { x: 0, y: 0 }
-  const size = cardSizes[id] || minSize
-  if (pos.x + size.width > containerWidth) {
-    pos.x = Math.max(0, containerWidth - size.width)
-  }
-  if (pos.y + size.height > containerHeight) {
-    pos.y = Math.max(0, containerHeight - size.height)
-  }
-  positions[id] = pos
-  cardSizes[id] = size
-}
-
-watch(forms, (v) => {
-  showDetail.value = v.map(() => false)
-  v.forEach(f => validatePositionById(f.id))
-  // 清理 positions 中无效的 key
-  const validIds = new Set(v.map(f => f.id))
-  Object.keys(positions).forEach(id => {
-    if (!validIds.has(id)) {
-      delete positions[id]
-    }
-  })
-  Object.keys(cardSizes).forEach(id => {
-    if (!validIds.has(id)) {
-      delete cardSizes[id]
-    }
-  })
-}, { immediate: true })
-
-onMounted(() => {
-  loadPositions()
-  document.addEventListener('scroll', closeMenu)
-})
-
 const showAddDialog = ref(false)
 const addFormData = ref(null)
-function handleAddForm() {
-  addFormData.value = {
-    id: Date.now().toString() + Math.random().toString(36).slice(2), // 保证唯一
-    title: '',
+const isDragging = ref(false)
+const draggedForm = ref(null)
+const offsetX = ref(0)
+const offsetY = ref(0)
+const isResizing = ref(false)
+const resizingIndex = ref(-1)
+const startX = ref(0)
+const startY = ref(0)
+const initialWidth = ref(0)
+const initialHeight = ref(0)
+const contentRefs = ref({})
+
+// 定义缺失的方法
+const startDrag = (event, element, index) => {
+  if (!editable.value) return
+  
+  event.preventDefault()
+  isDragging.value = true
+  draggedForm.value = element
+  offsetX.value = event.clientX - element.x
+  offsetY.value = event.clientY - element.y
+  
+  // 添加事件监听器
+  document.addEventListener('mousemove', handleDrag)
+  document.addEventListener('mouseup', stopDrag)
+}
+
+const handleDrag = (event) => {
+  if (!isDragging.value || !draggedForm.value) return
+  
+  // 计算新的位置
+  const newX = event.clientX - offsetX.value
+  const newY = event.clientY - offsetY.value
+  
+  // 更新拖拽元素的位置
+  if (contentRefs.value[draggedForm.value.id]) {
+    contentRefs.value[draggedForm.value.id].style.transform = `translate(${newX}px, ${newY}px)`
+  }
+}
+
+const stopDrag = () => {
+  if (isDragging.value) {
+    isDragging.value = false
+    
+    // 移除事件监听器
+    document.removeEventListener('mousemove', handleDrag)
+    document.removeEventListener('mouseup', stopDrag)
+    
+    // 保存最终位置
+    if (draggedForm.value && contentRefs.value[draggedForm.value.id]) {
+      const rect = contentRefs.value[draggedForm.value.id].getBoundingClientRect()
+      updateFormPosition(draggedForm.value.id, rect.left, rect.top)
+    }
+    
+    draggedForm.value = null
+  }
+}
+
+// 添加缺失的依赖方法
+const updateFormPosition = (id, x, y) => {
+  positions.value = {
+    ...positions.value,
+    [id]: { x, y }
+  }
+}
+
+const resetFormPositions = () => {
+  positions.value = {}
+}
+
+// =====================================================
+// = 7. DOM 引用方法 
+// =====================================================
+// 添加缺失的 ref
+const setContentRef = (id) => {
+  return (el) => {
+    if (el) {
+      contentRefs.value[id] = el
+    }
+  }
+}
+
+// =====================================================
+// = 8. 事件处理方法 
+// =====================================================
+// 添加缺失的事件处理方法
+const handleClickOutside = (event) => {
+  const menuElement = document.querySelector('.card-menu')
+  if (menuElement && !menuElement.contains(event.target)) {
+    closeMenu()
+  }
+}
+
+const closeMenu = () => {
+  menuIndex.value = -1
+}
+
+// 添加缺失的 resize 方法
+const startResize = (event, index) => {
+  try {
+    if (!editable.value) return
+    
+    // 验证参数
+    if (typeof index !== 'number' || index < 0 || index >= forms.value.length) {
+      throw new Error('无效的表单索引')
+    }
+    
+    event.preventDefault()
+    isResizing.value = true
+    resizingIndex.value = index
+    
+    // 记录初始位置
+    startX.value = event.clientX
+    startY.value = event.clientY
+    
+    // 记录初始尺寸
+    const currentForm = forms.value[index]
+    initialWidth.value = currentForm.width || 100
+    initialHeight.value = currentForm.height || 50
+    
+    // 如果 dragDropService 有 startResize 方法，使用它
+    if (dragDropService && dragDropService.startResize) {
+      dragDropService.startResize(event, index)
+    } else {
+      // 使用错误日志服务记录错误
+      errorLogService.addErrorLog({
+        error: new Error('startResize方法不存在'),
+        info: '拖拽服务缺少startResize方法',
+        level: 'error',
+      })
+    }
+    
+    // 添加事件监听器
+    document.addEventListener('mousemove', handleResize)
+    document.addEventListener('mouseup', stopResize)
+  } catch (error) {
+    handleError(error, '开始调整尺寸时发生错误')
+  }
+}
+
+
+const handleResize = (event) => {
+  if (!isResizing.value) return
+  
+  // 如果 dragDropService 有 handleResize 方法，使用它
+  if (dragDropService.handleResize) {
+    dragDropService.handleResize(event)
+  } else {
+    // 否则使用本地实现
+    const deltaX = event.clientX - startX.value
+    const deltaY = event.clientY - startY.value
+    
+    // 更新表单尺寸
+    forms.value[resizingIndex.value] = {
+      ...forms.value[resizingIndex.value],
+      width: initialWidth.value + deltaX,
+      height: initialHeight.value + deltaY
+    }
+  }
+}
+
+const stopResize = () => {
+  if (isResizing.value) {
+    if (dragDropService.stopResize) {
+      dragDropService.stopResize()
+    } else {
+      // 使用错误日志服务记录错误
+      errorLogService.addErrorLog({
+        error: new Error('stopResize方法不存在'),
+        info: '拖拽服务缺少stopResize方法',
+        component: 'FormGrid'
+      })
+    }
+    
+    isResizing.value = false
+    
+    // 移除事件监听器
+    document.removeEventListener('mousemove', handleResize)
+    document.removeEventListener('mouseup', stopResize)
+    
+    // 通知父组件表单已更新
+    emit('update:modelValue', forms.value)
+  }
+}
+
+// 添加缺失的菜单相关方法
+const openMenu = (index, event) => {
+  // 阻止默认右键菜单
+  event.preventDefault()
+  
+  // 设置当前菜单索引
+  menuIndex.value = index
+  
+  // 获取菜单元素
+  const menuElement = document.querySelector('.card-menu')
+  
+  // 设置菜单位置
+  if (menuElement) {
+    menuElement.style.left = event.clientX + 'px'
+    menuElement.style.top = event.clientY + 'px'
+  }
+}
+
+// 添加缺失的右键菜单方法
+const handleContextMenu = (event, index) => {
+  event.preventDefault()
+  if (!editable.value) return
+  
+  // 设置当前菜单索引
+  menuIndex.value = index
+  
+  // 获取菜单元素
+  const menuElement = document.querySelector('.card-menu')
+  
+  // 设置菜单位置
+  if (menuElement) {
+    menuElement.style.left = event.clientX + 'px'
+    menuElement.style.top = event.clientY + 'px'
+  }
+}
+
+// 添加缺失的表单操作方法
+const editForm = (index) => {
+  // 打开编辑对话框
+  showDetail.value = {
+    ...showDetail.value,
+    [index]: true
+  }
+}
+
+const closeDetail = (index) => {
+  // 关闭对话框
+  showDetail.value = {
+    ...showDetail.value,
+    [index]: false
+  }
+}
+
+const onSaveDetail = (index, formData) => {
+  // 更新表单数据
+  forms.value[index] = formData
+  
+  // 通知父组件表单已更新
+  emit('update:modelValue', forms.value)
+  
+  // 显示成功提示
+  ElMessage.success('保存成功')
+}
+
+const handleDelete = (index) => {
+  // 显示确认对话框
+  ElMessageBox.confirm('确定要删除这个表单吗？', '警告', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'error'
+  }).then(() => {
+    // 删除表单
+    forms.value = forms.value.filter((_, i) => i !== index)
+    
+    // 通知父组件表单已更新
+    emit('update:modelValue', forms.value)
+    
+    // 显示成功提示
+    ElMessage.success('删除成功')
+  }).catch(() => {
+    // 取消删除
+  })
+}
+
+// 添加缺失的菜单点击方法
+const openDetail = (index) => {
+  showDetail.value = {
+    ...showDetail.value,
+    [index]: true
+  }
+}
+
+const addForm = () => {
+  // 创建新的表单对象
+  const newForm = {
+    id: Date.now(),
+    title: '新表单',
     value: '',
     remark: '',
     media: '',
     showTitle: true,
     showValue: true,
-    showRemark: false,
+    showRemark: true,
     showMedia: false,
     titleFontSize: 16,
     valueFontSize: 16,
     remarkFontSize: 14,
     titleColor: '#333',
     valueColor: '#333',
-    remarkColor: '#666'
+    remarkColor: '#666',
+    x: 50,
+    y: 50,
+    width: 100,
+    height: 50,
+    zIndex: 1
   }
+  
+  // 显示添加表单的对话框
+  addFormData.value = newForm
   showAddDialog.value = true
 }
-defineExpose({ handleAddForm })
 
-async function saveAddForm(form) {
+const saveAddForm = (formData) => {
+  // 添加新的表单
+  forms.value = [
+    ...forms.value,
+    formData
+  ]
+  
+  // 通知父组件表单已更新
+  emit('update:modelValue', forms.value)
+  
+  // 关闭对话框
+  showAddDialog.value = false
+  
+  // 显示成功提示
+  ElMessage.success('表单添加成功')
+}
+
+const cancelAddForm = () => {
+  // 关闭对话框
+  showAddDialog.value = false
+}
+
+// 表单编辑器相关
+const showFormEditor = ref(false)
+const selectedForm = ref(null)
+
+// 显示表单编辑器
+const showFormEditorHandler = (form) => {
+  selectedForm.value = form
+  showFormEditor.value = true
+}
+
+// 隐藏表单编辑器
+const hideFormEditor = () => {
+  showFormEditor.value = false
+  selectedForm.value = null
+}
+
+// 处理表单保存
+const handleFormSave = (formData) => {
+  // 保存表单逻辑
+  console.log('保存表单:', formData)
+  hideFormEditor()
+}
+
+// 添加缺失的表单更新方法
+const handleUpdateForm = (updatedForm) => {
   try {
-    await ElMessageBox.confirm('确认保存该表单吗？', '保存确认', {
+    // 输入验证
+    if (!updatedForm || !updatedForm.id) {
+      throw new Error('无效的表单数据')
+    }
+    
+    // 更新表单数据
+    forms.value = forms.value.map(form => 
+      form.id === updatedForm.id ? updatedForm : form
+    );
+    
+    // 通知父组件表单已更新
+    emit('update:modelValue', forms.value);
+    
+    // 触发样式更新
+    updateFormStyle()
+  } catch (error) {
+    handleError(error, '更新表单时发生错误')
+  }
+};
+
+// 添加缺失的表单删除方法
+const handleDeleteForm = (formId) => {
+  try {
+    // 输入验证
+    if (!formId) {
+      throw new Error('无效的表单ID')
+    }
+    
+    // 显示确认对话框
+    ElMessageBox.confirm('确定要删除这个表单吗？', '警告', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: 'warning'
-    })
-
-    if (!form.title?.trim() && !form.value?.trim() && !form.remark?.trim()) {
-      await ElMessageBox.alert('请至少填写一个字段（标题、值或备注）', '警告', {
-        confirmButtonText: '确定',
-        type: 'warning'
-      })
-      return
-    }
-
-    const newForm = reactive({
-      ...form,
-      id: Date.now().toString() + Math.random().toString(36).slice(2),
-      x: 0,
-      y: 0,
-      zIndex: 1
-    })
-
-    //forms.value.push(newForm)
-
-    // 统计当前所有已用的坐标点，避免重叠
-    const usedPositions = Object.values(positions).map(pos => `${pos.x},${pos.y}`)
-    // 分配初始位置
-    const offsetStep = 40
-    const baseOffset = 10
-    let containerWidth = props.pageSize ? props.pageSize.width : 800
-    let maxPerRow = Math.floor((containerWidth - baseOffset) / (minSize.width + offsetStep))
-    if (maxPerRow < 1) maxPerRow = 1
-
-    let initX = baseOffset
-    let initY = baseOffset
-    if (forms.value.length === 0) {
-      // 第一个表单固定在左上角
-      initX = baseOffset
-      initY = baseOffset
-      console.log('usedPositions:', usedPositions)
-      usedPositions.push(`${initX},${initY}`)
-      console.log('第一个表单位置:', initX, initY)
-    } else {
-      // 后续表单自动分配不重叠位置
-      let found = false
-      let tryCount = 0
-      while (!found && tryCount < 200) {
-        let row = Math.floor(tryCount / maxPerRow)
-        let col = tryCount % maxPerRow
-        initX = baseOffset + col * (minSize.width + offsetStep)
-        initY = baseOffset + row * (minSize.height + offsetStep)
-        const key = `${initX},${initY}`
-        if (!usedPositions.includes(key)) {
-          found = true
-          usedPositions.push(key)
-          break
-        }
-        tryCount++
+      type: 'error'
+    }).then(() => {
+      // 删除表单
+      forms.value = forms.value.filter(form => form.id !== formId);
+      
+      // 通知父组件表单已更新
+      emit('update:modelValue', forms.value);
+      
+      // 显示成功提示
+      ElMessage.success('删除成功');
+      
+      // 触发样式更新
+      updateFormStyle()
+    }).catch((error) => {
+      // 用户取消操作或发生错误
+      if (error && error.type !== 'cancel') {
+        handleError(error, '删除表单时发生错误')
       }
-      console.log(`分配位置: ${initX}, ${initY} (尝试次数: ${tryCount})`)
-    }
-    positions[newForm.id] = { x: initX, y: initY }
-    cardSizes[newForm.id] = { ...minSize }
-    validatePositionById(newForm.id)
-    forms.value.push(newForm)
-    debouncedSavePositions()
-    ElMessage.success('表单保存成功')
+    });
   } catch (error) {
-    if (error?.action !== 'cancel') {
-      console.error('保存错误:', error)
-      ElMessage.error('保存失败: ' + (error.message || '服务器错误'))
-    }
-  } finally {
-    showAddDialog.value = false
-    addFormData.value = null
+    handleError(error, '删除表单时发生错误')
   }
-}
-function cancelAddForm() {
-  showAddDialog.value = false
-  addFormData.value = null
-}
+};
 
-function getCardAutoStyle(index, element) {
-  const pos = positions[element.id] || { x: 0, y: 0 }
-  const size = cardSizes[element.id] || { width: 180, height: 60 }
-  return {
-    width: size.width + 'px',
-    height: size.height + 'px',
-    position: 'absolute',
-    left: pos.x + 'px',
-    top: pos.y + 'px',
-    zIndex: element.zIndex,
-    transform: 'none'
+// 添加 handleAddForm 方法
+const handleAddForm = (event) => {
+  try {
+    // 验证输入事件
+    if (event && event.preventDefault) {
+      event.preventDefault();
+    }
+    
+    // 创建新的表单对象
+    const newForm = {
+      id: Date.now().toString() + Math.random().toString(36).slice(2),
+      title: '',
+      value: '',
+      remark: '',
+      media: '',
+      showTitle: true,
+      showValue: true,
+      showRemark: false,
+      showMedia: false,
+      titleFontSize: 16,
+      valueFontSize: 16,
+      remarkFontSize: 14,
+      titleColor: '#333',
+      valueColor: '#333',
+      remarkColor: '#666'
+    };
+    
+    // 验证表单数据
+    if (!newForm.id) {
+      throw new Error('表单ID生成失败')
+    }
+    
+    // 设置添加表单的数据并显示对话框
+    addFormData.value = newForm;
+    showAddDialog.value = true;
+    
+    return false;
+  } catch (error) {
+    handleError(error, '添加表单时发生错误')
+    return false
   }
-}
+};
+
+// 暴露方法给父组件
+defineExpose({
+  handleAddForm
+});
+
+// =====================================================
+// = 8. 生命周期钩子 
+// =====================================================
+onMounted(() => {
+  // 初始化位置信息
+  forms.value.forEach(form => {
+    if (form.x !== undefined && form.y !== undefined) {
+      updateFormPosition(form.id, form.x, form.y)
+    }
+  })
+  
+  // 初始化表单样式
+  updateFormStyle()
+  
+  // 初始化拖拽服务
+  if (dragDropService.initialize) {
+    dragDropService.initialize(
+      containerRef.value,
+      contentRefs.value,
+      positions.value,
+      showDetail.value,
+      showAddDialog.value,
+      addFormData.value,
+      menuIndex.value,
+      cardStyleOn.value,
+      getDefaultCardStyles.value,
+      calculateCardStyle.value,
+      handleContextMenu,
+      startDrag,
+      startResize,
+      cancelAddForm,
+      saveAddForm,
+      getCardAutoStyle,
+      setContentRef
+    )
+  }
+
+  // 添加点击事件监听器
+  document.addEventListener('click', handleClickOutside);
+})
 </script>
 
+<template>
+  <div class="form-grid-container">
+    <!-- 错误提示 -->
+    <div v-if="error" class="error-boundary">
+      <div class="error-boundary__title">发生错误</div>
+      <div class="error-boundary__message">{{ error.message }}</div>
+      <div class="error-boundary__info">{{ errorInfo }}</div>
+    </div>
+    
+    <!-- 表单网格内容 -->
+    <div class="form-grid" ref="containerRef">
+      <!-- 表单卡片列表 -->
+      <div class="form-cards">
+        <div 
+          v-for="(form, index) in forms" 
+          :key="form.id"
+          :ref="setContentRef(form.id)"
+          :style="computedStyles(form)"
+          class="form-card-wrapper"
+        >
+          <!-- 表单内容 -->
+          <FormCard
+            :form="form"
+            :editable="editable"
+            @update:form="handleUpdateForm"
+            @delete:form="handleDeleteForm"
+            @resize:start="startResize($event, index)"
+          />
+        </div>
+      </div>
+    </div>
+    
+    <!-- 添加表单对话框 -->
+    <el-dialog v-model="showAddDialog" title="添加表单">
+      <FormEditor
+        :form="addFormData"
+        @save="saveAddForm"
+        @cancel="cancelAddForm"
+      />
+    </el-dialog>
+    
+    <!-- 表单编辑器 -->
+    <div class="form-editor-container" v-if="showFormEditor">
+      <FormEditor 
+        :form-data="selectedForm" 
+        @save="handleFormSave"
+        @close="hideFormEditor"
+      />
+    </div>
+  </div>
+</template>
+
 <style scoped>
-.form-grid {
+/* =====================================================
+   = 1. 基础样式 =
+   ====================================================== */
+.form-grid-container {
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 16px;
 }
 
+.form-grid {
+  position: relative;
+  min-height: 100%;
+  padding: 20px;
+}
+
+/* =====================================================
+   = 6. 错误状态样式 =
+   ====================================================== */
+.error-boundary {
+  background-color: #fef0f0;
+  border-left: 4px solid #f56c6c;
+  padding: 15px;
+  margin: 10px 0;
+  color: #f56c6c;
+  font-size: 14px;
+}
+
+.error-boundary__title {
+  font-weight: bold;
+  margin-bottom: 8px;
+}
+
+.error-boundary__message {
+  margin-bottom: 8px;
+}
+
+.error-boundary__info {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* =====================================================
+   = 2. 工具栏样式 =
+   ====================================================== */
+.toolbar {
+  margin-bottom: 15px;
+  text-align: right;
+}
+
+/* =====================================================
+   = 3. 表单卡片样式 =
+   ====================================================== */
 .form-card-wrapper {
   position: absolute;
-  display: block;
-  transition: transform 0.2s;
+  transition: transform 0.2s ease;
 }
 
-.card-menu {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 10;
-}
-
-.menu-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px #ccc;
-  padding: 4px;
-  justify-items: center;
-  align-items: center;
-}
-
-.menu-grid .el-button {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  font-size: 18px;
-}
-
-.form-card-mini {
-  margin: 0;
-  align-self: start;
-  display: inline-block;
-  vertical-align: top;
+.form-card {
+  position: relative;
   cursor: pointer;
-  background: #f8f8f8;
-  transition: box-shadow 0.2s, border-color 0.2s;
-  border: 1px solid transparent;
-  box-shadow: none;
-  position: absolute !important;
-  transform: none !important;
-  resize: none;
+  transition: all 0.3s ease;
 }
 
-.form-card-mini:hover {
-  box-shadow: 0 2px 12px #aaa;
-  border: 1px solid #bbb;
-}
-
-.form-card-mini.no-style {
-  background: none;
-  box-shadow: none;
-  border: 1px solid transparent;
+.form-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .resize-handle {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 16px;
-  height: 16px;
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
+  right: 0;
+  bottom: 0;
+  width: 15px;
+  height: 15px;
+  background-color: #409EFF;
   cursor: se-resize;
-  z-index: 2;
-  user-select: none;
-  pointer-events: auto;
-  z-index: 1000;
+  z-index: 10;
 }
 
-.resize-handle:hover {
-  background: #409eff;
+/* =====================================================
+   = 4. 右键菜单样式 =
+   ====================================================== */
+.context-menu {
+  position: absolute;
+  background-color: #fff;
+  border: 1px solid #e4e4e4;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+  z-index: 999;
 }
 
-.form-card-mini .resize-handle {
-  display: none;
+.menu-grid {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
 }
 
-.form-card-mini:hover .resize-handle {
-  display: block;
+.menu-grid .el-button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px;
+}
+
+/* =====================================================
+   = 5. 响应式样式 =
+   ====================================================== */
+@media (max-width: 768px) {
+  .form-grid {
+    padding: 10px;
+  }
+  
+  .form-card {
+    width: 100%;
+    margin: 10px 0;
+  }
 }
 </style>

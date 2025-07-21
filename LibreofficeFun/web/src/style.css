@@ -65,6 +65,54 @@ button:focus-visible {
   text-align: center;
 }
 
+/* 添加调试样式 */
+.debug-info {
+  position: fixed;
+  top: 0;
+  left: 0;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px;
+  z-index: 1000;
+  font-size: 14px;
+  max-width: 300px;
+}
+
+.debug-info p {
+  margin: 5px 0;
+}
+
+/* 添加组件加载状态样式 */
+.component-loading {
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.component-unloaded {
+  display: none;
+}
+
+/* 添加路由调试信息样式 */
+.route-debug {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.route-debug h3 {
+  margin-top: 0;
+}
+
+.route-debug ul {
+  padding-left: 20px;
+  list-style-type: square;
+}
+
+.route-debug li {
+  margin: 5px 0;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
