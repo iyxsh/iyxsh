@@ -76,6 +76,8 @@ html, body {
 }
 
 /* 全局按钮样式 */
+/* 保持基础按钮样式，移除重复定义 */
+/* .btn 已在 common.css 中定义，保持此处的样式 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -116,9 +118,11 @@ html, body {
 .btn-outline:hover {
   border-color: var(--primary-color);
   color: var(--primary-color);
-}
+} */
 
 /* 全局卡片样式 */
+/* 保持基础卡片样式，移除重复定义 */
+/* .card 已在 common.css 中定义，保持此处的样式 */
 .card {
   background-color: white;
   border-radius: var(--border-radius-base);

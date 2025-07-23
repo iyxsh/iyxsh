@@ -65,9 +65,12 @@
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
           <FormGrid v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
-            v-model="pages[currentPageIdx].forms" @update:modelValue="handleFormUpdate"
-            :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
-            :pageSize="pages[currentPageIdx]?.pageSize" ref="formGridRef" />
+            v-model="pages[currentPageIdx].forms"
+            @update:modelValue="handleFormUpdate"
+            :editable="editPageIdx === currentPageIdx" 
+            :cardStyleOn="cardStyleOn"
+            :pageSize="pages[currentPageIdx]?.pageSize" 
+            ref="formGridRef" />
           <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
             :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
             :onToggleCardStyle="onToggleCardStyle" @add-form="onAddForm" />
@@ -146,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted,computed } from 'vue'
+import { ref, reactive, watch, onMounted, computed, nextTick } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
@@ -157,6 +160,28 @@ import { Edit, Delete, Lock, DocumentRemove, DocumentAdd } from '@element-plus/i
 import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
 import { getLocale, setLocale, t as i18nTrans} from '../utils/i18n'
+import { onBeforeMount } from 'vue'
+// 确保所有用到的翻译键都存在
+const ensureTranslationsExist = () => {
+  // 确保所有需要的翻译键都已定义
+  const keys = [
+    'pageManager.newPage',
+    'pageManager.confirmDelete',
+    'pageManager.confirmDeletePage',
+    'pageManager.warning',
+    'pageManager.confirm',
+    'pageManager.cancel',
+    'pageManager.create',
+    'pageManager.pageCreationFailed',
+    'pageManager.selectPageSize',
+    'pageManager.pageName',
+    'pageManager.enterPageName',
+    'pageManager.pageSize',
+    'pageManager.formPage',
+    'pageManager.cardPage',
+    'pageManager.confirmCloseDuringCreation'
+  ]
+}
 import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
@@ -170,6 +195,24 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
+
+onBeforeMount(() => {
+  try {
+    console.log('[PageManager] 页面即将挂载，当前页面数量:', pages.value.length);
+    
+    // 确保当前页面索引有效
+    if (pages.value.length > 0) {
+      currentPageIdx.value = Math.min(currentPageIdx.value, pages.value.length - 1);
+    } else {
+      currentPageIdx.value = 0;
+    }
+    
+    console.log('[PageManager] 初始化当前页面索引:', currentPageIdx.value);
+  } catch (error) {
+    console.error('[PageManager] 初始化页面数据时出错:', error);
+    ElMessage.error('初始化页面数据失败');
+  }
+});
 
 // i18n相关
 const locale = ref(getLocale())
@@ -245,7 +288,74 @@ const groupedPaperSizes = computed(() => {
 
 // 处理表单更新
 function handleFormUpdate(updatedForms) {
-  localStorage.setItem('form-pages', JSON.stringify(pages.value))
+  console.log('[PageManager] 处理表单更新，当前页面索引:', currentPageIdx.value);
+  console.log('[PageManager] 当前页面数据:', JSON.parse(JSON.stringify(pages.value[currentPageIdx.value])));
+  console.log('[PageManager] 处理表单更新，表单数量:', updatedForms?.length || 0);
+  
+  // 确保当前页面存在
+  if (!pages.value[currentPageIdx.value]) {
+    console.error('[PageManager] 当前页面不存在，无法更新表单');
+    return;
+  }
+
+  try {
+    // 创建深拷贝以避免直接修改响应式对象
+    const newPages = JSON.parse(JSON.stringify(pages.value));
+    newPages[currentPageIdx.value] = {
+      ...newPages[currentPageIdx.value],
+      forms: [...updatedForms]
+    };
+    
+    // 更新页面数据
+    pages.value = newPages;
+    
+    // 保存到本地存储
+    localStorage.setItem('form-pages', JSON.stringify(pages.value));
+    console.log('[PageManager] 本地存储更新验证:', JSON.parse(localStorage.getItem('form-pages')));
+    
+    console.log('[PageManager] 表单更新成功，当前页面表单数量:', 
+      pages.value[currentPageIdx.value]?.forms?.length || 0);
+  } catch (error) {
+    console.error('[PageManager] 更新表单时出错:', error);
+    ElMessage.error('更新表单失败');
+    errorLogService.addErrorLog(error, '更新表单失败', 'error');
+  }
+}
+
+// 检查并修复表单显示问题
+function checkAndFixFormDisplay() {
+  try {
+    console.log('[PageManager] 检查表单显示状态');
+    
+    // 确保当前页面存在
+    if (!pages.value[currentPageIdx.value]) {
+      console.warn('[PageManager] 当前页面不存在，无法检查表单');
+      return;
+    }
+    
+    // 获取当前页面表单数量
+    const formCount = pages.value[currentPageIdx.value].forms?.length || 0;
+    console.log(`[PageManager] 当前页面有 ${formCount} 个表单`);
+    
+    // 如果有表单但FormGrid未显示，尝试强制更新
+    if (formCount > 0 && formGridRef.value) {
+      console.log('[PageManager] 尝试强制更新表单显示');
+      
+      // 触发响应式更新
+      nextTick(() => {
+        // 强制更新页面数组引用，触发响应式
+        pages.value = [...pages.value];
+        
+        // 确保本地存储同步
+        localStorage.setItem('form-pages', JSON.stringify(pages.value));
+        console.log('[PageManager] 本地存储更新验证:', JSON.parse(localStorage.getItem('form-pages')));
+        
+        console.log('[PageManager] 表单显示修复完成');
+      });
+    }
+  } catch (error) {
+    console.error('[PageManager] 检查表单显示时出错:', error);
+  }
 }
 
 // 在组件挂载时检查引用
@@ -288,28 +398,6 @@ onMounted(() => {
   );
 });
 
-// 修改 onAddForm 方法
-const onAddForm = () => {
-  // 检查页面是否可编辑
-  if (editPageIdx.value !== currentPageIdx.value) {
-    // 如果页面不可编辑，提示用户需要先解锁页面
-    ElMessage.warning('请先解锁页面再添加表单')
-    return
-  }
-
-  nextTick(() => {
-    // 确保 formGridRef 存在并且已正确加载
-    if (!formGridRef.value?.handleAddForm) {
-      console.error('FormGrid reference is not available')
-      ElMessage.error('无法添加表单：表单编辑器未就绪')
-      return
-    }
-
-    // 直接调用 handleAddForm 方法
-    formGridRef.value.handleAddForm()
-  })
-}
-
 // 在组件挂载时注册全局事件
 onMounted(() => {
   // 初始化事件总线
@@ -321,11 +409,120 @@ onMounted(() => {
   })
 
   // 注册其他事件...
-})
+  
+  // 检查并修复表单显示问题
+  nextTick(() => {
+    // 等待组件完全加载后检查表单显示
+    setTimeout(() => {
+      checkAndFixFormDisplay();
+    }, 500);
+  });
+  
+  // 添加空值检查
+  console.log('PageManager 组件已挂载');
+  console.log('FormGrid 引用:', formGridRef.value ? '存在' : '不存在');
+  console.log('SimpleCardConverter 引用:', cardConverterRef.value ? '存在' : '不存在');
+
+  // 添加空值检查
+  if (formGridRef.value) {
+    console.log('FormGrid 组件状态:', {
+      isMounted: formGridRef.value.$el ? '已挂载' : '未挂载',
+      isVisible: formGridRef.value.$el?.offsetParent !== null
+    });
+    
+    errorLogService.addErrorLog(
+      new Error(),
+      `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
+      'debug'
+    );
+  }
+
+  if (cardConverterRef.value) {
+    console.log('SimpleCardConverter 组件状态:', {
+      isMounted: cardConverterRef.value.$el ? '已挂载' : '未挂载',
+      isVisible: cardConverterRef.value.$el?.offsetParent !== null
+    });
+    
+    errorLogService.addErrorLog(
+      new Error(),
+      `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
+      'debug'
+    );
+  }
+  
+  errorLogService.addErrorLog(
+    new Error(),
+    `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
+    'debug'
+  );
+});
+
+// 优化的 onAddForm 方法
+const onAddForm = () => {
+  try {
+    // 检查是否有页面
+    if (pages.value.length === 0) {
+      ElMessage.warning(i18nTrans('pageManager.noPages', {}, '请先创建页面'))
+      return
+    }
+    
+    // 检查页面是否可编辑
+    if (editPageIdx.value !== currentPageIdx.value) {
+      // 如果页面不可编辑，提示用户需要先解锁页面
+      ElMessage.warning(i18nTrans('pageManager.unlockPageFirst', {}, '请先解锁页面再添加表单'))
+      return
+    }
+
+    nextTick(() => {
+      try {
+        // 确保 formGridRef 存在并且已正确加载
+        if (!formGridRef.value) {
+          throw new Error('表单网格组件未找到')
+        }
+        
+        if (typeof formGridRef.value.handleAddForm !== 'function') {
+          throw new Error('表单网格组件方法未找到')
+        }
+
+        // 直接调用 handleAddForm 方法
+        formGridRef.value.handleAddForm()
+      } catch (error) {
+        console.error('添加表单错误:', error)
+        ElMessage.error(i18nTrans('pageManager.cannotAddForm', {}, '无法添加表单：表单编辑器未就绪'))
+        errorLogService.addErrorLog(error, '添加表单失败 - 组件引用问题', 'error')
+      }
+    })
+  } catch (error) {
+    console.error('添加表单过程错误:', error)
+    ElMessage.error('添加表单失败')
+    errorLogService.addErrorLog(error, '添加表单失败 - 意外错误', 'error')
+  }
+}
 
 // 创建新页面
 const isCreatingPage = ref(false)
 const selectedPaper = ref(null)
+
+// 处理对话框关闭
+const handleDialogClose = (done) => {
+  if (isCreatingPage.value) {
+    ElMessageBox.confirm(
+      i18nTrans('pageManager.confirmCloseDuringCreation'),
+      i18nTrans('pageManager.warning'),
+      {
+        confirmButtonText: i18nTrans('pageManager.confirm'),
+        cancelButtonText: i18nTrans('pageManager.cancel'),
+        type: 'warning'
+      }
+    ).then(() => {
+      done()
+    }).catch(() => {
+      // 取消关闭
+    })
+  } else {
+    done()
+  }
+}
 
 // 选择纸张
 const selectPaper = (paper) => {
@@ -363,27 +560,6 @@ const createNewPage = () => {
 
   isCreatingPage.value = true
 
-// 处理对话框关闭
-const handleDialogClose = (done) => {
-  if (isCreatingPage.value) {
-    ElMessageBox.confirm(
-      i18nTrans('pageManager.confirmCloseDuringCreation'),
-      i18nTrans('pageManager.warning'),
-      {
-        confirmButtonText: i18nTrans('pageManager.confirm'),
-        cancelButtonText: i18nTrans('pageManager.cancel'),
-        type: 'warning'
-      }
-    ).then(() => {
-      done()
-    }).catch(() => {
-      // 取消关闭
-    })
-  } else {
-    done()
-  }
-}
-
   try {
     // 创建页面
     const newPageNameValue = newPageName.value || i18nTrans('pageManager.newPage')
@@ -408,46 +584,65 @@ const handleDialogClose = (done) => {
       return
     }
     
-    addPage(newPageNameValue, pageSizeObj)
-
-    // 自动将新页面设置为可编辑状态
+    // 保存当前页面数量作为新页面索引
+    const newPageIdx = pages.value.length;
+    
+    // 修改addPage调用方式
+    const newPage = reactive({
+      id: Date.now(),
+      name: newPageNameValue,
+      forms: [],
+      pageSize: {
+        name: pageSizeObj.name,
+        width: pageSizeObj.width,
+        height: pageSizeObj.height,
+        unit: pageSizeObj.unit
+      },
+      orientation: 'portrait'
+    })
+    pages.value.push(newPage)
+    
+    // 更新当前页面索引
+    currentPageIdx.value = newPageIdx;
+    
+    console.log('[PageManager] 当前页面索引更新为:', currentPageIdx.value, '页面总数:', pages.value.length)
+    
+    // 添加表单数据验证日志
     nextTick(() => {
-      const newPageIdx = pages.value.length - 1
-      console.log('[PageManager] 页面创建成功，索引:', newPageIdx);
-      
-      currentPageIdx.value = newPageIdx
-      editPageIdx.value = newPageIdx
-      // 关闭对话框
-      showPageSizeDialog.value = false
-      // 重置输入
-      newPageName.value = i18nTrans('pageManager.newPage')
+      console.log('[PageManager] 新建页面表单数据:', 
+        JSON.parse(JSON.stringify(pages.value[currentPageIdx.value]?.forms || [])))
+    })
+    
+    // 关闭对话框
+    showPageSizeDialog.value = false
+    // 重置输入
+    newPageName.value = i18nTrans('pageManager.newPage')
 
-      // 添加空值检查
-      if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj && pages.value[newPageIdx]) {
-        console.log('[PageManager] 设置卡片页面尺寸:', {
-          ...pageSizeObj,
-          orientation: pages.value[newPageIdx].orientation
-        });
-        
-        cardConverterRef.value.setPageSize({
-          ...pageSizeObj,
-          orientation: pages.value[newPageIdx].orientation
-        })
-      }
-      
-      // 记录成功创建日志
-      console.log('[PageManager] 页面创建成功:', {
-        pageName: newPageNameValue,
-        pageSize: selectedPageSize.value,
-        pageIdx: newPageIdx
+    // 添加空值检查
+    if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj && pages.value[newPageIdx]) {
+      console.log('[PageManager] 设置卡片页面尺寸:', {
+        ...pageSizeObj,
+        orientation: pages.value[newPageIdx].orientation
       });
       
-      errorLogService.addErrorLog(
-        null,
-        `页面创建成功: ${newPageNameValue} (${selectedPageSize.value})`,
-        'info'
-      );
-    })
+      cardConverterRef.value.setPageSize({
+        ...pageSizeObj,
+        orientation: pages.value[newPageIdx].orientation
+      })
+    }
+    
+    // 记录成功创建日志
+    console.log('[PageManager] 页面创建成功:', {
+      pageName: newPageNameValue,
+      pageSize: selectedPageSize.value,
+      pageIdx: newPageIdx
+    });
+    
+    errorLogService.addErrorLog(
+      null,
+      `页面创建成功: ${newPageNameValue} (${selectedPageSize.value})`,
+      'info'
+    );
   } catch (error) {
     console.error('创建页面时出错:', error)
     console.error('错误详细信息:', {
@@ -456,8 +651,7 @@ const handleDialogClose = (done) => {
       errorStack: error.stack,
       pagesState: JSON.stringify(pages.value, null, 2),
       currentPageIdx: currentPageIdx.value,
-      selectedPageSize: selectedPageSize.value,
-      pageSizeObj: pageSizeObj
+      selectedPageSize: selectedPageSize.value
     });
     
     ElMessage.error({
@@ -468,11 +662,11 @@ const handleDialogClose = (done) => {
     // 记录错误日志
     errorLogService.addErrorLog(
       error,
-      `创建页面失败: ${newPageName.value || '未知名称'} (${selectedPageSize.value || '无尺寸'})`,
+      '创建页面失败',
       'error'
     );
   } finally {
-    isCreatingPage.value = false
+    isCreatingPage.value = false;
   }
 }
 
@@ -586,14 +780,16 @@ function deletePage(idx) {
       }
       if (editPageIdx.value === idx) editPageIdx.value = -1
       
+      // 删除前获取页面名称
+      const pageName = pages.value[idx]?.name || i18nTrans('pageManager.newPage');
       console.log('[PageManager] 页面删除成功:', {
         pageIndex: idx,
-        pageName: pages.value[idx]?.name
+        pageName
       });
       
       errorLogService.addErrorLog(
         null,
-        `页面删除成功: ${pages.value[idx]?.name} (${idx})`,
+        `页面删除成功: ${pageName} (${idx})`,
         'info'
       );
     } catch (error) {
@@ -632,72 +828,62 @@ function rotatePage(idx) {
   if (!page) return
 
   // 判断是否为当前页面
-  if (idx !== currentPageIdx.value) {
-    // 如果不是当前页面，只交换尺寸不做视觉效果
+  const isCurrentPage = idx === currentPageIdx.value
+  
+  try {
+    // 交换页面尺寸的宽高
     rotatePageOrientation(idx)
-    ElMessage.success(`页面"${page.name}"已旋转`)
-    return
-  }
-
-  // 交换页面尺寸的宽高
-  rotatePageOrientation(idx)
-
-  // 获取新的方向状态
-  const isLandscape = page.orientation === 'landscape'
-
-  // 获取需要旋转的内容容器 - 针对不同类型的页面获取相应的容器
-  let contentContainer = null
-  if (currentPageType.value === 'form') {
-    // 表单页面
-    contentContainer = document.querySelector('.form-grid')
-  } else if (currentPageType.value === 'cards') {
-    // Cards页面
-    contentContainer = document.querySelector('.cards-container')
-  }
-
-  // 如果找到内容容器，旋转整个容器
-  if (contentContainer) {
-    // 为容器添加整体旋转样式
-    contentContainer.style.transform = isLandscape ? 'rotate(90deg)' : ''
-    contentContainer.style.transformOrigin = 'center center'
-    contentContainer.style.transition = 'transform 0.3s ease'
-
-    // 调整容器位置，使旋转后居中
-    if (isLandscape) {
-      // 横向模式时添加额外空间
-      contentContainer.style.margin = '80px auto'
-      contentContainer.style.maxWidth = 'calc(100% - 160px)' // 确保旋转后不超出视图
-    } else {
-      // 纵向模式恢复正常
-      contentContainer.style.margin = '0 auto'
-      contentContainer.style.maxWidth = '100%'
+    
+    // 如果不是当前页面，只进行数据更新不做视觉效果
+    if (!isCurrentPage) {
+      ElMessage.success(`页面"${page.name || i18nTrans('pageManager.newPage')}"已旋转`)
+      return
     }
-
-    // 为所有卡片应用适当的样式，确保在旋转后仍然可读
-    const cards = contentContainer.querySelectorAll('.form-card-mini, .chinese-char-card, .card-item')
-    if (cards && cards.length > 0) {
-      cards.forEach(card => {
-        card.style.transition = 'all 0.3s ease'
-        // 可以在这里添加卡片级别的额外样式调整
-      })
-    }
+    
+    // 获取新的方向状态
+    const isLandscape = page.orientation === 'landscape'
+    
+    // 更新页面渲染 - 使用响应式方式处理旋转
+    nextTick(() => {
+      // 根据页面类型更新视图
+      if (currentPageType.value === 'form' && formGridRef.value) {
+        // 使用类方式控制旋转样式，而不是直接操作DOM
+        const formGridEl = formGridRef.value.$el
+        if (formGridEl) {
+          // 为元素添加/移除旋转类
+          if (isLandscape) {
+            formGridEl.classList.add('landscape-mode')
+          } else {
+            formGridEl.classList.remove('landscape-mode')
+          }
+        }
+      } else if (currentPageType.value === 'cards' && cardConverterRef.value) {
+        // 卡片转换器处理
+        cardConverterRef.value.setPageSize({
+          ...page.pageSize,
+          orientation: page.orientation
+        })
+        
+        // 同样使用类控制而非直接操作样式
+        const cardsContainerEl = cardConverterRef.value.$el?.querySelector('.cards-container')
+        if (cardsContainerEl) {
+          if (isLandscape) {
+            cardsContainerEl.classList.add('landscape-mode')
+          } else {
+            cardsContainerEl.classList.remove('landscape-mode')
+          }
+        }
+      }
+      
+      // 显示旋转提示
+      ElMessage.success(`页面"${page.name || i18nTrans('pageManager.newPage')}"已旋转为${isLandscape ? '横向' : '纵向'}模式`)
+    })
+  } catch (error) {
+    // 错误处理
+    console.error('旋转页面时出错:', error)
+    ElMessage.error('旋转页面失败')
+    errorLogService.addErrorLog(error, `旋转页面失败: ${idx}`, 'error')
   }
-
-  // 显示旋转提示
-  ElMessage.success(`页面"${page.name}"已旋转为${isLandscape ? '横向' : '纵向'}模式`)
-
-  // 更新页面渲染
-  nextTick(() => {
-    // 更新页面内容尺寸 - 针对所有类型的页面
-    if (currentPageType.value === 'form' && formGridRef.value) {
-      // FormGrid会自动使用最新的页面尺寸
-    } else if (currentPageType.value === 'cards' && cardConverterRef.value) {
-      cardConverterRef.value.setPageSize({
-        ...page.pageSize,
-        orientation: page.orientation // 添加方向参数
-      })
-    }
-  })
 }
 
 // 旋转当前页面的方法（供Toolbar使用）
@@ -995,6 +1181,21 @@ const debugButton = (buttonName) => {
   }
 }
 
+/* 页面旋转相关样式 */
+.landscape-mode {
+  transform: rotate(90deg);
+  transform-origin: center center;
+  transition: transform 0.3s ease;
+  margin: 80px auto !important;
+  max-width: calc(100% - 160px) !important; /* 确保旋转后不超出视图 */
+}
+
+.landscape-mode .form-card-mini,
+.landscape-mode .chinese-char-card,
+.landscape-mode .card-item {
+  transition: all 0.3s ease;
+}
+
 /* 响应式设计优化 */
 @media (max-width: 768px) {
   .paper-options-grid {
@@ -1008,6 +1209,12 @@ const debugButton = (buttonName) => {
   .paper-preview-compact {
     height: 90px;
     padding: 8px 4px;
+  }
+  
+  /* 移动设备上的旋转处理 */
+  .landscape-mode {
+    transform: rotate(90deg) scale(0.85);
+    margin: 60px auto !important;
   }
 }
 </style>

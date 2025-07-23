@@ -27,6 +27,7 @@ html, body {
 }
 
 /* 全局按钮样式 */
+/* 保持基础按钮样式，移除重复定义 */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -70,6 +71,7 @@ html, body {
 }
 
 /* 全局卡片样式 */
+/* 保持基础卡片样式，移除重复定义 */
 .card {
   background-color: white;
   border-radius: var(--border-radius-base);

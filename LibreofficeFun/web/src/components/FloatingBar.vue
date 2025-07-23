@@ -40,12 +40,8 @@
   </div>
 </template>
 <script setup>
-import { ref, computed, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage, ElMessageBox, ElDialog } from 'element-plus'  // 添加了 ElMessageBox 和 ElDialog 导入
-import { useEventBus } from '../utils/eventBus'
-
-// 添加组件加载调试信息
-console.log('FloatingBar component initializing');
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ElMessage } from 'element-plus'
 
 // 定义props
 const props = defineProps({
@@ -62,112 +58,123 @@ const visible = ref(true)
 const cardStyleOn = ref(true)
 let drag = false, offsetX = 0, offsetY = 0
 
-const barStyle = reactive({ transform: 'translate(0, 0)' }) // 替换原来的left/top
+const barStyle = reactive({ 
+  x: 0, 
+  y: 0, 
+  transform: 'translate(0, 0)' 
+})
+
+// 错误处理函数
+const handleError = (error, context = '未知上下文') => {
+  console.error(`[FloatingBar Error] ${context}`, error);
+  ElMessage.error({
+    message: `操作失败: ${context}`,
+    duration: 5000,
+    type: 'error'
+  });
+}
 
 function startDrag(e) {
-  drag = true
-  offsetX = e.clientX - barStyle.x
-  offsetY = e.clientY - barStyle.y
-  document.addEventListener('mousemove', onDrag)
-  document.addEventListener('mouseup', stopDrag)
+  try {
+    drag = true
+    offsetX = e.clientX - barStyle.x
+    offsetY = e.clientY - barStyle.y
+    document.addEventListener('mousemove', onDrag)
+    document.addEventListener('mouseup', stopDrag)
+  } catch (error) {
+    handleError(error, '开始拖拽失败')
+  }
 }
+
 function onDrag(e) {
-  if (!drag) return
-  barStyle.x = e.clientX - offsetX
-  barStyle.y = e.clientY - offsetY
-  barStyle.transform = `translate(${barStyle.x}px, ${barStyle.y}px)`
+  try {
+    if (!drag) return
+    barStyle.x = e.clientX - offsetX
+    barStyle.y = e.clientY - offsetY
+    barStyle.transform = `translate(${barStyle.x}px, ${barStyle.y}px)`
+  } catch (error) {
+    handleError(error, '拖拽过程中失败')
+  }
 }
+
 function stopDrag() {
-  drag = false
-  document.removeEventListener('mousemove', onDrag)
-  document.removeEventListener('mouseup', stopDrag)
+  try {
+    drag = false
+    document.removeEventListener('mousemove', onDrag)
+    document.removeEventListener('mouseup', stopDrag)
+  } catch (error) {
+    handleError(error, '停止拖拽失败')
+  }
 }
+
 function toggleBar() {
-  visible.value = !visible.value
+  try {
+    visible.value = !visible.value
+  } catch (error) {
+    handleError(error, '切换工具栏失败')
+  }
 }
+
 function toggleCardStyle() {
-  cardStyleOn.value = !cardStyleOn.value
-  if (props.onToggleCardStyle) props.onToggleCardStyle(cardStyleOn.value)
+  try {
+    cardStyleOn.value = !cardStyleOn.value
+    if (props.onToggleCardStyle) props.onToggleCardStyle(cardStyleOn.value)
+  } catch (error) {
+    handleError(error, '切换卡片样式失败')
+  }
 }
 
 function clearCurrentPageForms() {
-  if (props.editable && props.clearCurrentPageForms) {
-    props.clearCurrentPageForms();
-  } else if (!props.editable) {
-    showUnlockMessage();
+  try {
+    if (!props.editable && !props.clearCurrentPageForms) {
+      showUnlockMessage();
+      return
+    }
+    
+    if (props.clearCurrentPageForms) {
+      props.clearCurrentPageForms();
+    }
+  } catch (error) {
+    handleError(error, '清除当前页面表单失败')
   }
 }
 
 function handleAddForm() {
-  if (props.editable) {
+  try {
+    if (!props.editable) {
+      showUnlockMessage()
+      return
+    }
+    
     emit('add-form')
-  } else {
-    showUnlockMessage()
+  } catch (error) {
+    handleError(error, '添加表单失败')
   }
 }
 
 function showUnlockMessage() {
-  // 使用导入的 Element Plus 消息提示组件
-  ElMessage.warning('Please unlock the page before performing this action');
-}
-
-// 资源清理
-const cleanupTasks = []
-
-// 添加内存泄漏检查
-function checkMemoryUsage() {
-  if (performance.memory) {
-    const memoryUsage = performance.memory
-    console.log('FloatingBar Memory Usage:', {
-      usedJSHeapSize: formatBytes(memoryUsage.usedJSHeapSize),
-      totalJSHeapSize: formatBytes(memoryUsage.totalJSHeapSize),
-      jsHeapSizeLimit: formatBytes(memoryUsage.jsHeapSizeLimit)
-    })
-    
-    // 如果内存使用超过阈值，触发警告
-    if (memoryUsage.usedJSHeapSize / memoryUsage.jsHeapSizeLimit > 0.7) {
-      console.warn('FloatingBar: Memory usage is high, consider optimizing')
-    }
+  try {
+    // 使用导入的 Element Plus 消息提示组件
+    ElMessage.warning({
+      message: '请先解锁页面再执行此操作',
+      duration: 3000
+    });
+  } catch (error) {
+    console.error('显示解锁提示失败:', error);
   }
 }
 
-// 格式化字节大小
-function formatBytes(bytes) {
-  if (bytes === 0) return '0 Bytes'
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-// 添加内存泄漏检查
-function setupMemoryLeakCheck() {
-  // 检查内存使用情况
-  const memoryCheckInterval = setInterval(() => {
-    checkMemoryUsage()
-  }, 5 * 60 * 1000)
-  
-  // 添加清理任务
-  cleanupTasks.push(() => clearInterval(memoryCheckInterval))
-}
-
-// 添加资源清理
-function cleanupResources() {
-  // 清理内存检查
-  cleanupTasks.forEach(task => task())
-}
-
-// 在组件挂载时添加调试信息
-onMounted(() => {
-  console.log('FloatingBar component mounted', {
-    editable: props.editable
-  });
-});
-
-// 在组件卸载前添加调试信息
+// 在组件卸载时清理事件监听器，防止内存泄漏
 onBeforeUnmount(() => {
-  console.log('FloatingBar component about to be unmounted');
-});
+  try {
+    // 确保释放所有事件监听器
+    document.removeEventListener('mousemove', onDrag)
+    document.removeEventListener('mouseup', stopDrag)
+    console.log('[FloatingBar] 成功清理事件监听器')
+  } catch (error) {
+    console.error('[FloatingBar] 清理事件监听器失败:', error)
+  }
+})
 </script>
 <style scoped>
 .floating-bar {

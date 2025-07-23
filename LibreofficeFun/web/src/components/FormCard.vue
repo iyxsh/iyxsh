@@ -1,25 +1,13 @@
 <template>
   <div class="form-grid" ref="containerRef" :style="gridContainerStyle">
-    <div
-      v-for="form in visibleForms"
-      :key="form.id"
-      class="form-card-wrapper"
-      :class="{ 'dragging': isDragging && draggedForm?.id === form.id }"
-      draggable="true"
-      @dragstart="handleDragStart($event, form)"
-      @dragend="handleDragEnd($event)"
-      @dragover="handleDragOver($event, form)"
-      @drop="handleDrop($event, form)"
-      @contextmenu.prevent="openMenu(form.id, $event)"
-      @mousedown.stop="startDrag($event, form)"
-      :style="getCardStyle(form)"
-    >
-      <el-card
-        v-if="!showDetail[form.id]"
-        :class="['form-card-mini', cardStyleOn ? '' : 'no-style']"
-        @dblclick="openDetail(form.id)"
-        :body-style="getDefaultCardStyles()"
-      >
+    <div v-for="form in visibleForms" :key="form.id" class="form-card-wrapper"
+      :class="{ 'dragging': isDragging && draggedForm?.id === form.id }" draggable="true"
+      @dragstart="handleDragStart($event, form)" @dragend="handleDragEnd($event)"
+      @dragover="handleDragOver($event, form)" @drop="handleDrop($event, form)"
+      @contextmenu.prevent="openMenu(form.id, $event)" @mousedown.stop="startDrag($event, form)"
+      :style="getCardStyle(form)">
+      <el-card v-if="!showDetail[form.id]" :class="['form-card-mini', cardStyleOn ? '' : 'no-style']"
+        @dblclick="openDetail(form.id)" :body-style="getDefaultCardStyles()">
         <div ref="setContentRef" :data-id="form.id" :style="{ display: 'inline-block' }">
           <div v-if="form.showTitle !== false"
             :style="{ fontSize: (form.titleFontSize || 16) + 'px', color: form.titleColor || '#333' }">
@@ -37,13 +25,19 @@
             <div v-if="menuIndex === form.id" class="card-menu">
               <div class="menu-grid">
                 <el-button :disabled="!editable" @click.stop="editForm(form.id)">
-                  <el-icon><EditPen /></el-icon>Edit
+                  <el-icon>
+                    <EditPen />
+                  </el-icon>Edit
                 </el-button>
                 <el-button @click.stop="openDetail(form.id)">
-                  <el-icon><View /></el-icon>Detail
+                  <el-icon>
+                    <View />
+                  </el-icon>Detail
                 </el-button>
                 <el-button type="danger" :disabled="!editable" @click.stop="confirmDelete(form.id)">
-                  <el-icon><Delete /></el-icon>Delete
+                  <el-icon>
+                    <Delete />
+                  </el-icon>Delete
                 </el-button>
               </div>
             </div>
@@ -51,49 +45,25 @@
         </div>
         <div v-if="editable" class="resize-handle" @mousedown.stop="startResize($event, form.id)"></div>
       </el-card>
-      <el-dialog 
-        v-model="showDetail[form.id]" 
-        title="Form Detail" 
-        width="640px" 
-        @close="closeDetail(form.id)"
-        destroy-on-close
-      >
-        <FormCard 
-          :model-value="findFormById(form.id)" @update:model-value="onSaveDetail(form.id, $event)" 
-          :editable="editable" 
-          @save="onSaveDetail(form.id, $event)"
-          @delete="onDelete(form.id)" 
-        />
+      <el-dialog v-model="showDetail[form.id]" title="Form Detail" width="640px" @close="closeDetail(form.id)"
+        destroy-on-close>
+        <FormCard :model-value="[findFormById(form.id)]" @update:model-value="onSaveDetail(form.id, $event)"
+          :editable="editable" @save="onSaveDetail(form.id, $event)" @delete="onDelete(form.id)" />
       </el-dialog>
     </div>
 
     <!-- 添加按钮 -->
-    <el-button 
-      v-if="editable" 
-      class="add-form-button" 
-      type="primary" 
-      circle
-      @click="handleAddForm">
-      <el-icon><Plus /></el-icon>
+    <el-button v-if="editable" class="add-form-button" type="primary" circle @click="handleAddForm">
+      <el-icon>
+        <Plus />
+      </el-icon>
     </el-button>
   </div>
 
   <!-- 添加表单的弹窗 -->
-  <el-dialog 
-    v-model="showAddDialog" 
-    title="Add Form" 
-    width="640px" 
-    @close="cancelAddForm" 
-    append-to-body
-    destroy-on-close
-  >
-    <FormCard 
-      v-if="addFormData" 
-      v-model="addFormData" 
-      :editable="true" 
-      @save="saveAddForm" 
-      @delete="cancelAddForm" 
-    />
+  <el-dialog v-model="showAddDialog" title="Add Form" width="640px" @close="cancelAddForm" append-to-body
+    destroy-on-close>
+    <FormCard v-if="addFormData" :model-value="[addFormData]" :editable="true" @update:model-value="saveAddForm" @delete="cancelAddForm" />
   </el-dialog>
 </template>
 
@@ -102,40 +72,48 @@ import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } 
 import { ElMessage, ElMessageBox, ElDialog } from 'element-plus'  // 添加了缺失的 ElMessageBox 和 ElDialog 导入
 import { useEventBus } from '../utils/eventBus'
 
+const { on, off } = useEventBus()
+
 // 添加组件加载调试信息
 console.log('FormCard component initializing');
 
 // 定义props
 const props = defineProps({
   modelValue: {
-    type: Object,
+    type: Array,
     required: true,
-    default: () => ({
-      id: null,
-      title: '',
-      value: '',
-      remark: '',
-      media: '',
-      showTitle: true,
-      showValue: true,
-      showRemark: true,
-      showMedia: false,
-      titleFontSize: 16,
-      valueFontSize: 16,
-      remarkFontSize: 14,
-      titleColor: '#333',
-      valueColor: '#333',
-      remarkColor: '#666'
-    })
+    default: () => []
   },
   editable: {
+    type: Boolean,
+    default: true
+  },
+  pageSize: {
+    type: Object,
+    default: () => ({
+      width: 210,
+      height: 297
+    })
+  },
+  useVirtual: {
+    type: Boolean,
+    default: true
+  },
+  cardStyleOn: {
     type: Boolean,
     default: true
   }
 })
 
 // 定义emits
-const emit = defineEmits(['save', 'delete', 'update:modelValue'])
+const emits = defineEmits([
+  'save', 
+  'delete', 
+  'update:modelValue', 
+  'form-moved', 
+  'form-updated',
+  'error'
+])
 
 // 表单数据与状态管理
 const forms = ref([]);
@@ -185,12 +163,13 @@ const gridContainerStyle = computed(() => {
       width: `${width}${unit}`,
       minHeight: `${height}${unit}`,
       margin: '0 auto',
-      border: '1px dashed #ccc',
+      border: '1px solid #dcdfe6',
       padding: '10px',
       backgroundColor: 'white',
       boxSizing: 'border-box',
       position: 'relative',
-      overflow: 'auto'
+      overflow: 'auto',
+      boxShadow: '0 2px 12px 0 rgba(0, 0, 0, 0.1)'
     };
   }
   return {};
@@ -220,7 +199,7 @@ function getCardStyle(form) {
 // 防抖函数
 function debounce(fn, delay) {
   let timer = null;
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       fn.apply(this, args);
@@ -502,8 +481,10 @@ function onDragging(e) {
   const dy = e.clientY - mouseStart.value.y;
   const baseOffset = 10;
   const size = cardSizes[draggingId.value] || minSize;
-  const containerWidth = props.pageSize ? props.pageSize.width : 800;
-  const containerHeight = props.pageSize ? props.pageSize.height : 600;
+  
+  // 确保使用正确的页面尺寸单位进行计算
+  const containerWidth = props.pageSize ? parseInt(props.pageSize.width) : 800;
+  const containerHeight = props.pageSize ? parseInt(props.pageSize.height) : 600;
 
   let x = Math.max(baseOffset, dragStart.value.x + dx);
   let y = Math.max(baseOffset, dragStart.value.y + dy);
@@ -526,9 +507,9 @@ function stopDrag() {
     // 通知位置已更新
     const form = findFormById(draggingId.value);
     if (form) {
-      emits('form-moved', { 
-        id: draggingId.value, 
-        position: positions[draggingId.value] 
+      emits('form-moved', {
+        id: draggingId.value,
+        position: positions[draggingId.value]
       });
     }
   }
@@ -568,8 +549,10 @@ function onResizing(e) {
 
   const dx = e.clientX - resizeMouseStart.value.x;
   const dy = e.clientY - resizeMouseStart.value.y;
-  const containerWidth = props.pageSize ? props.pageSize.width : 800;
-  const containerHeight = props.pageSize ? props.pageSize.height : 600;
+  
+  // 确保宽高为数值类型
+  const containerWidth = props.pageSize ? parseInt(props.pageSize.width) : 800;
+  const containerHeight = props.pageSize ? parseInt(props.pageSize.height) : 600;
 
   // 计算新尺寸，同时确保在最小和最大范围内
   const newWidth = Math.min(
@@ -607,8 +590,9 @@ function stopResize() {
 function validatePositionById(id) {
   if (!props.pageSize) return;
 
-  const containerWidth = props.pageSize.width;
-  const containerHeight = props.pageSize.height;
+  // 确保转换为数字以进行计算
+  const containerWidth = props.pageSize ? parseInt(props.pageSize.width) : 800;
+  const containerHeight = props.pageSize ? parseInt(props.pageSize.height) : 600;
   const pos = positions[id] || { x: 0, y: 0 };
   const size = cardSizes[id] || minSize;
 
@@ -652,7 +636,14 @@ function loadPositions() {
     Object.keys(obj).forEach(k => cardSizes[k] = obj[k]);
   }
 
-  forms.value.forEach(f => validatePositionById(f.id));
+  // 在使用forEach之前，确保forms.value是一个数组
+  if (Array.isArray(forms.value)) {
+    forms.value.forEach(f => validatePositionById(f.id));
+  } else {
+    console.error('[FormCard] forms.value不是数组:', forms.value);
+    // 初始化为空数组
+    forms.value = [];
+  }
 }
 
 // 页面类型和表单更新处理
@@ -763,7 +754,9 @@ function assignFormPosition(newForm) {
   // 分配初始位置
   const offsetStep = 40;
   const baseOffset = 10;
-  let containerWidth = props.pageSize ? props.pageSize.width : 800;
+  
+  // 确保容器宽度是数字
+  let containerWidth = props.pageSize ? parseInt(props.pageSize.width) : 800;
   let maxPerRow = Math.floor((containerWidth - baseOffset) / (minSize.width + offsetStep));
 
   if (maxPerRow < 1) maxPerRow = 1;
@@ -810,50 +803,32 @@ function cancelAddForm() {
 
 // 监听表单数据变化
 watch(() => props.modelValue, (newValue) => {
-  if (newValue) {
-    forms.value = newValue;
+  // 确保newValue是可迭代的对象或数组
+  if (newValue && typeof newValue === 'object') {
+    if (Array.isArray(newValue)) {
+      // 处理数组情况，使用structuredClone确保深拷贝
+      forms.value = Array.from(newValue);
+    } else {
+      // 处理单个对象情况
+      console.warn('[FormCard] modelValue 应该是数组，但收到的是对象:', newValue);
+      forms.value = [structuredClone(newValue)];
+    }
+    
+    // 确保所有表单都有唯一的id
+    forms.value = forms.value.map(form => ({
+      ...form,
+      id: form.id || Date.now().toString() + Math.random().toString(36).slice(2)
+    }));
+    
     nextTick(() => {
       updateVisibleForms();
     });
+  } else {
+    // 非对象/数组值，设置为空数组
+    forms.value = [];
+    console.warn('[FormCard] modelValue 应该是数组或对象，但收到:', newValue);
   }
 }, { immediate: true, deep: true });
-
-// 挂载时初始化
-onMounted(() => {
-  // 初始化内存检查
-  checkMemoryUsage();
-  const memoryCheckInterval = setInterval(checkMemoryUsage, 10000);
-  cleanupTasks.push(() => clearInterval(memoryCheckInterval));
-
-  // 加载位置信息
-  loadPositions();
-
-  // 监听页面尺寸变化事件
-  on('page-size-changed', () => {
-    nextTick(() => {
-      forms.value.forEach(f => validatePositionById(f.id));
-      updateVisibleForms();
-    });
-  });
-
-  // 监听页面类型变化
-  on('page-type-changed', handlePageTypeChange);
-
-  // 监听表单更新
-  on('form-updated', handleFormUpdated);
-
-  // 添加滚动和调整大小监听
-  window.addEventListener('scroll', updateVisibleForms);
-  window.addEventListener('resize', updateVisibleForms);
-
-  // 初始更新可见表单
-  nextTick(() => {
-    updateVisibleForms();
-  });
-});
-
-// 暴露添加表单方法
-defineExpose({ handleAddForm });
 </script>
 
 <style scoped>
@@ -990,3 +965,4 @@ defineExpose({ handleAddForm });
   }
 }
 </style>
+
