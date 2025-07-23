@@ -1,44 +1,46 @@
 <template>
-  <div class="app-loading">
+  <section class="app-loading" role="status" aria-live="polite">
     <div v-if="!hasError" class="loading-container">
       <div class="progress-container">
-        <div class="progress-text">加载应用中... {{ progress }}%</div>
+        <div class="progress-text">{{ t('appLoading.loading') }} {{ progress }}%</div>
         <div class="progress-bar">
           <div :style="{ width: progress + '%' }" class="progress"></div>
         </div>
       </div>
+
       <div v-if="progress >= 100" class="loading-failed">
-        加载应用失败
-        <button @click="$emit('reload')">重试</button>
+        {{ t('appLoading.failed') }}
+        <button @click="$emit('reload')">{{ t('appLoading.retry') }}</button>
       </div>
     </div>
 
     <div v-else class="error-container">
       <p>{{ errorMessage }}</p>
-      <button @click="$emit('reload')">重试</button>
+      <button @click="$emit('reload')">{{ t('appLoading.retry') }}</button>
     </div>
-  </div>
+  </section>
 </template>
 
-<script>
-export default {
-  name: 'AppLoading',
-  props: {
-    progress: {
-      type: Number,
-      default: 0
-    },
-    hasError: {
-      type: Boolean,
-      default: false
-    },
-    errorMessage: {
-      type: String,
-      default: '发生错误'
-    }
+<script setup>
+import { defineProps, defineEmits } from 'vue'
+import { t } from '../utils/i18n'
+
+const props = defineProps({
+  progress: {
+    type: Number,
+    default: 0
   },
-  emits: ['reload']
-}
+  hasError: {
+    type: Boolean,
+    default: false
+  },
+  errorMessage: {
+    type: String,
+    default: t('appLoading.defaultErrorMessage')
+  }
+})
+
+const emit = defineEmits(['reload'])
 </script>
 
 <style scoped>

@@ -23,8 +23,6 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue';
-
 const props = defineProps({
   modelValue: {
     type: Object,
@@ -38,11 +36,11 @@ const props = defineProps({
       '#8299ae', '#5f7d8c', '#333333'
     ]
   }
-});
+})
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue'])
 
-const settings = props.modelValue;
+const settings = props.modelValue
 </script>
 
 <style scoped>

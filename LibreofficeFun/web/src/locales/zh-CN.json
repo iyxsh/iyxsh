@@ -47,5 +47,14 @@
     "deleteFailed": "删除失败",
     "noFormsToConvert": "没有可转换的表单数据",
     "conversionSuccess": "已转换 {count} 个表单"
+  },
+  "appLoading": {
+    "loading": "加载中...",
+    "failed": "加载失败",
+    "retry": "重试",
+    "progressTitle": "加载进度",
+    "progressDescription": "正在加载应用，请稍候...",
+    "progress": "进度: {progress}%",
+    "defaultErrorMessage": "发生错误"
   }
 }

@@ -39,5 +39,14 @@
     "deleteFailed": "Delete failed",
     "noFormsToConvert": "No forms to convert",
     "conversionSuccess": "Successfully converted {count} forms"
+  },
+  "appLoading": {
+    "loading": "Loading...",
+    "failed": "Loading failed",
+    "retry": "Retry",
+    "progressTitle": "Loading Progress",
+    "progressDescription": "The application is loading, please wait...",
+    "progress": "Progress: {progress}%",
+    "defaultErrorMessage": "An error occurred"
   }
 }

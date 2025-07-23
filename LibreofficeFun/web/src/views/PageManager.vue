@@ -15,7 +15,7 @@
         <el-menu :default-active="String(currentPageIdx)" @select="onSelectPage">
           <el-menu-item v-for="(page, idx) in pages" :key="page.id" :index="String(idx)" class="page-menu-item">
             <span v-if="!editIdxMap[idx]" @dblclick="editPageName(idx)">
-              {{ page.name || $t('pageManager.newPage') }}
+              {{ page.name || i18nTrans('pageManager.newPage') }}
               <el-icon class="edit-icon" @click.stop="editPageName(idx)">
                 <Edit />
               </el-icon>
@@ -23,7 +23,7 @@
             <el-input v-else v-model="editName" size="small" @blur="savePageName(idx)" @keyup.enter="savePageName(idx)"
               class="page-name-input" autofocus />
             <div class="page-actions">
-              <el-popconfirm :title="$t('pageManager.confirmDelete')" @confirm="deletePage(idx)"
+              <el-popconfirm :title="i18nTrans('pageManager.confirmDelete')" @confirm="deletePage(idx)"
                 confirm-button-text="删除" cancel-button-text="取消">
                 <template #reference>
                   <el-icon class="delete-icon">
@@ -56,8 +56,8 @@
         <!-- 页面类型选择 -->
         <div class="page-type-selector">
           <el-radio-group v-model="currentPageType" size="small" @change="handlePageTypeChange">
-            <el-radio-button label="form">{{ $t('pageManager.formPage') }}</el-radio-button>
-            <el-radio-button label="cards">{{ $t('pageManager.cardPage') }}</el-radio-button>
+            <el-radio-button label="form">{{ i18nTrans('pageManager.formPage') }}</el-radio-button>
+            <el-radio-button label="cards">{{ i18nTrans('pageManager.cardPage') }}</el-radio-button>
           </el-radio-group>
         </div>
       </el-aside>
@@ -82,7 +82,7 @@
     <!-- 纸张尺寸选择对话框 -->
     <el-dialog 
       v-model="showPageSizeDialog" 
-      :title="$t('pageManager.selectPageSize')" 
+      :title="i18nTrans('pageManager.selectPageSize')" 
       width="650px"
       :before-close="handleDialogClose"
     >
@@ -90,12 +90,12 @@
         <el-form label-position="top">
           <el-row :gutter="20">
             <el-col :span="8">
-              <el-form-item :label="$t('pageManager.pageName')">
-                <el-input v-model="newPageName" :placeholder="$t('pageManager.enterPageName')" autofocus></el-input>
+              <el-form-item :label="i18nTrans('pageManager.pageName')">
+                <el-input v-model="newPageName" :placeholder="i18nTrans('pageManager.enterPageName')" autofocus></el-input>
               </el-form-item>
             </el-col>
             <el-col :span="16">
-              <el-form-item :label="$t('pageManager.pageSize')">
+              <el-form-item :label="i18nTrans('pageManager.pageSize')">
               </el-form-item>
             </el-col>
           </el-row>
@@ -127,7 +127,7 @@
             class="toolbar-button cancel-button"
           >
             <el-icon name="DocumentRemove"></el-icon>
-            <span class="button-text">{{ $t('pageManager.cancel') }}</span>
+            <span class="button-text">{{ i18nTrans('pageManager.cancel') }}</span>
           </el-button>
           <el-button 
             type="primary" 
@@ -137,7 +137,7 @@
             class="toolbar-button create-button"
           >
             <el-icon name="DocumentAdd"></el-icon>
-            <span class="button-text">{{ $t('pageManager.create') }}</span>
+            <span class="button-text">{{ i18nTrans('pageManager.create') }}</span>
           </el-button>
         </span>
       </template>
@@ -146,7 +146,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted,computed } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
@@ -156,7 +156,7 @@ import SimpleCardConverter from '../components/SimpleCardConverter.vue'
 import { Edit, Delete, Lock, DocumentRemove, DocumentAdd } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
-import { getLocale, setLocale, t as $t } from '../utils/i18n'
+import { getLocale, setLocale, t as i18nTrans} from '../utils/i18n'
 import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
@@ -190,7 +190,7 @@ watch(
 
 // 纸张尺寸选择对话框相关
 const showPageSizeDialog = ref(false)
-const newPageName = ref($t('pageManager.newPage'))
+const newPageName = ref(i18nTrans('pageManager.newPage'))
 const selectedPageSize = ref('A4')
 
 // 预定义纸张尺寸列表
@@ -262,7 +262,7 @@ onMounted(() => {
     });
     
     errorLogService.addErrorLog(
-      null,
+      new Error(),
       `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
       'debug'
     );
@@ -275,14 +275,14 @@ onMounted(() => {
     });
     
     errorLogService.addErrorLog(
-      null,
+      new Error(),
       `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
       'debug'
     );
   }
   
   errorLogService.addErrorLog(
-    null,
+    new Error(),
     `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
     'debug'
   );
@@ -367,11 +367,11 @@ const createNewPage = () => {
 const handleDialogClose = (done) => {
   if (isCreatingPage.value) {
     ElMessageBox.confirm(
-      $t('pageManager.confirmCloseDuringCreation'),
-      $t('pageManager.warning'),
+      i18nTrans('pageManager.confirmCloseDuringCreation'),
+      i18nTrans('pageManager.warning'),
       {
-        confirmButtonText: $t('pageManager.confirm'),
-        cancelButtonText: $t('pageManager.cancel'),
+        confirmButtonText: i18nTrans('pageManager.confirm'),
+        cancelButtonText: i18nTrans('pageManager.cancel'),
         type: 'warning'
       }
     ).then(() => {
@@ -386,7 +386,7 @@ const handleDialogClose = (done) => {
 
   try {
     // 创建页面
-    const newPageNameValue = newPageName.value || $t('pageManager.newPage')
+    const newPageNameValue = newPageName.value || i18nTrans('pageManager.newPage')
     console.log('[PageManager] 创建页面，名称:', newPageNameValue, '尺寸:', selectedPageSize.value);
     
     // 获取所选纸张尺寸对象
@@ -420,7 +420,7 @@ const handleDialogClose = (done) => {
       // 关闭对话框
       showPageSizeDialog.value = false
       // 重置输入
-      newPageName.value = $t('pageManager.newPage')
+      newPageName.value = i18nTrans('pageManager.newPage')
 
       // 添加空值检查
       if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj && pages.value[newPageIdx]) {
@@ -461,7 +461,7 @@ const handleDialogClose = (done) => {
     });
     
     ElMessage.error({
-      message: $t('pageManager.pageCreationFailed'),
+      message: i18nTrans('pageManager.pageCreationFailed'),
       duration: 5000
     })
     
@@ -565,11 +565,11 @@ function deletePage(idx) {
   
   // 显示确认对话框
   ElMessageBox.confirm(
-    $t('pageManager.confirmDeletePage'),
-    $t('pageManager.warning'),
+    i18nTrans('pageManager.confirmDeletePage'),
+    i18nTrans('pageManager.warning'),
     {
-      confirmButtonText: $t('pageManager.confirm'),
-      cancelButtonText: $t('pageManager.cancel'),
+      confirmButtonText: i18nTrans('pageManager.confirm'),
+      cancelButtonText: i18nTrans('pageManager.cancel'),
       type: 'warning'
     }
   ).then(() => {
@@ -767,7 +767,7 @@ function convertFormsToCards() {
 // 调试按钮点击
 const debugButton = (buttonName) => {
   console.log(`[PageManager] 按钮点击调试 - ${buttonName} 按钮被点击`);
-  console.log(`[PageManager] i18n 翻译 - cancel: ${$t('pageManager.cancel')}, create: ${$t('pageManager.create')}`);
+  console.log(`[PageManager] i18n 翻译 - cancel: ${i18nTrans('pageManager.cancel')}, create: ${i18nTrans('pageManager.create')}`);
   console.log(`[PageManager] 按钮状态 - isCreatingPage: ${isCreatingPage.value}, selectedPageSize: ${selectedPageSize.value}`);
 
   if (buttonName === 'cancel') {
