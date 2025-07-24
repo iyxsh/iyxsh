@@ -64,12 +64,13 @@
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
-          <FormGrid v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
+          <FormGrid v-show="currentPageType === 'form'" 
+            v-if="pages[currentPageIdx] && Array.isArray(pages[currentPageIdx].forms)"
             v-model="pages[currentPageIdx].forms"
-            @update:modelValue="handleFormUpdate"
             :editable="editPageIdx === currentPageIdx" 
             :cardStyleOn="cardStyleOn"
             :pageSize="pages[currentPageIdx]?.pageSize" 
+            @update:modelValue="handleFormUpdate"
             ref="formGridRef" />
           <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
             :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
@@ -310,29 +311,33 @@ function handleFormUpdate(updatedForms) {
       return;
     }
 
-    // 创建深拷贝以避免直接修改响应式对象
-    const newPages = JSON.parse(JSON.stringify(pages.value));
+    // 直接更新当前页面的表单数组，避免使用splice等可能引起问题的方法
+    const currentPage = pages.value[currentPageIdx.value];
     
-    // 确保当前页面有forms数组
-    if (!newPages[currentPageIdx.value].forms) {
-      newPages[currentPageIdx.value].forms = [];
-    }
-    
-    // 更新当前页面的表单数据
-    newPages[currentPageIdx.value] = {
-      ...newPages[currentPageIdx.value],
-      forms: [...updatedForms]
+    // 创建新的页面对象以确保响应式更新
+    const updatedPage = {
+      ...currentPage,
+      forms: Array.isArray(updatedForms) ? [...updatedForms] : []
     };
     
-    // 更新页面数据
+    // 替换整个页面对象以触发响应式更新
+    const newPages = [...pages.value];
+    newPages[currentPageIdx.value] = updatedPage;
     pages.value = newPages;
-    
+
     // 保存到本地存储
     localStorage.setItem('form-pages', JSON.stringify(pages.value));
-    console.log('[PageManager] 本地存储更新验证:', JSON.parse(localStorage.getItem('form-pages')));
+    const storedPages = JSON.parse(localStorage.getItem('form-pages'));
+    console.log('[PageManager] 本地存储更新验证:', storedPages);
     
     console.log('[PageManager] 表单更新成功，当前页面表单数量:', 
       pages.value[currentPageIdx.value]?.forms?.length || 0);
+    
+    // 额外验证存储的数据
+    if (storedPages && storedPages[currentPageIdx.value]) {
+      console.log('[PageManager] 存储中当前页面表单数量:', 
+        storedPages[currentPageIdx.value]?.forms?.length || 0);
+    }
   } catch (error) {
     console.error('[PageManager] 更新表单时出错:', error);
     ElMessage.error('更新表单失败');
@@ -392,7 +397,7 @@ onMounted(() => {
     errorLogService.addErrorLog(
       new Error(),
       `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
-      'debug'
+      'info'
     );
   }
 
@@ -405,14 +410,14 @@ onMounted(() => {
     errorLogService.addErrorLog(
       new Error(),
       `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
-      'debug'
+      'info'
     );
   }
   
   errorLogService.addErrorLog(
     new Error(),
     `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
-    'debug'
+    'info'
   );
 });
 
@@ -451,7 +456,7 @@ onMounted(() => {
     errorLogService.addErrorLog(
       new Error(),
       `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
-      'debug'
+      'info'
     );
   }
 
@@ -464,14 +469,14 @@ onMounted(() => {
     errorLogService.addErrorLog(
       new Error(),
       `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
-      'debug'
+      'info'
     );
   }
   
   errorLogService.addErrorLog(
     new Error(),
     `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
-    'debug'
+    'info'
   );
 });
 
@@ -617,11 +622,11 @@ const createNewPage = () => {
     // 保存当前页面数量作为新页面索引
     const newPageIdx = pages.value.length;
     
-    // 修改addPage调用方式
-    const newPage = reactive({
-      id: Date.now(),
+    // 修改addPage调用方式，确保页面数据结构完整
+    const newPage = {
+      id: Date.now() + Math.random(),
       name: newPageNameValue,
-      forms: [],
+      forms: [], // 确保初始化为空数组
       pageSize: {
         name: pageSizeObj.name,
         width: pageSizeObj.width,
@@ -629,8 +634,10 @@ const createNewPage = () => {
         unit: pageSizeObj.unit
       },
       orientation: 'portrait'
-    })
-    pages.value.push(newPage)
+    }
+    
+    // 使用 usePages 提供的 addPage 方法
+    addPage(newPage);
     
     // 更新当前页面索引
     currentPageIdx.value = newPageIdx;
@@ -664,35 +671,20 @@ const createNewPage = () => {
     // 记录成功创建日志
     console.log('[PageManager] 页面创建成功:', {
       pageName: newPageNameValue,
-      pageSize: selectedPageSize.value,
-      pageIdx: newPageIdx
+      pageId: pages.value[newPageIdx].id,
+      formsCount: pages.value[newPageIdx].forms?.length || 0
     });
     
-    errorLogService.addErrorLog(
-      null,
-      `页面创建成功: ${newPageNameValue} (${selectedPageSize.value})`,
-      'info'
-    );
+    // 页面创建成功提示
+    ElMessage.success(i18nTrans('pageManager.pageCreated', {}, '页面创建成功'));
+    
   } catch (error) {
-    console.error('创建页面时出错:', error)
-    console.error('错误详细信息:', {
-      errorType: typeof error,
-      errorMessage: error.message,
-      errorStack: error.stack,
-      pagesState: JSON.stringify(pages.value, null, 2),
-      currentPageIdx: currentPageIdx.value,
-      selectedPageSize: selectedPageSize.value
-    });
+    console.error('[PageManager] 创建页面异常:', error);
+    ElMessage.error(i18nTrans('pageManager.pageCreationFailed'));
     
-    ElMessage.error({
-      message: i18nTrans('pageManager.pageCreationFailed'),
-      duration: 5000
-    })
-    
-    // 记录错误日志
     errorLogService.addErrorLog(
       error,
-      '创建页面失败',
+      '创建页面失败 - 异常错误',
       'error'
     );
   } finally {
@@ -812,19 +804,23 @@ function deletePage(idx) {
       
       // 删除前获取页面名称
       const pageName = pages.value[idx]?.name || i18nTrans('pageManager.newPage');
+      const successMessage = `页面"${pageName}"删除成功`;
       console.log('[PageManager] 页面删除成功:', {
         pageIndex: idx,
         pageName
       });
       
+      ElMessage.success(successMessage);
+      
       errorLogService.addErrorLog(
-        null,
+        new Error(successMessage),
         `页面删除成功: ${pageName} (${idx})`,
         'info'
       );
     } catch (error) {
       console.error('[PageManager] 删除页面时发生错误:', error);
-      ElMessage.error('页面删除失败');
+      const errorMessage = '页面删除失败';
+      ElMessage.error(errorMessage);
       
       errorLogService.addErrorLog(
         error,
@@ -834,10 +830,11 @@ function deletePage(idx) {
     }
   }).catch(() => {
     console.log('[PageManager] 页面删除操作取消:', idx);
-    ElMessage.info('已取消删除');
+    const cancelMessage = '已取消删除';
+    ElMessage.info(cancelMessage);
     
     errorLogService.addErrorLog(
-      null,
+      new Error(cancelMessage),
       `页面删除取消: ${idx}`,
       'info'
     );

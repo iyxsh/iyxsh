@@ -21,13 +21,13 @@ import errorLogService from '@/services/errorLogService'
 // = 2. 定义 props
 // =====================================================
 const props = defineProps({
-  editable: {
-    type: Boolean,
-    required: true
-  },
-  forms: {
+  modelValue: {
     type: Array,
     required: true
+  },
+  editable: {
+    type: Boolean,
+    default: false
   },
   cardStyleOn: {
     type: Boolean,
@@ -73,10 +73,17 @@ const showAddFormEditor = ref(false)
 // 表单验证函数
 const validateForms = (forms) => {
   try {
+    // 添加对forms为undefined或null的检查
+    if (!forms) {
+      console.warn('[FormGrid] 接收到空的表单数据');
+      return [];
+    }
+    
     if (!Array.isArray(forms)) {
       console.warn('[FormGrid] 接收到非数组表单数据:', forms);
       return [];
     }
+    
     return forms.map((form, index) => {
       // 确保表单有唯一ID，但如果已存在则不重新生成
       const formId = form.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -108,6 +115,9 @@ const validateForms = (forms) => {
 const initializeGridLayout = () => {
   console.log('[FormGrid] 初始化网格布局');
   // 这里可以添加实际的布局初始化逻辑
+  
+  // 如果需要触发更新，应该由其他逻辑来处理
+  // 而不是在watch中直接调用导致循环
 };
 
 // =====================================================
@@ -158,9 +168,14 @@ const handleAddForm = () => {
   try {
     console.log('[FormGrid] 开始处理添加表单');
 
-    // 初始化添加表单数据
+    // 生成更可靠的唯一ID，使用时间戳和随机字符串组合
+    const generateUniqueId = () => {
+      return `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}-${Math.random().toString(36).substring(2, 5)}`;
+    };
+
+    // 初始化添加表单数据，确保每次都生成新的唯一ID
     addFormData.value = {
-      id: `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      id: generateUniqueId(),
       title: '',
       value: '',
       remark: '',
@@ -198,15 +213,15 @@ const handleAddForm = () => {
         }
       },
       position: { 
-        x: 20 + (forms.value.length * 20), 
-        y: 20 + (forms.value.length * 20) 
+        x: 20 + (forms.value?.length * 20), 
+        y: 20 + (forms.value?.length * 20) 
       },
       size: { width: 200, height: 100 },
       createdAt: new Date().toISOString()
     }
     
     // 更新key以强制刷新FormEditor组件
-    addFormDataKey.value = Date.now()
+    addFormDataKey.value = Date.now() + 1 // 增加一个偏移量确保key变化
 
     // 显示添加表单编辑器
     showAddFormEditor.value = true
@@ -224,29 +239,26 @@ const saveAddForm = (formData) => {
   try {
     console.log('[FormGrid] 开始保存表单', formData);
     
-    // 确保 props.forms 是一个数组
-    const currentForms = Array.isArray(props.forms) ? [...props.forms] : [];
+    // 确保 forms.value 是一个数组
+    const currentForms = Array.isArray(forms.value) ? [...forms.value] : [];
     console.log('[FormGrid] 当前表单数量:', currentForms?.length ?? 0);
     
-    // 生成更可靠的唯一ID
+    // 生成更可靠的唯一ID，确保每次都有新ID
     const newForm = {
       ...formData,
       id: formData.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       createdAt: formData.createdAt || new Date().toISOString()
     };
     
-    // 创建新的表单数组
+    // 创建新的表单数组，确保不修改原数组
     const updatedForms = [...currentForms, newForm];
     console.log('[FormGrid] 更新后表单数量:', updatedForms.length);
     
-    // 深度克隆表单数据以确保响应式更新
-    const deepClonedForms = JSON.parse(JSON.stringify(updatedForms));
-    
     // 更新内部表单状态，使用响应式方式更新
-    forms.value = [...deepClonedForms];
+    forms.value = updatedForms;
     
     // 触发更新事件，确保父组件接收到更新
-    emit('update:modelValue', [...deepClonedForms]);
+    emit('update:modelValue', updatedForms);
     
     // 确保在DOM更新后执行
     nextTick(() => {
@@ -256,7 +268,7 @@ const saveAddForm = (formData) => {
       showAddFormEditor.value = false;
       
       // 更新key以确保下次打开时强制刷新
-      addFormDataKey.value = Date.now() + 1;
+      addFormDataKey.value = Date.now() + Math.random();
       
       // 提示成功
       ElMessage.success('表单添加成功');
@@ -264,20 +276,24 @@ const saveAddForm = (formData) => {
       // 清空添加表单数据
       addFormData.value = null;
       
+      // 更新卡片位置信息
+      const newPositions = updatedForms.map(form => ({
+        id: form.id,
+        ...form.position,
+        width: form.size?.width || 200,
+        height: form.size?.height || 100
+      }));
+      
+      // 更新全局位置信息
+      positions.value = newPositions;
+      
       // 强制更新卡片样式和位置
-      if (cardStyleService.updateCardStyles) {
-        cardStyleService.updateCardStyles([...deepClonedForms]);
+      if (initializeCardStyleService) {
+        initializeCardStyleService(props.pageSize);
       }
       
-      // 更新卡片位置信息
-      if (cardStyleService.setPositions) {
-        const positions = deepClonedForms.map(form => ({
-          id: form.id,
-          ...form.position,
-          width: form.size?.width || 200,
-          height: form.size?.height || 100
-        }));
-        cardStyleService.setPositions(positions);
+      if (cardStyleService.updateCardStyles) {
+        cardStyleService.updateCardStyles(updatedForms, newPositions);
       }
     });
   } catch (error) {
@@ -346,37 +362,33 @@ const handleUpdateForm = (updatedForm) => {
       return;
     }
     
-    // 查找表单索引
-    const index = props.forms?.findIndex(f => f && f.id === updatedForm.id) ?? -1;
-    console.log(`[FormGrid] 找到表单索引: ${index}`);
-    
-    if (index !== -1) {
-      // 创建更新后的表单数组
-      const updatedForms = [...props.forms];
-      
-      // 添加更新时间
-      const formWithTimestamp = {
-        ...updatedForm,
-        updatedAt: new Date().toISOString()
-      };
-      
-      updatedForms[index] = formWithTimestamp;
-      
-      console.log(`[FormGrid] 准备更新表单数组，长度: ${updatedForms.length}`);
-      
-      // 触发更新事件
-      emit('update:modelValue', updatedForms);
-      
-      // 确保在DOM更新后执行
-      nextTick(() => {
-        console.log('[FormGrid] 表单更新后DOM已更新');
-        // 提示成功
-        ElMessage.success('表单已更新');
-      });
-    } else {
-      console.warn(`[FormGrid] 未找到要更新的表单: ${updatedForm.id}`);
-      ElMessage.warning('未找到要更新的表单');
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
     }
+    
+    // 创建更新后的表单数组
+    const updatedForms = props.modelValue.map(form => 
+      form.id === updatedForm.id 
+        ? { 
+            ...updatedForm,
+            updatedAt: new Date().toISOString()
+          } 
+        : form
+    );
+    
+    console.log(`[FormGrid] 准备更新表单数组，长度: ${updatedForms.length}`);
+    
+    // 触发更新事件
+    emit('update:modelValue', updatedForms);
+    
+    // 确保在DOM更新后执行
+    nextTick(() => {
+      console.log('[FormGrid] 表单更新后DOM已更新');
+      // 提示成功
+      ElMessage.success('表单已更新');
+    });
   } catch (error) {
     console.error('[FormGrid] 更新表单失败:', error);
     handleError(error, '更新表单失败');
@@ -386,6 +398,12 @@ const handleUpdateForm = (updatedForm) => {
 // 表单删除处理函数
 const handleDeleteForm = (formToDelete) => {
   try {
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
+    }
+    
     // 确认删除
     ElMessageBox.confirm('确定要删除此表单吗？', '警告', {
       confirmButtonText: '确定',
@@ -393,7 +411,7 @@ const handleDeleteForm = (formToDelete) => {
       type: 'warning'
     }).then(() => {
       // 过滤掉要删除的表单
-      const updatedForms = props.forms.filter(f => f.id !== formToDelete.id);
+      const updatedForms = props.modelValue.filter(f => f.id !== formToDelete.id);
       // 触发更新事件
       emit('update:modelValue', updatedForms);
       // 提示成功
@@ -412,27 +430,59 @@ const updateFormPosition = ({ formId, position }) => {
   try {
     console.log(`[FormGrid] 更新表单位置: ${formId}`, position);
     
-    // 查找表单索引
-    const index = forms.value.findIndex(f => f.id === formId);
-    if (index !== -1) {
-      // 更新表单位置
-      const updatedForms = [...forms.value];
-      updatedForms[index] = {
-        ...updatedForms[index],
-        position: { ...position }
-      };
-      
-      // 更新内部表单状态
-      forms.value = [...updatedForms];
-      
-      // 触发更新事件
-      emit('update:modelValue', updatedForms);
-      
-      console.log(`[FormGrid] 表单位置更新成功: ${formId}`, position);
-    } else {
-      console.warn(`[FormGrid] 未找到要更新位置的表单: ${formId}`);
+    // 验证参数
+    if (!formId || !position || typeof position.x === 'undefined' || typeof position.y === 'undefined') {
+      throw new Error('无效的位置数据或表单ID');
     }
+    
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
+    }
+    
+    // 创建更新后的表单数组
+    const updatedForms = props.modelValue.map(form => {
+      if (form.id === formId) {
+        // 确保创建新的位置对象以避免引用问题
+        return {
+          ...form,
+          position: { 
+            x: Math.round(position.x), 
+            y: Math.round(position.y) 
+          }
+        };
+      }
+      return form;
+    });
+    
+    // 触发更新事件
+    emit('update:modelValue', updatedForms);
+    
+    // 记录调试信息
+    const updatedForm = updatedForms.find(f => f.id === formId);
+    console.log(`[FormGrid] 表单位置更新成功: ${formId}`, {
+      oldPosition: props.modelValue.find(f => f.id === formId)?.position,
+      newPosition: updatedForm?.position
+    });
+    
+    // 更新全局位置信息用于样式计算
+    const newPositions = updatedForms.map(form => ({
+      id: form.id,
+      ...form.position,
+      width: form.size?.width || 200,
+      height: form.size?.height || 100
+    }));
+    
+    positions.value = newPositions;
+    
+    // 如果需要，更新卡片样式
+    if (cardStyleService.updateCardStyles) {
+      cardStyleService.updateCardStyles(updatedForms, newPositions);
+    }
+    
   } catch (error) {
+    console.error('[FormGrid] 更新表单位置失败:', error);
     handleError(error, '更新表单位置失败');
   }
 };
@@ -442,26 +492,36 @@ const updateFormSize = ({ formId, size }) => {
   try {
     console.log(`[FormGrid] 更新表单尺寸: ${formId}`, size);
     
-    // 查找表单索引
-    const index = forms.value.findIndex(f => f.id === formId);
-    if (index !== -1) {
-      // 更新表单尺寸
-      const updatedForms = [...forms.value];
-      updatedForms[index] = {
-        ...updatedForms[index],
-        size: { ...size }
-      };
-      
-      // 更新内部表单状态
-      forms.value = [...updatedForms];
-      
-      // 触发更新事件
-      emit('update:modelValue', updatedForms);
-      
-      console.log(`[FormGrid] 表单尺寸更新成功: ${formId}`, size);
-    } else {
-      console.warn(`[FormGrid] 未找到要更新尺寸的表单: ${formId}`);
+    // 验证参数
+    if (!formId || !size || typeof size.width === 'undefined' || typeof size.height === 'undefined') {
+      throw new Error('无效的尺寸数据或表单ID');
     }
+    
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
+    }
+    
+    // 创建更新后的表单数组
+    const updatedForms = props.modelValue.map(form => {
+      if (form.id === formId) {
+        // 确保创建新的尺寸对象以避免引用问题
+        return {
+          ...form,
+          size: { 
+            width: Math.round(size.width), 
+            height: Math.round(size.height) 
+          }
+        };
+      }
+      return form;
+    });
+    
+    // 触发更新事件
+    emit('update:modelValue', updatedForms);
+    
+    console.log(`[FormGrid] 表单尺寸更新成功: ${formId}`, size);
   } catch (error) {
     handleError(error, '更新表单尺寸失败');
   }
@@ -472,31 +532,33 @@ const handleFormMouseDown = (clickedForm) => {
   try {
     console.log(`[FormGrid] 表单鼠标按下: ${clickedForm.id}`);
     
-    // 查找表单索引
-    const index = forms.value.findIndex(f => f.id === clickedForm.id);
-    if (index !== -1) {
-      // 获取当前最大的zIndex
-      const maxZIndex = Math.max(...forms.value.map(f => f.zIndex || 1), 1);
-      
-      // 更新被点击表单的zIndex为最大值+1
-      const updatedForms = [...forms.value];
-      updatedForms[index] = {
-        ...updatedForms[index],
-        zIndex: maxZIndex + 1
-      };
-      
-      // 更新内部表单状态
-      forms.value = [...updatedForms];
-      
-      // 触发更新事件
-      emit('update:modelValue', updatedForms);
-      
-      console.log(`[FormGrid] 表单zIndex更新成功: ${clickedForm.id}`, maxZIndex + 1);
-    } else {
-      console.warn(`[FormGrid] 未找到要提升zIndex的表单: ${clickedForm.id}`);
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
     }
+    
+    // 获取当前最大的zIndex
+    const maxZIndex = Math.max(...props.modelValue.map(f => f.zIndex || 1), 1);
+    
+    // 创建更新后的表单数组
+    const updatedForms = props.modelValue.map(form => {
+      if (form.id === clickedForm.id) {
+        // 确保创建新的对象以避免引用问题
+        return {
+          ...form,
+          zIndex: maxZIndex + 1
+        };
+      }
+      return form;
+    });
+    
+    // 触发更新事件
+    emit('update:modelValue', updatedForms);
+    
+    console.log(`[FormGrid] 表单zIndex更新成功: ${clickedForm.id}`, maxZIndex + 1);
   } catch (error) {
-    handleError(error, '处理表单鼠标按下事件失败');
+    handleError(error, '更新表单层级失败');
   }
 };
 
@@ -505,8 +567,8 @@ const handleFormSave = (updatedForm) => {
   try {
     console.log('[FormGrid] 开始保存编辑的表单', updatedForm);
     
-    // 确保 props.forms 是一个数组
-    const currentForms = Array.isArray(props.forms) ? [...props.forms] : [];
+    // 确保 props.modelValue 是一个数组
+    const currentForms = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
     console.log('[FormGrid] 当前表单数量:', currentForms?.length ?? 0);
     
     // 查找并更新表单
@@ -518,9 +580,6 @@ const handleFormSave = (updatedForm) => {
       // 如果没找到表单，可能是新增的
       currentForms.push({ ...updatedForm });
     }
-    
-    // 更新内部表单状态
-    forms.value = [...currentForms];
     
     // 触发更新事件
     emit('update:modelValue', currentForms);
@@ -573,24 +632,6 @@ defineExpose({
   cancelAddForm
 })
 
-// =====================================================
-// = 6. 生命周期钩子
-// =====================================================
-// 计算网格容器样式
-const gridContainerStyle = computed(() => {
-  if (props.pageSize) {
-    const { width, height, unit } = props.pageSize;
-    return {
-      width: `${width}${unit}`,
-      minHeight: `${height}${unit}`,
-      border: '1px solid #eee',
-      position: 'relative',
-      overflow: 'auto'
-    };
-  }
-  return {};
-});
-
 // 在组件挂载时初始化
 onMounted(() => {
   try {
@@ -607,32 +648,62 @@ onMounted(() => {
       cardStyleService.setPositions(positions.value)
     }
 
+    // 设置拖拽服务
+    if (dragDropService.setCardStyleService) {
+      dragDropService.setCardStyleService(cardStyleService)
+    }
+
+    // 显式绑定事件处理程序
+    if (dragDropService.setHandleDragStart) {
+      dragDropService.setHandleDragStart(dragDropService.handleDragStart || function() {})
+    }
+    if (dragDropService.setHandleDragEnd) {
+      dragDropService.setHandleDragEnd(dragDropService.handleDragEnd || function() {})
+    }
+    if (dragDropService.setHandleDragOver) {
+      dragDropService.setHandleDragOver(dragDropService.handleDragOver || function() {})
+    }
+    if (dragDropService.setHandleDrop) {
+      dragDropService.setHandleDrop(dragDropService.handleDrop || function() {})
+    }
+
+    // 初始化表单数据
+    console.log('[FormGrid] 初始化表单数据:', forms.value?.length, '项', 'props数据:', props.modelValue?.length || 0);
+    if (!props.modelValue || props.modelValue.length === 0) {
+      console.warn('[FormGrid] 接收到空表单数据');
+      loading.value = false;
+    }
 
     // 监听表单数据变化 - 使用立即执行和深度监听
-    watch(() => props.forms, (newVal) => {
+    watch(() => props.modelValue, (newVal) => {
       console.log('[FormGrid] 检测到表单数据变化:', newVal);
       // 添加深度克隆和空值处理
       // 保持响应式引用，避免重新赋值破坏响应式
+      
+      // 使用props.modelValue直接进行验证
       const validated = validateForms(newVal);
       forms.value.splice(0, forms.value.length, ...validated);
+      
+      // 更新位置信息
+      const newPositions = validated.map(form => ({
+        id: form.id,
+        ...form.position,
+        width: form.size?.width || 200,
+        height: form.size?.height || 100
+      }));
+      positions.value = newPositions;
+      
       nextTick(() => {
         initializeGridLayout();
-        // 传递原始数据避免响应式嵌套
-        // 总是触发更新事件以确保数据同步
-        emit('update:modelValue', toRaw(forms.value));
+        // 注意：这里不要触发update:modelValue事件，避免循环更新
+        // 只有在内部状态变化时才触发该事件
       });
     }, { deep: true, immediate: true });
-
-    // 添加currentPageIdx监听
-    watch(() => props.pageSize, (newVal) => {
-      console.log('[FormGrid] 页面尺寸更新:', newVal);
-      initializeCardStyleService(newVal);
-    });
 
     // 优化加载状态处理
     nextTick(() => {
       // 当表单数据就绪时立即更新加载状态
-      if (forms.value.length > 0) {
+      if (props.modelValue && props.modelValue.length > 0) {
         loading.value = false
       } else {
         // 设置安全超时
@@ -640,11 +711,26 @@ onMounted(() => {
           loading.value = false
         }, 100)
       }
-    })
-  } catch (err) {
-    handleError(err, '初始化组件失败')
+    });
+  } catch (error) {
+    handleError(error, '组件挂载失败');
   }
-})
+});
+
+// 计算网格容器样式
+const gridContainerStyle = computed(() => {
+  if (props.pageSize) {
+    const { width, height, unit } = props.pageSize;
+    return {
+      width: `${width}${unit}`,
+      minHeight: `${height}${unit}`,
+      border: '1px solid #eee',
+      position: 'relative',
+      overflow: 'auto'
+    };
+  }
+  return {};
+});
 
 </script>
 
@@ -660,9 +746,10 @@ onMounted(() => {
 
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-state">
-      <el-spin>
-        <el-icon name="loading" spin /> 加载中...
-      </el-spin>
+      <el-icon class="is-loading">
+        <svg viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg" data-v-72eee16e=""><path d="M512 512m-224 0a224 224 0 1 0 448 0 224 224 0 1 0-448 0Z" fill="#1890ff" data-v-72eee16e=""></path><path d="M957.1 512c0-29.4-4.2-57.8-11.9-84.7-7.7-26.9-18.8-51.9-32.7-74.4-14-22.5-31.5-42.3-51.8-59.1-20.3-16.8-43.2-30.3-68.2-40.1-25-9.8-51.8-15.9-80-17.9-28.2-2-57.2.3-85.9-7.1-28.7-6.8-56.2-17.9-81.6-32.9-25.4-15-48.4-33.7-68.5-55.8-20.1-22.1-36.9-47.4-50.1-75.2-13.2-27.9-22.8-58.2-28.5-90.5-5.7 32.3-8.5 66.1-8.5 100.8 0 29.4 4.2 57.8 11.9 84.7 7.7 26.9 18.8 51.9 32.7 74.4 14 22.5 31.5 42.3 51.8 59.1 20.3 16.8 43.2 30.3 68.2 40.1 25 9.8 51.8 15.9 80 17.9 28.2 2 57.2-.3 85.9-7.1 28.7-6.8 56.2-17.9 81.6-32.9 25.4-15 48.4-33.7 68.5-55.8 20.1-22.1 36.9-47.4 50.1-75.2 13.2-27.9 22.8-58.2 28.5-90.5 5.8-32.3 8.6-66.1 8.6-100.8z m-89.6 0c0 25.6-3.6 50.4-10.5 74-6.9 23.5-16.3 45.5-27.8 65.4-11.5 19.9-25.3 37.4-40.9 52.1-15.6 14.7-33.2 26.1-52.2 33.8-19 7.7-39.4 11.9-60.5 12.4-21.1.5-42.3-2.8-62.7-9.9-20.4-7.1-39.7-17.9-57.5-32-17.8-14.1-33.8-31.7-47.6-52.4-13.8-20.7-25.2-44.5-33.8-70.9-8.7-26.4-14.7-55.2-17.7-85.6-3-30.4-3-62.4 0-95.2 3-32.8 9-64.4 17.7-93.6 8.7-29.2 20.7-55.9 35.6-79.6 14.9-23.7 32.6-43.8 52.6-59.8 20-16 42.2-27.7 66.1-34.8 23.9-7.1 49.4-10.5 75.9-10.1 26.5.4 52.6 5 77.3 13.5 24.7 8.5 47.7 21.2 68.5 37.7 20.8 16.5 39.1 37.1 54.4 61.2 15.3 24.1 27.5 52 36.2 83 8.7 31 13.8 64.7 15 100.4 1.3 35.7-.9 72.8-6.4 110.4z" fill="#1890ff" data-v-72eee16e=""></path></svg>
+      </el-icon>
+      <span>加载中...</span>
     </div>
 
     <!-- 表单网格内容 -->

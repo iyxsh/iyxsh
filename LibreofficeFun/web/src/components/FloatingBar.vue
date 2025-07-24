@@ -22,159 +22,110 @@
           </el-popconfirm>
         </el-tooltip>
 
-        <el-tooltip effect="dark" :content="cardStyleOn ? '隐藏卡片样式' : '显示卡片样式'" placement="top">
-          <el-button type="success" size="small" circle @click="toggleCardStyle">
+        <el-tooltip effect="dark" content="样式开关" placement="top">
+          <el-button type="primary" size="small" circle @click="$emit('toggle-card-style')">
             <el-icon>
               <Grid />
             </el-icon>
           </el-button>
         </el-tooltip>
+
+        <el-tooltip effect="dark" content="上一页" placement="top">
+          <el-button type="primary" size="small" circle @click="$emit('prev-page')">
+            <el-icon>
+              <ArrowLeft />
+            </el-icon>
+          </el-button>
+        </el-tooltip>
+
+        <el-tooltip effect="dark" content="下一页" placement="top">
+          <el-button type="primary" size="small" circle @click="$emit('next-page')">
+            <el-icon>
+              <ArrowRight />
+            </el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
     </transition>
-    <el-button class="toggle-btn" type="info" size="small" circle @click="toggleBar">
+
+    <div class="toggle-button" @click="visible = !visible">
       <el-icon>
         <ArrowLeft v-if="visible" />
         <ArrowRight v-else />
       </el-icon>
-    </el-button>
+    </div>
   </div>
 </template>
-<script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
 
-// 定义props
-const props = defineProps({
-  clearCurrentPageForms: Function,
-  editable: Boolean,
-  onToggleCardStyle: Function // 新增回调
-})
+<script>
+import { ref } from 'vue'
+import { Plus, Delete, Grid, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 
-// 定义emits
-const emit = defineEmits(['add-form'])
-
-// 本地状态
-const visible = ref(true)
-const cardStyleOn = ref(true)
-let drag = false, offsetX = 0, offsetY = 0
-
-const barStyle = reactive({ 
-  x: 0, 
-  y: 0, 
-  transform: 'translate(0, 0)' 
-})
-
-// 错误处理函数
-const handleError = (error, context = '未知上下文') => {
-  console.error(`[FloatingBar Error] ${context}`, error);
-  ElMessage.error({
-    message: `操作失败: ${context}`,
-    duration: 5000,
-    type: 'error'
-  });
-}
-
-function startDrag(e) {
-  try {
-    drag = true
-    offsetX = e.clientX - barStyle.x
-    offsetY = e.clientY - barStyle.y
-    document.addEventListener('mousemove', onDrag)
-    document.addEventListener('mouseup', stopDrag)
-  } catch (error) {
-    handleError(error, '开始拖拽失败')
-  }
-}
-
-function onDrag(e) {
-  try {
-    if (!drag) return
-    barStyle.x = e.clientX - offsetX
-    barStyle.y = e.clientY - offsetY
-    barStyle.transform = `translate(${barStyle.x}px, ${barStyle.y}px)`
-  } catch (error) {
-    handleError(error, '拖拽过程中失败')
-  }
-}
-
-function stopDrag() {
-  try {
-    drag = false
-    document.removeEventListener('mousemove', onDrag)
-    document.removeEventListener('mouseup', stopDrag)
-  } catch (error) {
-    handleError(error, '停止拖拽失败')
-  }
-}
-
-function toggleBar() {
-  try {
-    visible.value = !visible.value
-  } catch (error) {
-    handleError(error, '切换工具栏失败')
-  }
-}
-
-function toggleCardStyle() {
-  try {
-    cardStyleOn.value = !cardStyleOn.value
-    if (props.onToggleCardStyle) props.onToggleCardStyle(cardStyleOn.value)
-  } catch (error) {
-    handleError(error, '切换卡片样式失败')
-  }
-}
-
-function clearCurrentPageForms() {
-  try {
-    if (!props.editable && !props.clearCurrentPageForms) {
-      showUnlockMessage();
-      return
+export default {
+  name: 'FloatingBar',
+  components: {
+    Plus,
+    Delete,
+    Grid,
+    ArrowLeft,
+    ArrowRight
+  },
+  props: {
+    clearCurrentPageForms: {
+      type: Function,
+      required: true
     }
-    
-    if (props.clearCurrentPageForms) {
-      props.clearCurrentPageForms();
+  },
+  emits: ['add-form', 'toggle-card-style', 'prev-page', 'next-page'],
+  setup(props, { emit }) {
+    const visible = ref(true)
+    const barStyle = ref({
+      top: '20px',
+      left: '20px'
+    })
+
+    let isDragging = false
+    let dragStartX, dragStartY, initialX, initialY
+
+    const startDrag = (e) => {
+      isDragging = true
+      dragStartX = e.clientX
+      dragStartY = e.clientY
+      initialX = barStyle.value.left ? parseInt(barStyle.value.left) : 20
+      initialY = barStyle.value.top ? parseInt(barStyle.value.top) : 20
+      
+      document.addEventListener('mousemove', drag)
+      document.addEventListener('mouseup', stopDrag)
     }
-  } catch (error) {
-    handleError(error, '清除当前页面表单失败')
-  }
-}
 
-function handleAddForm() {
-  try {
-    if (!props.editable) {
-      showUnlockMessage()
-      return
+    const drag = (e) => {
+      if (!isDragging) return
+      
+      const dx = e.clientX - dragStartX
+      const dy = e.clientY - dragStartY
+      
+      barStyle.value.left = `${initialX + dx}px`
+      barStyle.value.top = `${initialY + dy}px`
     }
-    
-    emit('add-form')
-  } catch (error) {
-    handleError(error, '添加表单失败')
+
+    const stopDrag = () => {
+      isDragging = false
+      document.removeEventListener('mousemove', drag)
+      document.removeEventListener('mouseup', stopDrag)
+    }
+
+    const handleAddForm = () => {
+      emit('add-form')
+    }
+
+    return {
+      visible,
+      barStyle,
+      startDrag,
+      handleAddForm
+    }
   }
 }
-
-function showUnlockMessage() {
-  try {
-    // 使用导入的 Element Plus 消息提示组件
-    ElMessage.warning({
-      message: '请先解锁页面再执行此操作',
-      duration: 3000
-    });
-  } catch (error) {
-    console.error('显示解锁提示失败:', error);
-  }
-}
-
-// 在组件卸载时清理事件监听器，防止内存泄漏
-onBeforeUnmount(() => {
-  try {
-    // 确保释放所有事件监听器
-    document.removeEventListener('mousemove', onDrag)
-    document.removeEventListener('mouseup', stopDrag)
-    console.log('[FloatingBar] 成功清理事件监听器')
-  } catch (error) {
-    console.error('[FloatingBar] 清理事件监听器失败:', error)
-  }
-})
 </script>
 <style scoped>
 .floating-bar {

@@ -89,7 +89,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { ElCard, ElDropdown, ElDropdownMenu, ElDropdownItem, ElButton, ElIcon } from 'element-plus'
+import { ElCard, ElDropdown, ElDropdownMenu, ElDropdownItem, ElButton, ElIcon, ElMessage } from 'element-plus'
 import { MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
 import { getDefaultCardStyles } from '@/services/cardStyleService'
 
@@ -146,13 +146,24 @@ const shouldShowMedia = computed(() => {
 
 // 计算标题样式
 const titleStyle = computed(() => {
-  // 如果使用元素特定样式
+  // 如果使用元素特定样式且已启用
   if (props.form.elementStyles && props.form.elementStyles.title && props.form.elementStyles.title.enabled) {
     const titleStyle = props.form.elementStyles.title
     return {
       fontSize: `${titleStyle.fontSize}px`,
       color: titleStyle.color,
-      fontWeight: titleStyle.fontWeight
+      fontWeight: titleStyle.fontWeight || 'normal',
+      marginBottom: '10px'
+    }
+  }
+  
+  // 否则使用通用样式设置
+  if (props.form.style) {
+    return {
+      color: props.form.style.color,
+      fontSize: `${props.form.style.fontSize}px`,
+      fontWeight: 'normal',
+      marginBottom: '10px'
     }
   }
   
@@ -166,13 +177,26 @@ const titleStyle = computed(() => {
 
 // 计算内容样式
 const valueStyle = computed(() => {
-  // 如果使用元素特定样式
+  // 如果使用元素特定样式且已启用
   if (props.form.elementStyles && props.form.elementStyles.value && props.form.elementStyles.value.enabled) {
     const valueStyle = props.form.elementStyles.value
     return {
       fontSize: `${valueStyle.fontSize}px`,
       color: valueStyle.color,
-      fontWeight: valueStyle.fontWeight
+      fontWeight: valueStyle.fontWeight || 'normal',
+      marginBottom: '10px',
+      whiteSpace: 'pre-wrap'
+    }
+  }
+  
+  // 否则使用通用样式设置
+  if (props.form.style) {
+    return {
+      color: props.form.style.color,
+      fontSize: `${props.form.style.fontSize}px`,
+      fontWeight: 'normal',
+      marginBottom: '10px',
+      whiteSpace: 'pre-wrap'
     }
   }
   
@@ -185,13 +209,24 @@ const valueStyle = computed(() => {
 
 // 计算备注样式
 const remarkStyle = computed(() => {
-  // 如果使用元素特定样式
+  // 如果使用元素特定样式且已启用
   if (props.form.elementStyles && props.form.elementStyles.remark && props.form.elementStyles.remark.enabled) {
     const remarkStyle = props.form.elementStyles.remark
     return {
       fontSize: `${remarkStyle.fontSize}px`,
       color: remarkStyle.color,
-      fontWeight: remarkStyle.fontWeight
+      fontWeight: remarkStyle.fontWeight || 'normal',
+      whiteSpace: 'pre-wrap'
+    }
+  }
+  
+  // 否则使用通用样式设置
+  if (props.form.style) {
+    return {
+      color: props.form.style.color,
+      fontSize: `${(props.form.style.fontSize || 14) - 2}px`, // 备注字体稍小
+      fontWeight: 'normal',
+      whiteSpace: 'pre-wrap'
     }
   }
   
@@ -204,13 +239,22 @@ const remarkStyle = computed(() => {
 
 // 计算媒体样式
 const mediaStyle = computed(() => {
-  // 如果使用元素特定样式
+  // 如果使用元素特定样式且已启用
   if (props.form.elementStyles && props.form.elementStyles.media && props.form.elementStyles.media.enabled) {
     const mediaStyle = props.form.elementStyles.media
     return {
       fontSize: `${mediaStyle.fontSize}px`,
       color: mediaStyle.color,
-      fontWeight: mediaStyle.fontWeight
+      fontWeight: mediaStyle.fontWeight || 'normal'
+    }
+  }
+  
+  // 否则使用通用样式设置
+  if (props.form.style) {
+    return {
+      color: props.form.style.color,
+      fontSize: `${props.form.style.fontSize}px`,
+      fontWeight: 'normal'
     }
   }
   
@@ -264,7 +308,11 @@ const handleCommand = (command) => {
 
 // 开始拖拽
 const startDrag = (event) => {
-  if (!props.editable) return
+  if (!props.editable) {
+    // 在非编辑状态提示用户
+    ElMessage.info('请先解锁页面再进行拖拽操作');
+    return;
+  }
   
   // 只有在卡片本身（非操作按钮）上按下鼠标才触发拖拽
   if (event.target.classList.contains('action-button') || 
@@ -279,7 +327,11 @@ const startDrag = (event) => {
 
 // 开始调整大小
 const startResize = (event) => {
-  if (!props.editable) return
+  if (!props.editable) {
+    // 在非编辑状态提示用户
+    ElMessage.info('请先解锁页面再进行尺寸调整操作');
+    return;
+  }
   
   event.preventDefault()
   event.stopPropagation() // 阻止事件冒泡
@@ -288,12 +340,26 @@ const startResize = (event) => {
 
 // 内部拖拽处理逻辑
 const handleDragStart = (event) => {
+  // 确保必要的属性存在
+  if (!props.form || !props.form.id) {
+    console.warn('[SingleFormShow] 表单数据不完整，无法拖拽');
+    return;
+  }
+  
+  if (!props.position || typeof props.position.x === 'undefined' || typeof props.position.y === 'undefined') {
+    console.warn('[SingleFormShow] 表单位置信息不完整，无法拖拽');
+    return;
+  }
+
   const startX = event.clientX
   const startY = event.clientY
   const startLeft = props.position.x
   const startTop = props.position.y
 
   const handleDragMove = (moveEvent) => {
+    // 防止事件未定义
+    if (!moveEvent) return;
+    
     const deltaX = moveEvent.clientX - startX
     const deltaY = moveEvent.clientY - startY
     const newX = startLeft + deltaX
@@ -316,12 +382,26 @@ const handleDragStart = (event) => {
 
 // 内部调整大小处理逻辑
 const handleResizeStart = (event) => {
+  // 确保必要的属性存在
+  if (!props.form || !props.form.id) {
+    console.warn('[SingleFormShow] 表单数据不完整，无法调整大小');
+    return;
+  }
+  
+  if (!props.size || typeof props.size.width === 'undefined' || typeof props.size.height === 'undefined') {
+    console.warn('[SingleFormShow] 表单尺寸信息不完整，无法调整大小');
+    return;
+  }
+
   const startX = event.clientX
   const startY = event.clientY
   const startWidth = props.size.width
   const startHeight = props.size.height
 
   const handleResizeMove = (moveEvent) => {
+    // 防止事件未定义
+    if (!moveEvent) return;
+    
     const deltaX = moveEvent.clientX - startX
     const deltaY = moveEvent.clientY - startY
     const newWidth = Math.max(100, startWidth + deltaX) // 最小宽度100px
