@@ -30,7 +30,7 @@
         
         <!-- 卡片样式选择器 -->
         <span class="control-label">卡片样式：</span>
-        <el-select v-model="selectedCardStyle" placeholder="选择卡片样式" size="small">
+        <el-select v-model="selectedCardStyle" placeholder="选择卡片样式" size="small" @change="handleCardStyleChange">
           <el-option
             v-for="option in cardStyleOptions"
             :key="option.value"
@@ -42,14 +42,30 @@
     </div>
 
     <div class="cards-display-area">
-      <div class="card-group" v-for="(group, groupIndex) in cardGroups" :key="groupIndex" :style="getCardGroupStyle()">
-        <div class="group-title">{{ group.title || '表单卡片组' }}</div>
-        <div class="cards-container">
-          <div v-for="(card, cardIndex) in group.cards" :key="cardIndex" class="text-card" :style="getCardStyle(card)"
+      <div 
+        class="card-group" 
+        v-for="(group, groupIndex) in cardGroups" 
+        :key="group.id || groupIndex" 
+        :style="getCardGroupStyle()">
+        <div class="group-title">{{ group.title || `表单卡片组 ${groupIndex + 1}` }}</div>
+        <div 
+          class="cards-container"
+          :class="{ 'vertical-layout': converterSettings.layout === 'vertical' }">
+          <div 
+            v-for="(card, cardIndex) in group.cards" 
+            :key="`${group.id || groupIndex}-${cardIndex}`" 
+            class="text-card" 
+            :style="getCardStyle(card)"
             @click="editCard(groupIndex, cardIndex)">
             <span class="card-text">{{ card?.text || '示例' }}</span>
           </div>
         </div>
+      </div>
+      
+      <!-- 当没有卡片时显示提示 -->
+      <div v-if="!cardGroups || cardGroups.length === 0" class="no-cards-placeholder">
+        <p>暂无卡片内容</p>
+        <p class="hint">请先在表单页面添加表单，然后转换为卡片</p>
       </div>
     </div>
 
@@ -63,19 +79,32 @@
         :value="editingCard.text || ''"
         @input="value => editingCard.text = value"
       />
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveCardEdit">确定</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import StyleSettings from './StyleSettings.vue';
-import { useEventBus } from '@/utils/eventBus'; // 使用别名路径提高可维护性
+import { useEventBus } from '@/utils/eventBus';
+import { ElMessage } from 'element-plus';
 
 // 创建事件总线实例
 const { on, off, emit } = useEventBus()
 
 // 添加组件加载调试信息
 console.log('SimpleCardConverter component initializing');
+
+// 定义props
+const props = defineProps({
+  forms: {
+    type: Array,
+    default: () => []
+  }
+});
 
 // 在组件挂载时注册事件
 onMounted(() => {
@@ -94,12 +123,19 @@ onMounted(() => {
       borderStyle: 'none',
       borderRadius: 0,
       boxShadow: 'none',
-      gradient: 'none'
+      gradient: 'none',
+      layout: 'horizontal'
     }
   }
   
   // 监听页面尺寸变化事件
   on('page-size-changed', handlePageSizeChange)
+  
+  // 如果有传入的表单数据，自动进行转换
+  if (props.forms && props.forms.length > 0) {
+    console.log('[SimpleCardConverter] 检测到传入的表单数据，自动进行转换');
+    convertFormsToCards(props.forms);
+  }
   
   console.log('SimpleCardConverter component mounted', {
     cardGroups: cardGroups.value,
@@ -152,29 +188,32 @@ const predefineColors = [
   '#ffffff',
   '#f5f5f5',
   '#e6f7ff',
-  '#f0f0ff',
+  '#f0f5ff',
   '#f9f0ff',
   '#fff0f6',
   'rgba(255, 69, 0, 0.68)'
 ]
 
-// 添加卡片样式选项
+// 卡片样式选项
 const cardStyleOptions = [
   { value: 'default', label: '默认样式' },
-  { value: 'shadow', label: '带阴影' },
-  { value: 'rounded', label: '圆角卡片' },
-  { value: 'outlined', label: '线框样式' },
-  { value: 'elevation', label: '立体效果' },
-  { value: 'gradient', label: '渐变背景' }
+  { value: 'minimal', label: '极简样式' },
+  { value: 'rounded', label: '圆角样式' },
+  { value: 'outlined', label: '边框样式' },
+  { value: 'elevation', label: '投影样式' },
+  { value: 'gradient', label: '渐变样式' }
 ]
 
-// 当前选中的卡片样式
+// 选定的卡片样式
 const selectedCardStyle = ref('default')
+
+// 转换器设置引用
+const converterSettingsRef = ref(null)
 
 // 转换器设置
 const converterSettings = reactive({
   showBorder: true,
-  showBackground: true,  // 新增背景显示开关
+  showBackground: true,
   fontSize: 24,
   padding: 16,
   margin: 8,
@@ -185,66 +224,233 @@ const converterSettings = reactive({
   borderStyle: 'none',
   borderRadius: 0,
   boxShadow: 'none',
-  gradient: 'none'
+  gradient: 'none',
+  layout: 'horizontal'
 })
 
-// 添加 converterSettings 的响应式引用
-const converterSettingsRef = ref(converterSettings)
+// 卡片组数据
+const cardGroups = ref([])
 
-// 在组件挂载时确保 converterSettings 已初始化
-onMounted(() => {
-  // 确保 converterSettings 已初始化
-  if (!converterSettingsRef.value) {
-    converterSettingsRef.value = {
-      showBorder: true,
-      showBackground: true,
-      fontSize: 24,
-      padding: 16,
-      margin: 8,
-      spacing: 8,
-      textRotation: 0,
-      backgroundColor: '#ffffff',
-      textColor: '#000000',
-      borderStyle: 'none',
-      borderRadius: 0,
-      boxShadow: 'none',
-      gradient: 'none'
+// 编辑功能相关
+const editDialogVisible = ref(false)
+const editingCard = reactive({
+  text: '',
+  groupIndex: -1,
+  cardIndex: -1
+})
+
+// 添加页面尺寸处理方法
+const setPageSize = (size) => {
+  if (size) {
+    converterSettings.fontSize = Math.min(size.width, size.height) * 0.8
+    // 通知其他组件页面尺寸已更改
+    emit('page-size-changed', size)
+  }
+}
+
+// 添加 handlePageSizeChange 方法
+const handlePageSizeChange = (size) => {
+  if (size && size.width && size.height) {
+    // 根据页面尺寸调整字体大小
+    const baseSize = Math.min(size.width, size.height)
+    converterSettings.fontSize = baseSize * 0.8
+    
+    // 更新样式
+    updateStyle()
+    
+    console.log('Page size changed:', size)
+  } else {
+    console.warn('Invalid page size data received')
+  }
+}
+
+// 转换表单为卡片
+const convertFormsToCards = (forms) => {
+  if (!forms || !forms.length) {
+    ElMessage.warning('没有可转换的表单数据')
+    return
+  }
+
+  // 过滤有效的表单（至少有一个字段有内容）
+  const validForms = forms.filter(form => 
+    (form.title && form.title.trim()) || 
+    (form.value && form.value.trim()) || 
+    (form.remark && form.remark.trim()) ||
+    (form.media && form.media.trim())
+  )
+
+  if (validForms.length === 0) {
+    ElMessage.warning('没有有效的表单内容可以转换')
+    return
+  }
+
+  const newGroups = validForms.map((form, index) => {
+    // 从表单提取文本内容
+    const texts = []
+
+    // 添加表单标题（如果有且不为空）
+    if (form.title && form.title.trim()) {
+      texts.push(form.title.trim())
     }
+    
+    // 添加表单内容（如果有且不为空）
+    if (form.value && form.value.trim()) {
+      texts.push(form.value.trim())
+    }
+    
+    // 添加表单备注（如果有且不为空）
+    if (form.remark && form.remark.trim()) {
+      texts.push(form.remark.trim())
+    }
+
+    // 合并文本内容，用换行符分隔
+    const combinedText = texts.join('\n').trim()
+
+    // 创建卡片
+    let cards = []
+    if (combinedText.length > 0) {
+      // 按字符分割文本创建卡片
+      cards = combinedText.split('').map(char => ({
+        text: char,
+        color: converterSettings.textColor,
+        backgroundColor: converterSettings.showBackground ? converterSettings.backgroundColor : 'transparent'
+      }))
+    } else {
+      // 如果没有内容，创建一个默认卡片
+      cards = [{ 
+        text: '空', 
+        color: converterSettings.textColor,
+        backgroundColor: converterSettings.showBackground ? converterSettings.backgroundColor : 'transparent'
+      }]
+    }
+    
+    // 确保每个卡片都有文本
+    cards.forEach(card => {
+      if (!card.text || card.text.trim() === '') {
+        card.text = '空'
+      }
+    })
+
+    return {
+      id: form.id || `group-${Date.now()}-${index}`,
+      title: form.title || `表单 ${index + 1}`,
+      cards
+    }
+  })
+
+  cardGroups.value = newGroups
+  nextTick(() => {
+    updateStyle()
+    ElMessage.success(`成功将 ${validForms.length} 个表单转换为卡片`)
+  })
+}
+
+// 更新卡片样式
+const updateStyle = () => {
+  // 这个函数被调用时会触发重新渲染
+  // 由于使用了响应式数据，Vue会自动应用最新样式
+  cardGroups.value = [...cardGroups.value] // 强制触发重新渲染
+  nextTick(() => {
+    // ElMessage.success('样式已更新')
+  })
+}
+
+// 获取卡片组样式
+const getCardGroupStyle = () => {
+  return {
+    marginBottom: '20px',
+    border: converterSettings.showBorder ? '1px solid #ddd' : 'none',
+    borderRadius: '4px',
+    padding: '10px',
+    backgroundColor: '#fff'
+  }
+}
+
+// 修改 getCardStyle 方法，添加空值检查
+const getCardStyle = (card) => {
+  // 添加空值检查
+  if (!card) {
+    return {}
   }
   
-  // 监听页面尺寸变化事件
-  on('page-size-changed', handlePageSizeChange)
+  // 确保基础样式属性存在
+  const baseSize = converterSettings.fontSize || 24
+  const margin = converterSettings.margin !== undefined ? converterSettings.margin : 8
+  const padding = converterSettings.padding !== undefined ? converterSettings.padding : 16
+  const textColor = converterSettings.textColor || '#000000'
+  const backgroundColor = converterSettings.backgroundColor || '#ffffff'
+  const borderStyle = converterSettings.borderStyle || 'none'
+  const borderRadius = converterSettings.borderRadius !== undefined ? converterSettings.borderRadius : 0
+  const boxShadow = converterSettings.boxShadow || 'none'
+  const textRotation = converterSettings.textRotation || 0
+  const showBackground = converterSettings.showBackground !== undefined ? converterSettings.showBackground : true
+  const gradient = converterSettings.gradient || 'none'
   
-  console.log('SimpleCardConverter component mounted', {
-    cardGroups: cardGroups.value,
-    selectedCardStyle: selectedCardStyle.value
-  });
-})
+  const style = {
+    width: `${baseSize * 1.2}px`,
+    height: `${baseSize * 1.2}px`,
+    margin: `${margin}px`,
+    padding: `${padding}px`,
+    fontSize: `${baseSize}px`,
+    color: textColor,
+    backgroundColor: showBackground 
+      ? gradient === 'none' 
+        ? backgroundColor 
+        : gradient
+      : 'transparent',
+    transform: `rotate(${textRotation}deg)`,
+    border: borderStyle,
+    borderRadius: `${borderRadius}px`,
+    boxShadow: boxShadow,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    transition: 'all 0.3s ease',
+    cursor: 'pointer',
+    wordBreak: 'break-all',
+    textAlign: 'center',
+    lineHeight: '1.2'
+  }
 
-// 根据选中的卡片样式更新转换设置
-watch(selectedCardStyle, (newStyle) => {
-  switch (newStyle) {
-    case 'default':
+  return style
+}
+
+// 编辑卡片
+const editCard = (groupIndex, cardIndex) => {
+  const card = cardGroups.value[groupIndex]?.cards[cardIndex]
+  if (card) {
+    editingCard.text = card.text
+    editingCard.groupIndex = groupIndex
+    editingCard.cardIndex = cardIndex
+    editDialogVisible.value = true
+  }
+}
+
+// 保存卡片编辑
+const saveCardEdit = () => {
+  const { groupIndex, cardIndex, text } = editingCard
+  if (groupIndex >= 0 && cardIndex >= 0 && cardGroups.value[groupIndex]?.cards[cardIndex]) {
+    cardGroups.value[groupIndex].cards[cardIndex].text = text
+    editDialogVisible.value = false
+    ElMessage.success('卡片内容已更新')
+  }
+}
+
+// 处理卡片样式变化
+const handleCardStyleChange = (styleValue) => {
+  console.log('Card style changed to:', styleValue);
+  
+  // 根据选择的样式更新设置
+  switch (styleValue) {
+    case 'minimal':
       Object.assign(converterSettings, {
-        padding: 16,
-        margin: 8,
+        padding: 12,
+        margin: 4,
         backgroundColor: '#ffffff',
         textColor: '#000000',
         borderStyle: 'none',
         borderRadius: 0,
         boxShadow: 'none',
-        gradient: 'none'
-      })
-      break
-    case 'shadow':
-      Object.assign(converterSettings, {
-        padding: 16,
-        margin: 8,
-        backgroundColor: '#ffffff',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 0,
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
         gradient: 'none'
       })
       break
@@ -297,167 +503,22 @@ watch(selectedCardStyle, (newStyle) => {
       })
       break
     default:
+      // 默认样式
+      Object.assign(converterSettings, {
+        padding: 16,
+        margin: 8,
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        borderStyle: 'none',
+        borderRadius: 0,
+        boxShadow: 'none',
+        gradient: 'none'
+      })
       break
   }
   
   // 触发样式更新
   updateStyle()
-})
-
-// 卡片组数据
-const cardGroups = ref([])
-
-// 编辑功能相关
-const editDialogVisible = ref(false)
-const editingCard = reactive({
-  text: '',
-  groupIndex: -1,
-  cardIndex: -1
-})
-
-// 添加页面尺寸处理方法
-const setPageSize = (size) => {
-  if (size) {
-    converterSettings.fontSize = Math.min(size.width, size.height) * 0.8
-    // 通知其他组件页面尺寸已更改
-    emit('page-size-changed', size)
-  }
-}
-
-// 添加 handlePageSizeChange 方法
-const handlePageSizeChange = (size) => {
-  if (size && size.width && size.height) {
-    // 根据页面尺寸调整字体大小
-    const baseSize = Math.min(size.width, size.height)
-    converterSettings.fontSize = baseSize * 0.8
-    
-    // 更新样式
-    updateStyle()
-    
-    console.log('Page size changed:', size)
-  } else {
-    console.warn('Invalid page size data received')
-  }
-}
-
-// 转换表单为卡片
-const convertFormsToCards = (forms) => {
-  if (!forms || !forms.length) {
-    ElMessage.warning('没有可转换的表单数据')
-    return
-  }
-
-  const newGroups = forms.map(form => {
-    // 从表单提取文本内容
-    const texts = []
-
-    if (form.title) texts.push(form.title)
-    if (form.value) texts.push(form.value)
-    if (form.remark) texts.push(form.remark)
-
-    // 合并并清理文本
-    const combinedText = texts.join('\n').replace(/\s+/g, ' ').trim()
-
-    // 创建卡片
-    const cards = combinedText.length > 0
-      ? combinedText.split('').map(char => ({
-        text: char,
-        color: '#333',
-        backgroundColor: converterSettings.backgroundColor
-      }))
-      : [{ text: '示例', color: '#333', backgroundColor: converterSettings.backgroundColor }]
-    
-    // 确保每个卡片都有文本
-    cards.forEach(card => {
-      card.text = card.text ?? '示例'
-    })
-
-    return {
-      cards
-    }
-  })
-
-  cardGroups.value = newGroups  // 确保正确赋值卡片组数据
-  nextTick(() => {
-    updateStyle()
-    ElMessage.success(`已将 ${forms.length} 个表单转换为卡片组`)
-  })
-}
-
-// 更新卡片样式
-const updateStyle = () => {
-  // 这个函数被调用时会触发重新渲染
-  // 由于使用了响应式数据，Vue会自动应用最新样式
-  cardGroups.value = [...cardGroups.value] // 强制触发重新渲染
-  nextTick(() => {
-    ElMessage.success('样式已更新')
-  })
-}
-
-// 获取卡片组样式
-const getCardGroupStyle = () => {
-  return {
-    marginBottom: '20px',
-    border: converterSettings.showBorder ? '1px solid #ddd' : 'none',
-    borderRadius: '4px',
-    padding: '10px',
-    backgroundColor: '#fff'
-  }
-}
-
-// 修改 getCardStyle 方法，添加空值检查
-const getCardStyle = (card) => {
-  // 添加空值检查
-  if (!card) {
-    return {}
-  }
-  
-  const baseSize = converterSettings.fontSize
-  const style = {
-    width: `${baseSize * 1.0}px`,
-    height: `${baseSize * 1.0}px`,
-    margin: `${converterSettings.margin}px`,
-    padding: `${converterSettings.padding}px`,
-    fontSize: `${baseSize}px`,
-    color: converterSettings.textColor,
-    backgroundColor: converterSettings.showBackground 
-      ? converterSettings.gradient === 'none' 
-        ? converterSettings.backgroundColor 
-        : converterSettings.gradient
-      : 'transparent',
-    transform: `rotate(${converterSettings.textRotation}deg)`,
-    border: converterSettings.borderStyle,
-    borderRadius: `${converterSettings.borderRadius}px`,
-    boxShadow: converterSettings.boxShadow,
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    transition: 'all 0.2s ease',
-    cursor: 'pointer'
-  }
-
-  return style
-}
-
-// 编辑卡片
-const editCard = (groupIndex, cardIndex) => {
-  const card = cardGroups.value[groupIndex]?.cards[cardIndex]
-  if (card) {
-    editingCard.text = card.text
-    editingCard.groupIndex = groupIndex
-    editingCard.cardIndex = cardIndex
-    editDialogVisible.value = true
-  }
-}
-
-// 保存卡片编辑
-const saveCardEdit = () => {
-  const { groupIndex, cardIndex, text } = editingCard
-  if (groupIndex >= 0 && cardIndex >= 0 && cardGroups.value[groupIndex]?.cards[cardIndex]) {
-    cardGroups.value[groupIndex].cards[cardIndex].text = text
-    editDialogVisible.value = false
-    ElMessage.success('卡片内容已更新')
-  }
 }
 
 // 添加内存泄漏检查
@@ -600,64 +661,19 @@ defineExpose({
   width: 200px;
 }
 
-/* 基础卡片样式 */
-.card-item {
-  box-sizing: border-box;
-  transition: all 0.3s ease;
-  will-change: transform, opacity;
+/* 无卡片占位符样式 */
+.no-cards-placeholder {
+  text-align: center;
+  padding: 40px 20px;
+  color: #909399;
 }
 
-/* 默认样式 */
-.card-item.default-style {
-  padding: 16px;
-  margin: 8px;
-  background-color: #ffffff;
-  color: #000000;
+.no-cards-placeholder p {
+  margin: 10px 0;
 }
 
-/* 带阴影样式 */
-.card-item.shadow-style {
-  padding: 16px;
-  margin: 8px;
-  background-color: #ffffff;
-  color: #000000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* 圆角卡片样式 */
-.card-item.rounded-style {
-  padding: 16px;
-  margin: 8px;
-  background-color: #ffffff;
-  color: #000000;
-  border-radius: 8px;
-}
-
-/* 线框样式 */
-.card-item.outlined-style {
-  padding: 16px;
-  margin: 8px;
-  background-color: transparent;
-  color: #333333;
-  border: 1px solid #cccccc;
-  border-radius: 4px;
-}
-
-/* 立体效果 */
-.card-item.elevation-style {
-  padding: 16px;
-  margin: 8px;
-  background-color: #f8f8f8;
-  color: #000000;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-/* 渐变背景 */
-.card-item.gradient-style {
-  padding: 16px;
-  margin: 8px;
-  background: linear-gradient(135deg, #ffffff, #f0f0f0);
-  color: #000000;
+.no-cards-placeholder .hint {
+  font-size: 14px;
+  color: #c0c4cc;
 }
 </style>

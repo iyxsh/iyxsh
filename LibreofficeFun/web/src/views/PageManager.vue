@@ -78,7 +78,9 @@
         </template>
 
         <!-- 卡片转换页面 -->
-        <SimpleCardConverter v-show="currentPageType === 'cards'" ref="cardConverterRef"
+        <SimpleCardConverter v-show="currentPageType === 'cards'" 
+          :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
+          ref="cardConverterRef"
           :key="`${currentPageType}-${currentPageIdx}`" />
       </el-main>
     </el-container>
@@ -945,36 +947,115 @@ function clearCurrentPageForms() {
 
 // 处理页面类型变更
 function handlePageTypeChange(newType) {
+  console.log('[PageManager] 页面类型变更:', newType);
   currentPageType.value = newType
+  
+  // 如果切换到卡片页面，自动转换当前页面的表单
+  if (newType === 'cards') {
+    nextTick(() => {
+      convertFormsToCardsAuto();
+    });
+  }
+}
+
+// 自动转换表单为卡片（无用户提示）
+function convertFormsToCardsAuto() {
+  try {
+    const currentPage = pages.value[currentPageIdx.value];
+    if (!currentPage) {
+      console.log('[PageManager] 当前页面不存在，无法自动转换');
+      return;
+    }
+    
+    if (!currentPage.forms || !Array.isArray(currentPage.forms)) {
+      console.log('[PageManager] 当前页面表单数据格式不正确，无法自动转换');
+      return;
+    }
+
+    if (currentPage.forms.length === 0) {
+      console.log('[PageManager] 当前页面没有表单内容，无需转换');
+      return;
+    }
+
+    // 添加有效性过滤
+    const validForms = currentPage.forms.filter(form =>
+      (form.title && form.title.trim()) || 
+      (form.value && form.value.trim()) || 
+      (form.remark && form.remark.trim()) ||
+      (form.media && form.media.trim())
+    );
+
+    if (validForms.length === 0) {
+      console.log('[PageManager] 当前页面表单内容均为空，无需转换');
+      return;
+    }
+
+    if (cardConverterRef.value) {
+      try {
+        console.log('[PageManager] 自动转换表单为卡片，表单数量:', validForms.length);
+        cardConverterRef.value.convertFormsToCards(currentPage.forms);
+        console.log('[PageManager] 自动转换完成');
+      } catch (error) {
+        console.error('[PageManager] 卡片自动转换过程中出错:', error);
+      }
+    } else {
+      console.error('[PageManager] 卡片转换组件未加载');
+    }
+  } catch (error) {
+    console.error('[PageManager] 调用卡片自动转换功能时出错:', error);
+  }
 }
 
 // 转换表单为卡片
 function convertFormsToCards() {
-  const currentPage = pages.value[currentPageIdx.value]
-  if (!currentPage?.forms?.length) {
-    ElMessage.warning('当前页面没有表单内容')
-    return
-  }
-
-  // 添加有效性过滤
-  const validForms = currentPage.forms.filter(form =>
-    form.title || form.value || form.remark
-  )
-
-  if (validForms.length === 0) {
-    ElMessage.warning('表单内容均为空，无法转换')
-    return
-  }
-
-  nextTick(() => {
-    if (cardConverterRef.value) {
-      cardConverterRef.value.convertFormsToCards(currentPage.forms)
-      ElMessage.success(`已转换 ${currentPage.forms.length} 个表单`)
-    } else {
-      ElMessage.error('卡片转换组件未加载')
-      console.error('cardConverterRef 未定义')
+  try {
+    const currentPage = pages.value[currentPageIdx.value]
+    if (!currentPage) {
+      ElMessage.warning('当前页面不存在')
+      return
     }
-  })
+    
+    if (!currentPage.forms || !Array.isArray(currentPage.forms)) {
+      ElMessage.warning('当前页面表单数据格式不正确')
+      return
+    }
+
+    if (currentPage.forms.length === 0) {
+      ElMessage.warning('当前页面没有表单内容')
+      return
+    }
+
+    // 添加有效性过滤
+    const validForms = currentPage.forms.filter(form =>
+      (form.title && form.title.trim()) || 
+      (form.value && form.value.trim()) || 
+      (form.remark && form.remark.trim()) ||
+      (form.media && form.media.trim())
+    )
+
+    if (validForms.length === 0) {
+      ElMessage.warning('表单内容均为空，无法转换')
+      return
+    }
+
+    nextTick(() => {
+      if (cardConverterRef.value) {
+        try {
+          cardConverterRef.value.convertFormsToCards(currentPage.forms)
+          ElMessage.success(`成功将 ${validForms.length} 个表单转换为卡片`)
+        } catch (error) {
+          console.error('[PageManager] 卡片转换过程中出错:', error)
+          ElMessage.error('卡片转换失败: ' + (error.message || '未知错误'))
+        }
+      } else {
+        ElMessage.error('卡片转换组件未加载')
+        console.error('cardConverterRef 未定义')
+      }
+    })
+  } catch (error) {
+    console.error('[PageManager] 调用卡片转换功能时出错:', error)
+    ElMessage.error('转换过程出错: ' + (error.message || '未知错误'))
+  }
 }
 
 // 调试按钮点击
