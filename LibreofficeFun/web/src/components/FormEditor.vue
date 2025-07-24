@@ -8,32 +8,67 @@
     <el-form :model="formState" label-position="top" :rules="rules" ref="formRef" class="form-content" @submit.prevent="submitForm">
       <!-- 标题字段 -->
       <el-form-item label="标题" prop="title">
-        <el-input v-model="formState.title" placeholder="请输入表单标题" :maxlength="50" show-word-limit />
+        <div class="element-container">
+          <el-input v-model="formState.title" placeholder="请输入表单标题" :maxlength="50" show-word-limit />
+        </div>
       </el-form-item>
 
       <!-- 内容字段 -->
       <el-form-item label="内容" prop="value">
-        <el-input 
-          v-model="formState.value" 
-          type="textarea" 
-          placeholder="请输入表单内容" 
-          :autosize="{ minRows: 3, maxRows: 6 }" 
-          :maxlength="200" 
-          show-word-limit
-        />
+        <div class="element-container">
+          <el-input 
+            v-model="formState.value" 
+            type="textarea" 
+            placeholder="请输入表单内容" 
+            :autosize="{ minRows: 3, maxRows: 6 }" 
+            :maxlength="200" 
+            show-word-limit
+          />
+        </div>
       </el-form-item>
 
       <!-- 备注字段 -->
       <el-form-item label="备注" prop="remark">
-        <el-input 
-          v-model="formState.remark" 
-          type="textarea" 
-          placeholder="请输入备注信息（选填）" 
-          :autosize="{ minRows: 2, maxRows: 4 }" 
-          :maxlength="100" 
-          show-word-limit
-        />
+        <div class="element-container">
+          <el-input 
+            v-model="formState.remark" 
+            type="textarea" 
+            placeholder="请输入备注信息（选填）" 
+            :autosize="{ minRows: 2, maxRows: 4 }" 
+            :maxlength="100" 
+            show-word-limit
+          />
+        </div>
       </el-form-item>
+      
+      <!-- 媒体字段 -->
+      <el-form-item label="媒体链接" prop="media">
+        <div class="element-container">
+          <el-input 
+            v-model="formState.media" 
+            placeholder="请输入图片或视频链接" 
+            :maxlength="500"
+          />
+          <div class="media-type-select">
+            <el-select v-model="formState.mediaType" size="small">
+              <el-option label="图片" value="image" />
+              <el-option label="视频" value="video" />
+            </el-select>
+          </div>
+        </div>
+      </el-form-item>
+      
+      <!-- 可见性设置 -->
+      <el-collapse v-model="activeCollapse" class="visibility-settings-panel">
+        <el-collapse-item title="可见性设置" name="visibility">
+          <div class="visibility-grid">
+            <el-checkbox v-model="formState.showTitle">显示标题</el-checkbox>
+            <el-checkbox v-model="formState.showValue">显示内容</el-checkbox>
+            <el-checkbox v-model="formState.showRemark">显示备注</el-checkbox>
+            <el-checkbox v-model="formState.showMedia">显示媒体</el-checkbox>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
 
       <!-- 样式设置（可折叠） -->
       <el-collapse v-model="activeCollapse" class="style-settings-panel">
@@ -76,16 +111,6 @@
               <el-switch v-model="formState.style.hasShadow" />
             </el-form-item>
           </div>
-
-          <!-- 预览卡片 -->
-          <div class="preview-section">
-            <h4>预览效果</h4>
-            <div class="preview-card" :style="previewStyle">
-              <div class="preview-title">{{ formState.title || '表单标题' }}</div>
-              <div class="preview-value">{{ formState.value || '表单内容将显示在这里' }}</div>
-              <div class="preview-remark" v-if="formState.remark">{{ formState.remark }}</div>
-            </div>
-          </div>
         </el-collapse-item>
 
         <!-- 位置和大小设置 -->
@@ -117,9 +142,74 @@
       <!-- 操作按钮 -->
       <div class="form-actions">
         <el-button @click="cancel">取消</el-button>
+        <el-button @click="togglePreview">{{ isPreviewMode ? '关闭预览' : '预览' }}</el-button>
         <el-button type="primary" @click="submitForm" :loading="loading">保存</el-button>
       </div>
     </el-form>
+    
+    <!-- 独立预览模式 -->
+    <div v-if="isPreviewMode" class="preview-mode-overlay" @click="closePreview">
+      <div class="preview-mode-content" @click.stop>
+        <div class="preview-mode-header">
+          <h3>表单预览</h3>
+          <el-button @click="closePreview" type="default" icon="Close" size="small" circle></el-button>
+        </div>
+        <div class="preview-mode-body" :style="previewStyle">
+          <div 
+            class="preview-title preview-element" 
+            :style="previewTitleStyle" 
+            v-if="formState.showTitle"
+            @click="openElementStylePanel('title')"
+          >
+            {{ formState.title || '表单标题' }}
+          </div>
+          <div 
+            class="preview-value preview-element" 
+            :style="previewValueStyle" 
+            v-if="formState.showValue"
+            @click="openElementStylePanel('value')"
+          >
+            {{ formState.value || '表单内容将显示在这里' }}
+          </div>
+          <div 
+            class="preview-remark preview-element" 
+            :style="previewRemarkStyle" 
+            v-if="formState.remark && formState.showRemark"
+            @click="openElementStylePanel('remark')"
+          >
+            {{ formState.remark }}
+          </div>
+          <div 
+            class="preview-media preview-element" 
+            v-if="formState.media && formState.showMedia" 
+            :style="previewMediaStyle"
+            @click="openElementStylePanel('media')"
+          >
+            <img v-if="formState.mediaType === 'image'" :src="formState.media" alt="媒体" style="max-width: 100%; border-radius: 4px;" />
+            <video v-else :src="formState.media" controls style="max-width: 100%; border-radius: 4px;"></video>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 元素样式设置面板 -->
+      <div v-if="currentElementStyle" class="element-style-panel-overlay" @click="closeElementStylePanel">
+        <div class="element-style-panel-content" @click.stop>
+          <div class="element-style-panel-header">
+            <h4>{{ getElementDisplayName(currentElementStyle.type) }}样式设置</h4>
+            <el-button @click="closeElementStylePanel" type="default" icon="Close" size="small" circle></el-button>
+          </div>
+          <ElementStylePanel 
+            :style-config="getElementStyleConfig(currentElementStyle.type)" 
+            @update:style-config="updateElementStyle(currentElementStyle.type, $event)"
+          />
+          <div class="element-style-panel-actions">
+            <el-checkbox v-model="formState.elementStyles[currentElementStyle.type].enabled">
+              启用{{ getElementDisplayName(currentElementStyle.type) }}自定义样式
+            </el-checkbox>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -128,6 +218,7 @@ import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close } from '@element-plus/icons-vue'
 import errorLogService from '@/services/errorLogService'
+import ElementStylePanel from './ElementStylePanel.vue'
 
 // 定义props
 const props = defineProps({
@@ -153,6 +244,12 @@ const activeCollapse = ref(['style'])
 // 加载状态
 const loading = ref(false)
 
+// 预览模式状态
+const isPreviewMode = ref(false)
+
+// 当前正在编辑的元素样式
+const currentElementStyle = ref(null)
+
 // 默认样式
 const defaultStyle = () => ({
   backgroundColor: '#ffffff',
@@ -166,15 +263,64 @@ const defaultStyle = () => ({
   hasShadow: true
 })
 
+// 默认的元素样式设置
+const defaultElementStyle = () => ({
+  enabled: false,
+  color: '#333333',
+  fontSize: 14,
+  fontWeight: 'normal'
+})
+
+// 确保元素样式数据完整性的函数
+const ensureElementStyleIntegrity = (style) => {
+  const defaultStyle = defaultElementStyle()
+  const result = { ...style }
+  
+  // 确保所有必要字段都存在
+  Object.keys(defaultStyle).forEach(key => {
+    if (!(key in result)) {
+      console.warn(`Missing key "${key}" in element style, using default value`)
+      result[key] = defaultStyle[key]
+    }
+  })
+  
+  return result
+}
+
 // 表单状态
 const formState = reactive({
   id: props.form?.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
   title: props.isEdit ? (props.form?.title || '') : '',
   value: props.isEdit ? (props.form?.value || '') : '',
   remark: props.isEdit ? (props.form?.remark || '') : '',
+  media: props.isEdit ? (props.form?.media || '') : '',
+  mediaType: props.isEdit ? (props.form?.mediaType || 'image') : 'image',
+  showTitle: props.isEdit ? (props.form?.showTitle !== false) : true,
+  showValue: props.isEdit ? (props.form?.showValue !== false) : true,
+  showRemark: props.isEdit ? (props.form?.showRemark !== false) : true,
+  showMedia: props.isEdit ? (props.form?.showMedia !== false) : true,
   style: { 
     ...defaultStyle(), 
     ...(props.isEdit && props.form?.style ? props.form.style : {}) 
+  },
+  // 添加元素特定样式设置
+  elementStyles: {
+    title: ensureElementStyleIntegrity({
+      ...defaultElementStyle(),
+      ...(props.isEdit && props.form?.elementStyles?.title ? props.form.elementStyles.title : {})
+    }),
+    value: ensureElementStyleIntegrity({
+      ...defaultElementStyle(),
+      ...(props.isEdit && props.form?.elementStyles?.value ? props.form.elementStyles.value : {})
+    }),
+    remark: ensureElementStyleIntegrity({
+      ...defaultElementStyle(),
+      ...(props.isEdit && props.form?.elementStyles?.remark ? props.form.elementStyles.remark : {})
+    }),
+    media: ensureElementStyleIntegrity({
+      ...defaultElementStyle(),
+      ...(props.isEdit && props.form?.elementStyles?.media ? props.form.elementStyles.media : {})
+    })
   },
   position: { 
     x: props.isEdit ? (props.form?.position?.x || 20) : 20, 
@@ -198,6 +344,21 @@ const rules = {
   ],
   remark: [
     { max: 100, message: '长度不能超过100个字符', trigger: 'blur' }
+  ],
+  media: [
+    { validator: (rule, value, callback) => {
+        if (formState.showMedia && value) {
+          // 简单验证URL格式
+          const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
+          if (!urlPattern.test(value)) {
+            callback(new Error('请输入有效的URL'));
+          } else {
+            callback();
+          }
+        } else {
+          callback();
+        }
+      }, trigger: 'blur' }
   ]
 }
 
@@ -212,10 +373,101 @@ const previewStyle = computed(() => {
     borderColor,
     borderRadius: `${borderRadius}px`,
     fontSize: `${fontSize}px`,
-    padding: '12px',
-    boxShadow: hasShadow ? '0 2px 12px 0 rgba(0, 0, 0, 0.1)' : 'none'
+    padding: '20px',
+    boxShadow: hasShadow ? '0 2px 12px 0 rgba(0, 0, 0, 0.1)' : 'none',
+    maxWidth: '600px',
+    margin: '0 auto'
   }
 })
+
+// 预览标题样式
+const previewTitleStyle = computed(() => {
+  const titleStyle = formState.elementStyles.title
+  if (!titleStyle.enabled) return {}
+  
+  return {
+    color: titleStyle.color,
+    fontSize: `${titleStyle.fontSize}px`,
+    fontWeight: titleStyle.fontWeight,
+    marginBottom: '10px'
+  }
+})
+
+// 预览内容样式
+const previewValueStyle = computed(() => {
+  const valueStyle = formState.elementStyles.value
+  if (!valueStyle.enabled) return {}
+  
+  return {
+    color: valueStyle.color,
+    fontSize: `${valueStyle.fontSize}px`,
+    fontWeight: valueStyle.fontWeight,
+    marginBottom: '10px',
+    whiteSpace: 'pre-wrap'
+  }
+})
+
+// 预览备注样式
+const previewRemarkStyle = computed(() => {
+  const remarkStyle = formState.elementStyles.remark
+  if (!remarkStyle.enabled) return {}
+  
+  return {
+    color: remarkStyle.color,
+    fontSize: `${remarkStyle.fontSize}px`,
+    fontWeight: remarkStyle.fontWeight,
+    whiteSpace: 'pre-wrap'
+  }
+})
+
+// 预览媒体样式
+const previewMediaStyle = computed(() => {
+  const mediaStyle = formState.elementStyles.media
+  if (!mediaStyle.enabled) return {}
+
+  return {
+    color: mediaStyle.color,
+    fontSize: `${mediaStyle.fontSize}px`,
+    fontWeight: mediaStyle.fontWeight
+  }
+})
+
+// 切换预览模式
+const togglePreview = () => {
+  isPreviewMode.value = !isPreviewMode.value
+}
+
+// 关闭预览模式
+const closePreview = () => {
+  isPreviewMode.value = false
+  currentElementStyle.value = null
+}
+
+// 打开元素样式设置面板
+const openElementStylePanel = (elementType) => {
+  currentElementStyle.value = { type: elementType }
+}
+
+// 关闭元素样式设置面板
+const closeElementStylePanel = () => {
+  currentElementStyle.value = null
+}
+
+// 获取元素样式配置
+const getElementStyleConfig = (elementType) => {
+  return formState.elementStyles[elementType]
+}
+
+// 获取元素显示名称
+const getElementDisplayName = (elementType) => {
+  const names = {
+    title: '标题',
+    value: '内容',
+    remark: '备注',
+    media: '媒体'
+  }
+  return names[elementType] || elementType
+}
 
 // 取消编辑
 const cancel = () => {
@@ -268,6 +520,22 @@ const submitForm = async () => {
     // 复制表单数据，避免引用问题
     const formData = JSON.parse(JSON.stringify(formState))
     
+    // 确保elementStyles数据结构完整
+    if (formData.elementStyles) {
+      // 验证每个元素样式是否包含必要字段
+      const defaultKeys = Object.keys(defaultElementStyle())
+      Object.values(formData.elementStyles).forEach(style => {
+        if (typeof style === 'object') {
+          defaultKeys.forEach(key => {
+            if (!(key in style)) {
+              console.warn(`Missing key "${key}" in element style, using default value`)
+              style[key] = defaultElementStyle()[key]
+            }
+          })
+        }
+      })
+    }
+    
     // 添加时间戳
     formData.updatedAt = Date.now()
     
@@ -300,34 +568,20 @@ const handleError = (error, context = '未知上下文') => {
   errorLogService.addErrorLog(error, `表单编辑器 - ${context}`, 'error')
 }
 
-// 组件挂载后的操作
-onMounted(async () => {
-  try {
-    // 确保DOM已渲染
-    await nextTick()
-    
-    // 如果是编辑模式，自动聚焦到标题输入框
-    if (props.isEdit && formRef.value) {
-      // 通过 $el 访问真实的DOM元素
-      const formElement = formRef.value.$el || formRef.value
-      const titleInput = formElement.querySelector('input[type="text"]')
-      if (titleInput) titleInput.focus()
-    }
-  } catch (error) {
-    handleError(error, '组件挂载失败')
+// 更新元素样式
+const updateElementStyle = (elementType, styleConfig) => {
+  formState.elementStyles[elementType] = {
+    ...formState.elementStyles[elementType],
+    ...styleConfig
   }
-})
+}
 </script>
 
 <style scoped>
 .form-editor {
-  padding: 20px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+  padding: 20px;
+  box-sizing: border-box;
 }
 
 .form-editor-header {
@@ -335,99 +589,117 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #dcdfe6;
-}
-
-.form-editor-header h3 {
-  margin: 0;
-  font-size: 18px;
-  color: #303133;
 }
 
 .form-content {
+  width: 100%;
+}
+
+.element-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.element-style-toggle {
+  margin-top: 10px;
+}
+
+.element-style-controls {
+  margin-top: 10px;
+}
+
+.media-type-select {
+  margin-top: 10px;
+}
+
+.visibility-settings-panel,
+.style-settings-panel {
   margin-top: 20px;
 }
 
-.style-settings-panel {
-  margin: 20px 0;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-}
-
-.style-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
+.visibility-grid,
+.style-grid,
 .position-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-.preview-section {
-  margin-top: 20px;
-  padding: 15px;
-  background-color: #ffffff;
-  border-radius: 4px;
-  border: 1px dashed #dcdfe6;
-}
-
-.preview-section h4 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
-  color: #606266;
-}
-
-.preview-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  padding: 15px;
-  margin-top: 10px;
-  background-color: #fff;
-  transition: all 0.3s ease;
-}
-
-.preview-title {
-  font-weight: bold;
-  margin-bottom: 8px;
-}
-
-.preview-value {
-  margin-bottom: 8px;
-  white-space: pre-wrap;
-}
-
-.preview-remark {
-  font-size: 0.9em;
-  color: #909399;
-  white-space: pre-wrap;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 30px;
+  margin-top: 20px;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .form-editor {
-    padding: 15px;
-  }
-  
-  .style-grid,
-  .position-grid {
-    grid-template-columns: 1fr;
-    gap: 15px;
-  }
-  
-  .preview-card {
-    padding: 10px;
-  }
+.preview-mode-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
+
+.preview-mode-content {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  width: 80%;
+  max-width: 600px;
+  position: relative;
+}
+
+.preview-mode-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.preview-mode-body {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.preview-element {
+  cursor: pointer;
+}
+
+.element-style-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.element-style-panel-content {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  width: 80%;
+  max-width: 600px;
+  position: relative;
+}
+
+.element-style-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.element-style-panel-actions {
+  margin-top: 20px;
+}
+
 </style>

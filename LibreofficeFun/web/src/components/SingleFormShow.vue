@@ -12,45 +12,36 @@
       <div class="form-content">
         <!-- 标题 -->
         <div 
-          v-if="form.showTitle !== false && form.title" 
+          v-if="shouldShowTitle" 
           class="form-title"
-          :style="{ 
-            fontSize: (form.titleFontSize || 16) + 'px', 
-            color: form.titleColor || '#333',
-            fontWeight: 'bold'
-          }"
+          :style="titleStyle"
         >
           {{ form.title }}
         </div>
 
         <!-- 内容 -->
         <div 
-          v-if="form.showValue !== false && form.value" 
+          v-if="shouldShowValue" 
           class="form-value"
-          :style="{ 
-            fontSize: (form.valueFontSize || 16) + 'px', 
-            color: form.valueColor || '#333' 
-          }"
+          :style="valueStyle"
         >
           {{ form.value }}
         </div>
 
         <!-- 备注 -->
         <div 
-          v-if="form.showRemark !== false && form.remark" 
+          v-if="shouldShowRemark" 
           class="form-remark"
-          :style="{ 
-            fontSize: (form.remarkFontSize || 14) + 'px', 
-            color: form.remarkColor || '#666' 
-          }"
+          :style="remarkStyle"
         >
           {{ form.remark }}
         </div>
 
         <!-- 媒体内容（如果有的话） -->
         <div 
-          v-if="form.showMedia !== false && form.media" 
+          v-if="shouldShowMedia" 
           class="form-media"
+          :style="mediaStyle"
         >
           <img 
             v-if="form.mediaType === 'image'" 
@@ -136,6 +127,97 @@ const emit = defineEmits([
   'update-size'
 ])
 
+// 计算是否应该显示各个部分
+const shouldShowTitle = computed(() => {
+  return props.form.showTitle !== false && props.form.title
+})
+
+const shouldShowValue = computed(() => {
+  return props.form.showValue !== false && props.form.value
+})
+
+const shouldShowRemark = computed(() => {
+  return props.form.showRemark !== false && props.form.remark
+})
+
+const shouldShowMedia = computed(() => {
+  return props.form.showMedia !== false && props.form.media
+})
+
+// 计算标题样式
+const titleStyle = computed(() => {
+  // 如果使用元素特定样式
+  if (props.form.elementStyles && props.form.elementStyles.title && props.form.elementStyles.title.enabled) {
+    const titleStyle = props.form.elementStyles.title
+    return {
+      fontSize: `${titleStyle.fontSize}px`,
+      color: titleStyle.color,
+      fontWeight: titleStyle.fontWeight
+    }
+  }
+  
+  // 否则使用旧的样式属性
+  return {
+    fontSize: (props.form.titleFontSize || 16) + 'px',
+    color: props.form.titleColor || '#333',
+    fontWeight: 'bold'
+  }
+})
+
+// 计算内容样式
+const valueStyle = computed(() => {
+  // 如果使用元素特定样式
+  if (props.form.elementStyles && props.form.elementStyles.value && props.form.elementStyles.value.enabled) {
+    const valueStyle = props.form.elementStyles.value
+    return {
+      fontSize: `${valueStyle.fontSize}px`,
+      color: valueStyle.color,
+      fontWeight: valueStyle.fontWeight
+    }
+  }
+  
+  // 否则使用旧的样式属性
+  return {
+    fontSize: (props.form.valueFontSize || 16) + 'px',
+    color: props.form.valueColor || '#333'
+  }
+})
+
+// 计算备注样式
+const remarkStyle = computed(() => {
+  // 如果使用元素特定样式
+  if (props.form.elementStyles && props.form.elementStyles.remark && props.form.elementStyles.remark.enabled) {
+    const remarkStyle = props.form.elementStyles.remark
+    return {
+      fontSize: `${remarkStyle.fontSize}px`,
+      color: remarkStyle.color,
+      fontWeight: remarkStyle.fontWeight
+    }
+  }
+  
+  // 否则使用旧的样式属性
+  return {
+    fontSize: (props.form.remarkFontSize || 14) + 'px',
+    color: props.form.remarkColor || '#666'
+  }
+})
+
+// 计算媒体样式
+const mediaStyle = computed(() => {
+  // 如果使用元素特定样式
+  if (props.form.elementStyles && props.form.elementStyles.media && props.form.elementStyles.media.enabled) {
+    const mediaStyle = props.form.elementStyles.media
+    return {
+      fontSize: `${mediaStyle.fontSize}px`,
+      color: mediaStyle.color,
+      fontWeight: mediaStyle.fontWeight
+    }
+  }
+  
+  // 否则使用默认样式
+  return {}
+})
+
 // 计算卡片样式
 const cardStyle = computed(() => {
   return {
@@ -164,7 +246,8 @@ const handleMouseDown = (event) => {
     return
   }
   
-  emit('mousedown', props.form)
+  // 开始拖拽
+  startDrag(event)
 }
 
 // 处理菜单命令
@@ -199,102 +282,71 @@ const startResize = (event) => {
   if (!props.editable) return
   
   event.preventDefault()
-  event.stopPropagation()
+  event.stopPropagation() // 阻止事件冒泡
   handleResizeStart(event) // 调用内部调整大小处理逻辑
 }
 
-// 添加拖拽处理逻辑
-const isDragging = ref(false)
-const dragStartPos = ref({ x: 0, y: 0 })
-const formStartPos = ref({ x: 0, y: 0 })
-
-// 处理拖拽开始
+// 内部拖拽处理逻辑
 const handleDragStart = (event) => {
-  if (!props.editable) return
-  
-  isDragging.value = true
-  dragStartPos.value = { x: event.clientX, y: event.clientY }
-  formStartPos.value = { ...props.position }
-  
-  document.addEventListener('mousemove', handleDrag)
+  const startX = event.clientX
+  const startY = event.clientY
+  const startLeft = props.position.x
+  const startTop = props.position.y
+
+  const handleDragMove = (moveEvent) => {
+    const deltaX = moveEvent.clientX - startX
+    const deltaY = moveEvent.clientY - startY
+    const newX = startLeft + deltaX
+    const newY = startTop + deltaY
+    
+    emit('update-position', { 
+      formId: props.form.id, 
+      position: { x: newX, y: newY } 
+    })
+  }
+
+  const handleDragEnd = () => {
+    document.removeEventListener('mousemove', handleDragMove)
+    document.removeEventListener('mouseup', handleDragEnd)
+  }
+
+  document.addEventListener('mousemove', handleDragMove)
   document.addEventListener('mouseup', handleDragEnd)
 }
 
-// 处理拖拽过程
-const handleDrag = (event) => {
-  if (!isDragging.value) return
-  
-  const deltaX = event.clientX - dragStartPos.value.x
-  const deltaY = event.clientY - dragStartPos.value.y
-  
-  const newPosition = {
-    x: formStartPos.value.x + deltaX,
-    y: formStartPos.value.y + deltaY
-  }
-  
-  emit('update-position', { formId: props.form.id, position: newPosition })
-}
-
-// 处理拖拽结束
-const handleDragEnd = (event) => {
-  if (!isDragging.value) return
-  
-  isDragging.value = false
-  
-  document.removeEventListener('mousemove', handleDrag)
-  document.removeEventListener('mouseup', handleDragEnd)
-}
-
-// 添加调整大小处理逻辑
-const isResizing = ref(false)
-const resizeStartPos = ref({ x: 0, y: 0 })
-const formStartSize = ref({ width: 0, height: 0 })
-
-// 处理调整大小开始
+// 内部调整大小处理逻辑
 const handleResizeStart = (event) => {
-  if (!props.editable) return
-  
-  isResizing.value = true
-  resizeStartPos.value = { x: event.clientX, y: event.clientY }
-  formStartSize.value = { ...props.size }
-  
-  document.addEventListener('mousemove', handleResize)
-  document.addEventListener('mouseup', handleResizeEnd)
-  
-  event.stopPropagation()
-}
+  const startX = event.clientX
+  const startY = event.clientY
+  const startWidth = props.size.width
+  const startHeight = props.size.height
 
-// 处理调整大小过程
-const handleResize = (event) => {
-  if (!isResizing.value) return
-  
-  const deltaX = event.clientX - resizeStartPos.value.x
-  const deltaY = event.clientY - resizeStartPos.value.y
-  
-  const newSize = {
-    width: Math.max(100, formStartSize.value.width + deltaX), // 最小宽度100px
-    height: Math.max(80, formStartSize.value.height + deltaY)  // 最小高度80px
+  const handleResizeMove = (moveEvent) => {
+    const deltaX = moveEvent.clientX - startX
+    const deltaY = moveEvent.clientY - startY
+    const newWidth = Math.max(100, startWidth + deltaX) // 最小宽度100px
+    const newHeight = Math.max(50, startHeight + deltaY) // 最小高度50px
+    
+    emit('update-size', { 
+      formId: props.form.id, 
+      size: { width: newWidth, height: newHeight } 
+    })
   }
-  
-  emit('update-size', { formId: props.form.id, size: newSize })
-}
 
-// 处理调整大小结束
-const handleResizeEnd = (event) => {
-  if (!isResizing.value) return
-  
-  isResizing.value = false
-  
-  document.removeEventListener('mousemove', handleResize)
-  document.removeEventListener('mouseup', handleResizeEnd)
+  const handleResizeEnd = () => {
+    document.removeEventListener('mousemove', handleResizeMove)
+    document.removeEventListener('mouseup', handleResizeEnd)
+  }
+
+  document.addEventListener('mousemove', handleResizeMove)
+  document.addEventListener('mouseup', handleResizeEnd)
 }
 </script>
 
 <style scoped>
 .single-form-card-wrapper {
-  position: absolute;
   cursor: move;
-  transition: all 0.2s ease;
+  transition: box-shadow 0.3s ease;
 }
 
 .single-form-card-wrapper:hover {
@@ -302,50 +354,41 @@ const handleResizeEnd = (event) => {
 }
 
 .single-form-card {
-  position: relative;
-  width: 100%;
   height: 100%;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
 }
 
-.single-form-card:hover {
-  border-color: #ddd;
+.single-form-card.editable {
+  cursor: move;
 }
 
-.single-form-card.editable:hover {
-  border-color: #409eff;
-}
-
-.single-form-card.no-style {
-  background: none;
-  box-shadow: none;
-  border: 1px solid transparent;
+.single-form-card :deep(.el-card__body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
 }
 
 .form-content {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  height: calc(100% - 20px);
-  overflow: auto;
-  padding: 12px;
-  box-sizing: border-box;
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
 }
 
 .form-title,
 .form-value,
 .form-remark {
+  margin-bottom: 8px;
   word-wrap: break-word;
-  word-break: break-all;
-  line-height: 1.4;
+  white-space: pre-wrap;
 }
 
-.form-title:empty,
-.form-value:empty,
-.form-remark:empty {
-  display: none;
+.form-title:last-child,
+.form-value:last-child,
+.form-remark:last-child {
+  margin-bottom: 0;
 }
 
 .form-media {
@@ -364,41 +407,40 @@ const handleResizeEnd = (event) => {
   position: absolute;
   top: 8px;
   right: 8px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
   z-index: 10;
-}
-
-.single-form-card-wrapper:hover .form-actions {
-  opacity: 1;
 }
 
 .action-button {
   background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #ddd;
-  backdrop-filter: blur(10px);
+  border: 1px solid #dcdfe6;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .resize-handle {
   position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 16px;
-  height: 16px;
-  background: rgba(0, 0, 0, 0.08);
-  border-radius: 3px;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #409eff;
   cursor: se-resize;
-  user-select: none;
-  pointer-events: auto;
-  z-index: 1000;
-  transition: background-color 0.2s;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
-.resize-handle:hover {
-  background: rgba(64, 158, 255, 0.7);
+.single-form-card-wrapper:hover .resize-handle {
+  opacity: 1;
 }
 
-.single-form-card:not(.editable) .resize-handle {
-  display: none;
+.no-style {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.no-style :deep(.el-card__body) {
+  padding: 0 !important;
+  background: transparent !important;
 }
 </style>

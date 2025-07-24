@@ -107,10 +107,18 @@
             <div v-for="(papers, category) in groupedPaperSizes" :key="category" class="paper-category">
               <div class="category-title">{{ category }}系列</div>
               <div class="papers-group">
-                <div v-for="paper in papers" :key="paper.name" class="paper-option-compact" @click="selectPaper(paper)">
-                  <el-radio :label="paper.name" class="paper-radio">
-                    <div class="paper-preview-compact" :style="getPaperPreviewStyle(paper)"
-                      :class="{ 'selected': selectedPageSize === paper.name }">
+                <div v-for="paper in papers" :key="paper.name" class="paper-option-compact">
+                  <el-radio 
+                    :label="paper.name" 
+                    class="paper-radio" 
+                    v-model="selectedPageSize"
+                    @change="selectPaper(paper)"
+                  >
+                    <div 
+                      class="paper-preview-compact" 
+                      :style="getPaperPreviewStyle(paper)"
+                      :class="{ 'selected': selectedPageSize === paper.name }"
+                    >
                       <span class="paper-name">{{ paper.name }}</span>
                       <span class="paper-dimensions">
                         {{ paper.width }}×{{ paper.height }} {{ paper.unit }}
@@ -253,24 +261,29 @@ const paperSizes = [
 const getPaperPreviewStyle = (paper) => {
   // 计算比例，确保预览可以在界面上显示
   const maxWidth = 80
-  const maxHeight = 100
+  const maxHeight = 60
   const ratio = Math.min(maxWidth / paper.width, maxHeight / paper.height)
+  
+  // 计算实际显示尺寸
+  const displayWidth = Math.max(40, paper.width * ratio)  // 最小宽度40px
+  const displayHeight = Math.max(30, paper.height * ratio) // 最小高度30px
 
   return {
-    width: `${paper.width * ratio}px`,
-    height: `${paper.height * ratio}px`,
-    border: '1px solid #dcdfe6',
+    width: `${displayWidth}px`,
+    height: `${displayHeight}px`,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: '3px',
     fontSize: '10px',
     color: '#606266',
     backgroundColor: 'white',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
     transition: 'all 0.2s ease',
-    borderRadius: '2px'
+    margin: '5px auto',  // 居中显示并增加上下间距
+    boxSizing: 'border-box',
+    position: 'relative',
+    borderRadius: '2px',
+    border: '1px solid #ebeef5'
   }
 }
 
@@ -288,19 +301,24 @@ const groupedPaperSizes = computed(() => {
 
 // 处理表单更新
 function handleFormUpdate(updatedForms) {
-  console.log('[PageManager] 处理表单更新，当前页面索引:', currentPageIdx.value);
-  console.log('[PageManager] 当前页面数据:', JSON.parse(JSON.stringify(pages.value[currentPageIdx.value])));
-  console.log('[PageManager] 处理表单更新，表单数量:', updatedForms?.length || 0);
-  
-  // 确保当前页面存在
-  if (!pages.value[currentPageIdx.value]) {
-    console.error('[PageManager] 当前页面不存在，无法更新表单');
-    return;
-  }
-
   try {
+    console.log('[PageManager] 接收到表单更新:', updatedForms?.length || 0, '个表单');
+
+    // 确保当前页面存在
+    if (!pages.value[currentPageIdx.value]) {
+      console.warn('[PageManager] 当前页面不存在，无法更新表单');
+      return;
+    }
+
     // 创建深拷贝以避免直接修改响应式对象
     const newPages = JSON.parse(JSON.stringify(pages.value));
+    
+    // 确保当前页面有forms数组
+    if (!newPages[currentPageIdx.value].forms) {
+      newPages[currentPageIdx.value].forms = [];
+    }
+    
+    // 更新当前页面的表单数据
     newPages[currentPageIdx.value] = {
       ...newPages[currentPageIdx.value],
       forms: [...updatedForms]
@@ -530,6 +548,18 @@ const selectPaper = (paper) => {
   selectedPaper.value = paper
   
   console.log('[PageManager] 纸张选择:', {
+    paperName: paper.name,
+    paperWidth: paper.width,
+    paperHeight: paper.height
+  });
+}
+
+// 选择纸张并触发点击事件
+const selectPaperAndClick = (paper) => {
+  selectedPageSize.value = paper.name
+  selectedPaper.value = paper
+  
+  console.log('[PageManager] 纸张选择并点击:', {
     paperName: paper.name,
     paperWidth: paper.width,
     paperHeight: paper.height
@@ -1067,7 +1097,7 @@ const debugButton = (buttonName) => {
 .papers-group {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
+  gap: 15px;
 }
 
 .paper-option-compact {
@@ -1090,7 +1120,6 @@ const debugButton = (buttonName) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin-top: 3px;
   font-size: 11px;
   color: #606266;
   background-color: white;
@@ -1100,29 +1129,59 @@ const debugButton = (buttonName) => {
   padding: 10px 6px;
   text-align: center;
   cursor: pointer;
-  height: 110px;
+  height: 100px;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
 }
 
 .paper-preview-compact:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   transform: translateY(-2px);
+  z-index: 2;
 }
 
 .paper-preview-compact.selected {
   border-color: #42b883;
   box-shadow: 0 2px 10px rgba(66, 184, 131, 0.25);
+  z-index: 3;
+}
+
+.paper-preview-compact::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  pointer-events: none;
+  transition: border-color 0.3s ease;
+}
+
+.paper-preview-compact.selected::before {
+  border-color: #42b883;
 }
 
 .paper-name {
   font-weight: 500;
   margin-bottom: 6px;
   color: #303133;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
 }
 
 .paper-dimensions {
   font-size: 10px;
   color: #909399;
   margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
 }
 
 /* 对话框按钮样式 */
@@ -1207,8 +1266,7 @@ const debugButton = (buttonName) => {
   }
 
   .paper-preview-compact {
-    height: 90px;
-    padding: 8px 4px;
+    padding: 6px 4px;
   }
   
   /* 移动设备上的旋转处理 */

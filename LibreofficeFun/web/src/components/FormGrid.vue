@@ -67,6 +67,8 @@ const addFormDataKey = ref(0)
 const showFormEditor = ref(false)
 // 当前选中的表单
 const selectedForm = ref(null)
+// 是否显示添加表单的编辑器
+const showAddFormEditor = ref(false)
 
 // 表单验证函数
 const validateForms = (forms) => {
@@ -76,7 +78,7 @@ const validateForms = (forms) => {
       return [];
     }
     return forms.map((form, index) => {
-      // 确保表单有唯一ID
+      // 确保表单有唯一ID，但如果已存在则不重新生成
       const formId = form.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       
       // 确保表单有位置信息
@@ -154,13 +156,47 @@ const handleFormEditorError = (err) => {
 // 处理添加表单的方法
 const handleAddForm = () => {
   try {
-    // 初始化添加表单数据，确保每次都创建一个新的空表单
+    console.log('[FormGrid] 开始处理添加表单');
+
+    // 初始化添加表单数据
     addFormData.value = {
       id: `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       title: '',
       value: '',
       remark: '',
+      media: '',
+      mediaType: 'image',
+      showTitle: true,
+      showValue: true,
+      showRemark: true,
+      showMedia: true,
       style: getDefaultCardStyles(),
+      elementStyles: {
+        title: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 16,
+          fontWeight: 'bold'
+        },
+        value: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 16,
+          fontWeight: 'normal'
+        },
+        remark: {
+          enabled: false,
+          color: '#666666',
+          fontSize: 14,
+          fontWeight: 'normal'
+        },
+        media: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 14,
+          fontWeight: 'normal'
+        }
+      },
       position: { 
         x: 20 + (forms.value.length * 20), 
         y: 20 + (forms.value.length * 20) 
@@ -172,12 +208,12 @@ const handleAddForm = () => {
     // 更新key以强制刷新FormEditor组件
     addFormDataKey.value = Date.now()
 
-    // 显示添加表单对话框
-    showAddDialog.value = true
+    // 显示添加表单编辑器
+    showAddFormEditor.value = true
 
-    console.log('[FormGrid] 打开添加表单对话框，表单ID:', addFormData.value.id)
+    console.log('[FormGrid] 显示添加表单编辑器，表单ID:', addFormData.value.id)
   } catch (error) {
-    handleError(error, '打开添加表单对话框失败')
+    handleError(error, '处理添加表单失败')
   }
 }
 
@@ -206,18 +242,18 @@ const saveAddForm = (formData) => {
     // 深度克隆表单数据以确保响应式更新
     const deepClonedForms = JSON.parse(JSON.stringify(updatedForms));
     
-    // 更新内部表单状态
-    forms.value = deepClonedForms;
+    // 更新内部表单状态，使用响应式方式更新
+    forms.value = [...deepClonedForms];
     
-    // 触发更新事件
-    emit('update:modelValue', deepClonedForms);
+    // 触发更新事件，确保父组件接收到更新
+    emit('update:modelValue', [...deepClonedForms]);
     
     // 确保在DOM更新后执行
     nextTick(() => {
       console.log('[FormGrid] 表单保存后DOM已更新');
       
-      // 关闭对话框
-      showAddDialog.value = false;
+      // 隐藏添加表单编辑器
+      showAddFormEditor.value = false;
       
       // 更新key以确保下次打开时强制刷新
       addFormDataKey.value = Date.now() + 1;
@@ -228,9 +264,20 @@ const saveAddForm = (formData) => {
       // 清空添加表单数据
       addFormData.value = null;
       
-      // 强制更新卡片样式
+      // 强制更新卡片样式和位置
       if (cardStyleService.updateCardStyles) {
-        cardStyleService.updateCardStyles(deepClonedForms);
+        cardStyleService.updateCardStyles([...deepClonedForms]);
+      }
+      
+      // 更新卡片位置信息
+      if (cardStyleService.setPositions) {
+        const positions = deepClonedForms.map(form => ({
+          id: form.id,
+          ...form.position,
+          width: form.size?.width || 200,
+          height: form.size?.height || 100
+        }));
+        cardStyleService.setPositions(positions);
       }
     });
   } catch (error) {
@@ -241,7 +288,7 @@ const saveAddForm = (formData) => {
 
 // 取消添加表单
 const cancelAddForm = () => {
-  showAddDialog.value = false
+  showAddFormEditor.value = false
   // 更新key以确保下次打开时强制刷新
   addFormDataKey.value = Date.now();
   // 清空添加表单数据
@@ -571,6 +618,7 @@ onMounted(() => {
       nextTick(() => {
         initializeGridLayout();
         // 传递原始数据避免响应式嵌套
+        // 总是触发更新事件以确保数据同步
         emit('update:modelValue', toRaw(forms.value));
       });
     }, { deep: true, immediate: true });
@@ -618,7 +666,7 @@ onMounted(() => {
     </div>
 
     <!-- 表单网格内容 -->
-    <div v-if="!loading && !error" class="form-grid" ref="containerRef" :style="gridContainerStyle">
+    <div v-if="!loading && !error && !showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
       <!-- 表单卡片列表 -->
       <div class="form-cards">
         <SingleFormShow
@@ -639,21 +687,25 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 添加表单对话框 -->
-    <el-dialog v-model="showAddDialog" title="添加表单" :key="showAddDialog.toString()">
-      <FormEditor :form="addFormData" @save="saveAddForm" @cancel="cancelAddForm" @error="handleFormEditorError" :key="addFormDataKey" />
-    </el-dialog>
+    <!-- 添加表单编辑器 -->
+    <div v-if="showAddFormEditor" class="form-editor-overlay">
+      <div class="form-editor-wrapper">
+        <FormEditor :form="addFormData" @save="saveAddForm" @cancel="cancelAddForm" @error="handleFormEditorError" :key="addFormDataKey" />
+      </div>
+    </div>
 
     <!-- 表单编辑器 -->
-    <div class="form-editor-container" v-if="showFormEditor">
-      <FormEditor 
-        :form="selectedForm" 
-        :isEdit="true" 
-        @save="handleFormSave" 
-        @cancel="hideFormEditor"
-        @error="handleFormEditorError" 
-        :key="selectedForm?.id || 'editor'" 
-      />
+    <div class="form-editor-overlay" v-if="showFormEditor">
+      <div class="form-editor-wrapper">
+        <FormEditor 
+          :form="selectedForm" 
+          :isEdit="true" 
+          @save="handleFormSave" 
+          @cancel="hideFormEditor"
+          @error="handleFormEditorError" 
+          :key="selectedForm?.id || 'editor'" 
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -675,6 +727,121 @@ onMounted(() => {
   /* 添加对页面尺寸的支持 */
   box-sizing: border-box;
   margin: 0 auto;
+}
+
+.form-editor-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(2px);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.form-editor-wrapper {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  width: min(800px, calc(100vw - 40px));
+  max-width: min(800px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow-y: hidden;
+  animation: slideDown 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-editor-wrapper :deep(.form-editor) {
+  max-height: calc(100vh - 40px - 20px);
+  overflow-y: auto;
+  flex: 1;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 表单编辑器过渡动画 */
+.form-editor-enter-active, .form-editor-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.form-editor-enter-from, .form-editor-leave-to {
+  opacity: 0;
+}
+
+.form-editor-enter-active .form-editor-wrapper,
+.form-editor-leave-active .form-editor-wrapper {
+  transition: all 0.3s ease;
+}
+
+.form-editor-enter-from .form-editor-wrapper,
+.form-editor-leave-to .form-editor-wrapper {
+  opacity: 0;
+  transform: scale(0.95) translateY(-10px);
+}
+
+/* 响应式设计优化 */
+@media (max-width: 768px) {
+  .form-editor-overlay {
+    padding: 15px;
+  }
+  
+  .form-editor-wrapper {
+    width: calc(100vw - 30px);
+    max-width: calc(100vw - 30px);
+    max-height: calc(100vh - 30px);
+  }
+  
+  .form-editor-wrapper :deep(.form-editor) {
+    max-height: calc(100vh - 30px - 20px);
+  }
+}
+
+@media (max-width: 480px) {
+  .form-editor-overlay {
+    padding: 10px;
+  }
+  
+  .form-editor-wrapper {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+  }
+  
+  .form-editor-wrapper :deep(.form-editor) {
+    max-height: calc(100vh - 20px - 20px);
+  }
+}
+
+@media (max-height: 700px) {
+  .form-editor-wrapper {
+    max-height: calc(100vh - 20px);
+  }
+}
+
+@media (max-height: 500px) {
+  .form-editor-overlay {
+    padding: 5px;
+  }
+  
+  .form-editor-wrapper {
+    max-height: calc(100vh - 10px);
+  }
 }
 
 /* =====================================================
