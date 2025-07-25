@@ -14,25 +14,36 @@
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
-          <FormGrid v-show="currentPageType === 'form'" 
-            v-if="pages[currentPageIdx] && Array.isArray(pages[currentPageIdx].forms)"
-            v-model="pages[currentPageIdx].forms"
+          <FormGrid 
+            ref="formGridRef"
+            v-show="currentPageType === 'form'" 
+            v-if="pages[currentPageIdx] && pages[currentPageIdx].forms"
+            :forms="pages[currentPageIdx].forms"
             :editable="editPageIdx === currentPageIdx" 
             :cardStyleOn="cardStyleOn"
-            :pageSize="pages[currentPageIdx]?.pageSize" 
-            @update:modelValue="handleFormUpdate"
-            ref="formGridRef" />
-          <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
-            :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
-            :onToggleCardStyle="onToggleCardStyle" @add-form="onAddForm" />
+            :pageSize="pageSize"
+            @update:forms="handleFormsUpdate"
+            @form-updated="handleFormUpdated" />
         </template>
 
-        <!-- 卡片转换页面 -->
-        <SimpleCardConverter v-show="currentPageType === 'cards'" 
-          :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
-          :pageSize="pages[currentPageIdx]?.pageSize" 
-          ref="cardConverterRef"
-          :key="`${currentPageType}-${currentPageIdx}`" />
+        <!-- 卡片页面 -->
+        <template v-else-if="currentPageType === 'cards'">
+          <SimpleCardConverter 
+            v-if="pages[currentPageIdx] && pages[currentPageIdx].forms"
+            :forms="pages[currentPageIdx].forms"
+            :pageSize="pageSize"
+            @form-updated="handleFormUpdated" />
+        </template>
+        
+        <!-- 浮动工具条 -->
+        <FloatingBar 
+          v-if="pages.length > 0"
+          @toggle-card-style="onToggleCardStyle"
+          @prev-page="() => currentPageIdx > 0 && (currentPageIdx -= 1)"
+          @next-page="() => currentPageIdx < pages.length - 1 && (currentPageIdx += 1)"
+          @add-form="onAddForm"
+          @clear-current-page="clearCurrentPageForms"
+        />
       </el-main>
       <!-- 可拖动侧边栏 -->
       <div class="resizable-aside-container" :style="{ width: asideWidth + 'px' }">
@@ -383,21 +394,21 @@ function handleFormUpdate(updatedForms) {
       console.warn('[PageManager] 当前页面不存在，无法更新表单');
       return;
     }
-
-    // 直接更新当前页面的表单数组，避免使用splice等可能引起问题的方法
-    const currentPage = pages.value[currentPageIdx.value];
+    
+    // 创建新的表单数组副本
+    const newForms = Array.isArray(updatedForms) ? [...updatedForms] : [];
     
     // 创建新的页面对象以确保响应式更新
     const updatedPage = {
-      ...currentPage,
-      forms: Array.isArray(updatedForms) ? [...updatedForms] : []
+      ...pages.value[currentPageIdx.value],
+      forms: newForms
     };
     
-    // 替换整个页面对象以触发响应式更新
+    // 创建新的pages数组以确保响应式更新
     const newPages = [...pages.value];
     newPages[currentPageIdx.value] = updatedPage;
     pages.value = newPages;
-
+    
     // 保存到本地存储
     localStorage.setItem('form-pages', JSON.stringify(pages.value));
     const storedPages = JSON.parse(localStorage.getItem('form-pages'));
@@ -411,6 +422,11 @@ function handleFormUpdate(updatedForms) {
       console.log('[PageManager] 存储中当前页面表单数量:', 
         storedPages[currentPageIdx.value]?.forms?.length || 0);
     }
+    
+    // 强制更新页面显示
+    nextTick(() => {
+      checkAndFixFormDisplay();
+    });
   } catch (error) {
     console.error('[PageManager] 更新表单时出错:', error);
     ElMessage.error('更新表单失败');
@@ -721,7 +737,15 @@ const createNewPage = () => {
     nextTick(() => {
       console.log('[PageManager] 新建页面表单数据:', 
         JSON.parse(JSON.stringify(pages.value[currentPageIdx.value]?.forms || [])))
+      
+      // 强制更新页面显示
+      checkAndFixFormDisplay();
     })
+    
+    // 强制更新页面显示
+    setTimeout(() => {
+      checkAndFixFormDisplay();
+    }, 500);
     
     // 关闭对话框
     showPageSizeDialog.value = false
@@ -1214,6 +1238,7 @@ const stopResize = () => {
   border: 1px solid #e4e7ed;
   border-radius: 4px;
   overflow: hidden;
+  display: flex;
 }
 
 .page-menu-item {

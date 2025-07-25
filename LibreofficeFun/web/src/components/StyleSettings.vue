@@ -6,6 +6,11 @@
     </div>
     
     <div class="setting-group">
+      <label>字体颜色：</label>
+      <el-color-picker v-model="settings.textColor" size="small" show-alpha :predefine="predefineColors" />
+    </div>
+    
+    <div class="setting-group">
       <label>背景颜色：</label>
       <el-color-picker v-model="settings.backgroundColor" size="small" show-alpha :predefine="predefineColors" />
     </div>
@@ -18,6 +23,11 @@
     <div class="setting-group">
       <label>间距：</label>
       <el-input-number v-model="settings.spacing" :min="0" :max="50" size="small" />
+    </div>
+    
+    <div class="setting-group">
+      <label>行距：</label>
+      <el-input-number v-model="settings.rowSpacing" :min="0" :max="100" size="small" />
     </div>
   </div>
 </template>

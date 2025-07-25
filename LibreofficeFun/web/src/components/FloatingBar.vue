@@ -11,7 +11,7 @@
         </el-tooltip>
 
         <el-tooltip effect="dark" content="清空当前页" placement="top">
-          <el-popconfirm title="确定要清空当前页面吗？" @confirm="clearCurrentPageForms" confirm-button-type="danger">
+          <el-popconfirm title="确定要清空当前页面吗？" @confirm="handleClearCurrentPageForms" confirm-button-type="danger">
             <template #reference>
               <el-button type="danger" size="small" circle>
                 <el-icon>
@@ -23,7 +23,7 @@
         </el-tooltip>
 
         <el-tooltip effect="dark" content="样式开关" placement="top">
-          <el-button type="primary" size="small" circle @click="$emit('toggle-card-style')">
+          <el-button type="primary" size="small" circle @click="handleToggleCardStyle">
             <el-icon>
               <Grid />
             </el-icon>
@@ -31,7 +31,7 @@
         </el-tooltip>
 
         <el-tooltip effect="dark" content="上一页" placement="top">
-          <el-button type="primary" size="small" circle @click="$emit('prev-page')">
+          <el-button type="primary" size="small" circle @click="handlePrevPage">
             <el-icon>
               <ArrowLeft />
             </el-icon>
@@ -39,7 +39,7 @@
         </el-tooltip>
 
         <el-tooltip effect="dark" content="下一页" placement="top">
-          <el-button type="primary" size="small" circle @click="$emit('next-page')">
+          <el-button type="primary" size="small" circle @click="handleNextPage">
             <el-icon>
               <ArrowRight />
             </el-icon>
@@ -48,7 +48,7 @@
       </div>
     </transition>
 
-    <div class="toggle-button" @click="visible = !visible">
+    <div class="toggle-btn" @click="visible = !visible">
       <el-icon>
         <ArrowLeft v-if="visible" />
         <ArrowRight v-else />
@@ -70,13 +70,7 @@ export default {
     ArrowLeft,
     ArrowRight
   },
-  props: {
-    clearCurrentPageForms: {
-      type: Function,
-      required: true
-    }
-  },
-  emits: ['add-form', 'toggle-card-style', 'prev-page', 'next-page'],
+  emits: ['add-form', 'toggle-card-style', 'prev-page', 'next-page', 'clear-current-page'],
   setup(props, { emit }) {
     const visible = ref(true)
     const barStyle = ref({
@@ -118,11 +112,31 @@ export default {
       emit('add-form')
     }
 
+    const handleClearCurrentPageForms = () => {
+      emit('clear-current-page')
+    }
+
+    const handleToggleCardStyle = () => {
+      emit('toggle-card-style')
+    }
+
+    const handlePrevPage = () => {
+      emit('prev-page')
+    }
+
+    const handleNextPage = () => {
+      emit('next-page')
+    }
+
     return {
       visible,
       barStyle,
       startDrag,
-      handleAddForm
+      handleAddForm,
+      handleClearCurrentPageForms,
+      handleToggleCardStyle,
+      handlePrevPage,
+      handleNextPage
     }
   }
 }
@@ -141,13 +155,12 @@ export default {
   align-items: center;
   gap: 4px;
   padding: 6px;
-  right: 24px;
-  bottom: 24px;
+  left: v-bind('barStyle.left');
+  top: v-bind('barStyle.top');
   width: auto;
   min-width: 32px;
   max-width: 400px;
   height: 32px;
-  transform: translate(v-bind('barStyle.transform'));
   will-change: transform; /* 提升动画性能 */
   
   &:hover {
@@ -164,6 +177,13 @@ export default {
 
 .toggle-btn {
   transition: transform 0.3s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  
   &:hover {
     transform: scale(1.1);
   }
@@ -187,7 +207,7 @@ export default {
   .floating-content {
     display: none;
   }
-  .toggle-btn {
+  .toggle-button {
     margin: 0;
   }
 }
