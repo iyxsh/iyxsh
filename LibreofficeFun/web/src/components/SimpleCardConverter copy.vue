@@ -1371,21 +1371,16 @@ const onGlobalStyleDialogClose = () => {
 }
 
 .card-group {
-  /* 移除固定宽度，让容器根据内容自适应 */
+  /* 移除固定的宽度绑定，使用更灵活的自适应方式 */
   width: fit-content;
   min-width: 100%;
+  margin: 0 auto v-bind('converterSettings.rowSpacing + "px"') auto;
+  position: relative;
+  padding: 0px;
   /* 添加自适应高度 */
   height: fit-content;
   /* 确保内容不会被裁剪 */
   overflow: visible;
-  margin-bottom: v-bind('converterSettings.rowSpacing + "px"');
-  border: v-bind('converterSettings.showBorder ? "1px solid #ddd" : "none"');
-  border-radius: 4px;
-  padding: 10px;
-  background-color: #fff;
-  position: relative;
-  padding: 0px;
-  /* 确保容器能够适应子元素的变换 */
   box-sizing: border-box;
 }
 
@@ -1414,8 +1409,6 @@ const onGlobalStyleDialogClose = () => {
   scroll-behavior: smooth;
   background: transparent;
   max-height: calc(100vh - 120px);
-  /* 确保容器能适应子元素的变换 */
-  align-items: center;
 }
 
 .card-row {
@@ -1430,7 +1423,7 @@ const onGlobalStyleDialogClose = () => {
   /* 使用间距设置 */
   /* 添加以下样式以适应变换后的文本 */
   align-items: flex-start;
-  padding: 0.5em 0;
+  padding: 0px;
   /* 确保行容器不会裁剪内容 */
   overflow: visible;
   /* 移除固定最小高度，让容器完全根据内容自适应 */
@@ -1441,8 +1434,6 @@ const onGlobalStyleDialogClose = () => {
   align-self: flex-start;
   /* 为变换后的元素预留空间 */
   align-items: stretch;
-  /* 确保有足够的空间显示旋转和缩放后的元素 */
-  place-content: stretch center;
 }
 
 .text-card-container {
@@ -1456,7 +1447,7 @@ const onGlobalStyleDialogClose = () => {
   /* 添加相对定位，确保变换基于容器中心 */
   position: relative;
   /* 减小内边距，更精确地适应文本 */
-  padding: 0.5em;
+  padding: 0px;
   /* 确保容器本身不会阻挡变换效果 */
   overflow: visible;
   /* 设置容器的变换原点，使其在布局中更居中 */
@@ -1469,9 +1460,9 @@ const onGlobalStyleDialogClose = () => {
   align-self: flex-start;
   /* 为变换元素创建新的层叠上下文 */
   isolation: isolate;
-  /* 移除固定最小尺寸，让容器完全根据内容自适应 */
-  min-width: fit-content;
-  min-height: fit-content;
+  /* 确保容器为内容提供足够的空间 */
+  min-width: 2em;
+  min-height: 2em;
 }
 
 .card-text {
@@ -1491,10 +1482,6 @@ const onGlobalStyleDialogClose = () => {
   transition: transform 0.3s ease;
   /* 添加will-change属性优化性能 */
   will-change: transform;
-  /* 确保文本在容器中居中 */
-  text-align: center;
-  /* 添加一些内边距使文本不会贴边 */
-  padding: 0.2em;
 }
 
 .vertical-layout .card-text {
