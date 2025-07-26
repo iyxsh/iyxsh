@@ -1060,8 +1060,9 @@ const getStyleManagerDefaults = () => {
     console.error('无法获取StyleManager默认样式', err);
   }
 
-  // 如果获取失败，返回一个基础默认值
+  // 如果获取失败，返回一个基础默认值（与StyleManager.vue中定义的默认值保持一致）
   return {
+    // 常用设置
     fontSize: 16,
     color: '#000000',
     fontWeight: 'normal',
@@ -1070,14 +1071,97 @@ const getStyleManagerDefaults = () => {
     lineHeight: 1.2,
     backgroundColor: '#ffffff',
     opacity: 1,
+    textRotation: 0,
+    scale: 1,
+    
+    // 高级设置
     padding: 0,
     margin: 0,
     borderStyle: 'none',
     borderWidth: 1,
     borderColor: '#000000',
     borderRadius: 0,
-    textRotation: 0,
-    scale: 1
+    width: '',
+    height: '',
+    maxWidth: '',
+    maxHeight: '',
+    minWidth: '',
+    minHeight: '',
+    display: '',
+    position: 'static',
+    left: '',
+    top: '',
+    right: '',
+    bottom: '',
+    boxShadow: '',
+    transform: '',
+    textDecoration: 'none',
+    textTransform: 'none',
+    letterSpacing: 0,
+    wordSpacing: 0,
+    fontFamily: '',
+    fontVariant: 'normal',
+    verticalAlign: 'baseline',
+    overflow: 'visible',
+    cursor: 'default',
+    visibility: 'visible',
+    zIndex: 0,
+    float: 'none',
+    clear: 'none',
+    
+    // Flexbox相关属性
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
+    
+    // Grid相关属性
+    gridTemplateColumns: '',
+    gridTemplateRows: '',
+    gridColumnGap: 0,
+    gridRowGap: 0,
+    
+    // 背景相关属性
+    backgroundImage: '',
+    backgroundRepeat: 'repeat',
+    backgroundSize: 'auto',
+    backgroundPosition: '',
+    backgroundAttachment: 'scroll',
+    
+    // 文本相关属性
+    textIndent: 0,
+    textShadow: '',
+    textOverflow: '',
+    wordBreak: 'normal',
+    wordWrap: 'normal',
+    
+    // 列表样式属性
+    listStyleType: 'none',
+    listStylePosition: 'outside',
+    listStyleImage: '',
+    
+    // 过渡和动画属性
+    transition: '',
+    animation: '',
+    
+    // 滤镜属性
+    filter: '',
+    
+    // outline属性
+    outline: '',
+    
+    // white-space属性
+    whiteSpace: 'normal',
+    
+    // 用户选择属性
+    userSelect: '',
+    
+    // 盒模型属性
+    boxSizing: '',
+    
+    // 方向属性
+    direction: 'ltr',
+    writingMode: 'horizontal-tb'
   };
 };
 
@@ -1091,9 +1175,49 @@ const getCardTextStyle = (card) => {
   // 获取卡片文本样式
   const textStyle = card.textStyle || {}
 
+  // 使用StyleManager的toCSS方法来转换样式
+  // 创建一个临时的StyleManager实例来处理样式转换
+  const tempStyleManager = defaultStyleManagerRef.value
+  if (tempStyleManager && tempStyleManager.localStyle) {
+    try {
+      // 将textStyle应用到临时的StyleManager上
+      const originalLocalStyle = {...tempStyleManager.localStyle}
+      // 确保originalLocalStyle不为null或undefined
+      if (originalLocalStyle && textStyle) {
+        Object.assign(tempStyleManager.localStyle, textStyle)
+        
+        // 获取转换后的CSS
+        const css = tempStyleManager.toCSS()
+        
+        // 恢复原始样式
+        Object.assign(tempStyleManager.localStyle, originalLocalStyle)
+        
+        // 特殊处理transform属性，因为卡片可能有独立的旋转和缩放设置
+        if (textStyle.textRotation !== undefined || textStyle.scale !== undefined) {
+          const rotation = textStyle.textRotation || 0
+          const scale = textStyle.scale || 1
+          css.transform = `rotate(${rotation}deg) scale(${scale})`
+        }
+        
+        // 为支持transform，需要设置display为inline-block
+        if (css.transform) {
+          css.display = 'inline-block'
+          // 添加will-change属性优化变换性能
+          css.willChange = 'transform'
+        }
+        
+        return css
+      }
+    } catch (error) {
+      console.error('Error processing card text style with StyleManager:', error)
+      // 如果出错，继续使用回退方案
+    }
+  }
+
+  // 如果无法使用StyleManager，则回退到原来的手动处理方式
   // 获取StyleManager的默认样式
   // 从defaultStyleManagerRef中获取localStyle作为默认样式
-  const defaultStyle = getStyleManagerDefaults();
+  const defaultStyle = getStyleManagerDefaults()
 
   // 构建样式对象
   const style = {}
@@ -1157,12 +1281,25 @@ const getCardTextStyle = (card) => {
 
   style.boxShadow = textStyle.boxShadow || defaultStyle.boxShadow
 
-  style.transform = textStyle.transform || defaultStyle.transform
+  // 处理transform属性，优先使用textRotation
+  if (textStyle.textRotation !== undefined && textStyle.textRotation !== 0) {
+    // 如果有textRotation属性，将其转换为transform
+    const scale = textStyle.scale || 1
+    style.transform = `rotate(${textStyle.textRotation}deg) scale(${scale})`
+  } else if (textStyle.transform) {
+    // 如果直接提供了transform属性，使用它
+    style.transform = textStyle.transform
+  } else if (defaultStyle.transform) {
+    // 使用默认的transform
+    style.transform = defaultStyle.transform
+  }
 
   // 为支持transform，需要设置display为inline-block
-  if (textStyle.transform || defaultStyle.transform) {
+  if (textStyle.transform || defaultStyle.transform || 
+      (textStyle.textRotation !== undefined && textStyle.textRotation !== 0) ||
+      textStyle.scale !== undefined) {
     style.display = 'inline-block'
-    // 添加will-change属性优化变换性能
+    // 添加will-change属性优化性能
     style.willChange = 'transform'
   }
 
@@ -1223,12 +1360,47 @@ const applyGlobalTextStyle = (style) => {
 // 保存全局样式编辑
 const saveGlobalStyleEdit = () => {
   // 创建一个样式副本
-  const globalStyleCopy = JSON.parse(JSON.stringify(globalTextStyles.value));
+  const globalStyleCopy = JSON.parse(JSON.stringify(globalTextStyles.value || {}));
   
-  // 如果有textRotation属性，构造transform属性
-  if (globalStyleCopy.textRotation !== undefined && globalStyleCopy.textRotation !== 0) {
-    const scale = globalStyleCopy.scale || 1;
-    globalStyleCopy.transform = `rotate(${globalStyleCopy.textRotation}deg) scale(${scale})`;
+  // 使用StyleManager的toCSS方法来处理transform属性
+  const tempStyleManager = defaultStyleManagerRef.value;
+  if (tempStyleManager && tempStyleManager.localStyle) {
+    try {
+      // 将样式应用到临时的StyleManager上
+      const originalLocalStyle = {...tempStyleManager.localStyle};
+      // 确保originalLocalStyle不为null或undefined
+      if (originalLocalStyle && globalStyleCopy) {
+        Object.assign(tempStyleManager.localStyle, globalStyleCopy);
+        
+        // 获取转换后的CSS
+        const css = tempStyleManager.toCSS();
+        
+        // 恢复原始样式
+        Object.assign(tempStyleManager.localStyle, originalLocalStyle);
+        
+        // 如果CSS中有transform属性，则使用它
+        if (css.transform) {
+          globalStyleCopy.transform = css.transform;
+        } else if (globalStyleCopy.textRotation !== undefined && globalStyleCopy.textRotation !== 0) {
+          // 否则手动处理textRotation
+          const scale = globalStyleCopy.scale || 1;
+          globalStyleCopy.transform = `rotate(${globalStyleCopy.textRotation}deg) scale(${scale})`;
+        }
+      }
+    } catch (error) {
+      console.error('Error processing global style with StyleManager:', error);
+      // 如果出错，继续使用原来的处理方式
+      if (globalStyleCopy.textRotation !== undefined && globalStyleCopy.textRotation !== 0) {
+        const scale = globalStyleCopy.scale || 1;
+        globalStyleCopy.transform = `rotate(${globalStyleCopy.textRotation}deg) scale(${scale})`;
+      }
+    }
+  } else {
+    // 回退到原来的处理方式
+    if (globalStyleCopy.textRotation !== undefined && globalStyleCopy.textRotation !== 0) {
+      const scale = globalStyleCopy.scale || 1;
+      globalStyleCopy.transform = `rotate(${globalStyleCopy.textRotation}deg) scale(${scale})`;
+    }
   }
 
   // 将样式应用到所有卡片
@@ -1236,7 +1408,8 @@ const saveGlobalStyleEdit = () => {
     group.rows.forEach(row => {
       if (row.cards && row.cards.length > 0) {
         row.cards.forEach(card => {
-          card.textStyle = JSON.parse(JSON.stringify(globalStyleCopy));
+          // 确保card.textStyle不为null或undefined
+          card.textStyle = JSON.parse(JSON.stringify(globalStyleCopy || {}));
         });
       }
     });
@@ -1579,21 +1752,4 @@ const onGlobalStyleDialogClose = () => {
   padding-bottom: 10px;
   border-bottom: 1px dashed #ebeef5;
 }
-
-/* 移除已删除的样式 */
-/*
-.dialog-actions {
-  margin: 15px 0;
-  text-align: center;
-}
-
-.style-panel {
-  margin: 10px 0;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 10px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-*/
 </style>
