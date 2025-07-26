@@ -6,30 +6,25 @@
         <h3>表单转卡片</h3>
         <div class="drag-handle">⋮⋮</div>
       </div>
+      <!-- 添加空值检查 -->
+      <el-switch v-if="converterSettings" v-model="converterSettings.showBorder" active-text="显示边框" inactive-text="隐藏边框"
+        @change="updateStyle" />
+      <!-- 添加空值检查 -->
+      <el-switch v-if="converterSettings" v-model="converterSettings.showBackground" active-text="显示背景"
+        inactive-text="隐藏背景" @change="updateStyle" />
+
+      <!-- 添加card-text样式管理器 -->
+      <StyleSettings v-if="converterSettings" v-model="converterSettings" :predefine-colors="predefineColors"
+        @update:model-value="updateStyle" />
+
+      <!-- 添加card-text样式管理器 -->
+      <div class="global-style-settings">
+        <el-button @click="openGlobalStylePanel" size="small" type="primary">
+          统一样式设置
+        </el-button>
+      </div>
       <div class="toolbar-content">
-        <!-- 添加空值检查 -->
-        <el-switch v-if="converterSettings" v-model="converterSettings.showBorder" active-text="显示边框"
-          inactive-text="隐藏边框" @change="updateStyle" />
-        <!-- 添加空值检查 -->
-        <el-switch v-if="converterSettings" v-model="converterSettings.showBackground" active-text="显示背景"
-          inactive-text="隐藏背景" @change="updateStyle" />
 
-        <!-- 添加空值检查 -->
-        <StyleSettings v-if="converterSettings" v-model="converterSettings" :predefine-colors="predefineColors"
-          @update:model-value="updateStyle" />
-
-        <!-- 添加card-text样式管理器 -->
-        <div class="global-style-settings">
-          <el-button @click="toggleGlobalStylePanel" size="small" type="primary">
-            统一样式设置
-          </el-button>
-
-          <!-- 全局样式设置面板 -->
-          <div v-show="showGlobalStylePanel" class="global-style-panel">
-            <CardTextManager v-model="globalTextStyles" :predefine-colors="predefineColors" @change="applyGlobalStyles"
-              @apply="applyGlobalStyles" />
-          </div>
-        </div>
         <!-- 卡片样式选择器 -->
         <span class="control-label">卡片样式：</span>
         <el-select v-model="selectedCardStyle" placeholder="选择卡片样式" size="small" @change="handleCardStyleChange">
@@ -42,15 +37,15 @@
     <div class="cards-display-area">
       <div class="card-group" v-for="(group, groupIndex) in cardGroups" :key="group.id || groupIndex"
         :style="getCardGroupStyle()">
-        <div class="group-title">{{ group.title || '表单卡片组 ' + (groupIndex + 1) }}</div>
         <div class="cards-container" :class="{ 'vertical-layout': converterSettings.layout === 'vertical' }">
           <div v-for="(row, rowIndex) in group.rows" :key="'row-' + (group.id || groupIndex) + '-' + rowIndex"
-            class="card-row" :class="row.type" @click.self="editRowStyle(groupIndex, rowIndex)" :data-row-id="`${groupIndex}-${rowIndex}`">
+            class="card-row" :class="row.type" @click.self="editRowStyle(groupIndex, rowIndex)"
+            :data-row-id="`${groupIndex}-${rowIndex}`">
             <div v-for="(card, cardIndex) in row.cards"
               :key="'card-' + (group.id || groupIndex) + '-' + rowIndex + '-' + cardIndex"
               @click="editCard(groupIndex, rowIndex, cardIndex)" :class="card.type"
-              :data-card-id="`${groupIndex}-${rowIndex}-${cardIndex}`">
-              <text :style="getCardTextStyle(card)">{{ card?.text || '示例' }}</text>
+              :data-card-id="`${groupIndex}-${rowIndex}-${cardIndex}`" class="text-card-container">
+              <span class="card-text" :style="getCardTextStyle(card)">{{ card?.text || '示例' }}</span>
             </div>
           </div>
         </div>
@@ -80,25 +75,34 @@
         <el-button type="primary" @click="saveCardEdit">确定</el-button>
       </template>
     </el-dialog>
-    
+
     <!-- 行样式编辑对话框 -->
     <el-dialog v-model="rowStyleDialogVisible" title="行文本样式设置" width="350px" @close="onRowDialogClose">
       <p class="dialog-description">设置将应用于当前行的所有卡片文本</p>
-      
-      <StyleManager
-        ref="rowStyleManager"
-        v-model="editingRowStyle.textStyle"
-        @change="updateRowTextStyle"
-        @apply="applyRowTextStyle"
-      />
-      
+
+      <StyleManager ref="rowStyleManager" v-model="editingRowStyle.textStyle" @change="updateRowTextStyle"
+        @apply="applyRowTextStyle" />
+
       <template #footer>
         <el-button @click="rowStyleDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveRowStyleEdit">应用到整行</el-button>
       </template>
     </el-dialog>
+
+    <!-- 统一样式设置对话框 -->
+    <el-dialog v-model="globalStyleDialogVisible" title="统一样式设置" width="400px" @close="onGlobalStyleDialogClose">
+      <p class="dialog-description">设置将应用于所有卡片文本</p>
+
+      <StyleManager ref="globalStyleManager" v-model="globalTextStyles" @change="updateGlobalTextStyle"
+        @apply="applyGlobalTextStyle" />
+
+      <template #footer>
+        <el-button @click="globalStyleDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveGlobalStyleEdit">应用到所有卡片</el-button>
+      </template>
+    </el-dialog>
   </div>
-  
+
   <!-- 隐藏的StyleManager组件，用于获取默认样式值 -->
   <div style="display:none;">
     <StyleManager ref="defaultStyleManagerRef" />
@@ -109,14 +113,10 @@ import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } 
 import StyleSettings from './StyleSettings.vue';
 import { useEventBus } from '@/utils/eventBus';
 import { ElMessage } from 'element-plus';
-import CardTextManager from './CardTextManager.vue';
 import StyleManager from './StyleManager.vue'; // 导入StyleManager组件
 
 // 创建事件总线实例
 const { on, off, emit } = useEventBus();
-
-// 现在使用CardTextManager管理卡片文本样式
-// 通过props传递样式设置
 
 // 添加组件加载调试信息
 console.log('SimpleCardConverter component initializing');
@@ -129,14 +129,17 @@ const toolbarPosition = reactive({ x: 20, y: 20 }); // 默认位置
 // 添加页面尺寸相关数据
 const pageSize = ref({ width: 800, height: 600 }); // 默认页面尺寸，像素单位
 
-// 添加cardTextManager引用
-// const cardTextManager = ref(null)
-
 // 全局文本样式设置
 const globalTextStyles = ref({})
 
 // 控制全局样式面板显示
 const showGlobalStylePanel = ref(false)
+
+// 控制全局样式对话框显示
+const globalStyleDialogVisible = ref(false)
+
+// 全局样式管理器引用
+const globalStyleManager = ref(null)
 
 // 定义props
 const props = defineProps({
@@ -257,7 +260,7 @@ const converterSettings = reactive({
   padding: 0,
   margin: 0,
   spacing: 0,
-  rowSpacing: 30, // 添加行距属性，默认值为30px
+  rowSpacing: 10, // 添加行距属性，默认值为10px
   textRotation: 0,
   backgroundColor: '#ffffff',
   textColor: '#000000',
@@ -443,9 +446,9 @@ const updateStyle = () => {
 const getCardGroupStyle = () => {
   return {
     marginBottom: `${converterSettings.rowSpacing}px`, // 使用 converterSettings 中的行距
-    border: converterSettings.showBorder ? '1px solid #ddd' : 'none',
-    borderRadius: '4px',
-    padding: '10px',
+    border: converterSettings.showBorder ? '0px solid #ddd' : 'none',
+    borderRadius: '0px',
+    padding: '0px',
     backgroundColor: '#fff'
   }
 }
@@ -845,11 +848,28 @@ const cardTextStyle = computed(() => {
     style.boxShadow = converterSettings.boxShadow;
   }
 
-  if (globalStyle.transform) {
-    style.transform = globalStyle.transform;
-  } else if (converterSettings.transform) {
-    style.transform = converterSettings.transform;
+  style.transform = textStyle.transform || defaultStyle.transform
+
+  // 文字特有样式
+  if (textStyle.textDecoration && textStyle.textDecoration !== 'none') {
+    style.textDecoration = textStyle.textDecoration
+  } else if (defaultStyle.textDecoration !== 'none') {
+    style.textDecoration = defaultStyle.textDecoration
   }
+
+  if (textStyle.textTransform && textStyle.textTransform !== 'none') {
+    style.textTransform = textStyle.textTransform
+  } else if (defaultStyle.textTransform !== 'none') {
+    style.textTransform = defaultStyle.textTransform
+  }
+
+  style.letterSpacing = textStyle.letterSpacing !== undefined ?
+    `${textStyle.letterSpacing}px` : (defaultStyle.letterSpacing ?
+      `${defaultStyle.letterSpacing}px` : undefined)
+
+  style.wordSpacing = textStyle.wordSpacing !== undefined ?
+    `${textStyle.wordSpacing}px` : (defaultStyle.wordSpacing ?
+      `${defaultStyle.wordSpacing}px` : undefined)
 
   return style;
 });
@@ -873,32 +893,32 @@ const toggleTextStylePanel = () => {
   if (showTextStylePanel.value) {
     // 获取当前卡片的索引
     const { groupIndex, rowIndex, cardIndex } = editingCard;
-    
+
     // 如果有有效的卡片索引
-    if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 && 
-        cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
-      
+    if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
+      cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
+
       // 获取当前卡片对象
       const currentCard = cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex];
-      
+
       // 获取当前卡片已保存的样式
       const savedStyle = currentCard.textStyle || {};
-      
+
       // 深拷贝保存的样式
       const styleCopy = JSON.parse(JSON.stringify(savedStyle));
-      
+
       // 处理fontWeight，确保它不是数值形式
       if (styleCopy.fontWeight === '400') {
         styleCopy.fontWeight = 'normal';
       } else if (styleCopy.fontWeight === '700') {
         styleCopy.fontWeight = 'bold';
       }
-      
+
       // 处理行高，确保它是合理值
       if (styleCopy.lineHeight > 3 || !styleCopy.lineHeight) {
         styleCopy.lineHeight = 1.2; // 设置为合理的默认行高
       }
-      
+
       // 设置编辑中的卡片样式
       editingCard.textStyle = styleCopy;
     } else {
@@ -906,7 +926,7 @@ const toggleTextStylePanel = () => {
       const defaultStyle = getStyleManagerDefaults();
       editingCard.textStyle = JSON.parse(JSON.stringify(defaultStyle));
     }
-    
+
     // 立即触发更新以显示在UI上
     nextTick(() => {
       if (textStyleManager.value) {
@@ -943,11 +963,11 @@ const editRowStyle = (groupIndex, rowIndex) => {
 
   const row = cardGroup.rows[rowIndex];
   if (!row) return;
-  
+
   // 设置当前编辑的行索引
   editingRowStyle.groupIndex = groupIndex;
   editingRowStyle.rowIndex = rowIndex;
-  
+
   // 尝试获取行中第一个卡片的样式作为初始值
   if (row.cards && row.cards.length > 0) {
     const firstCard = row.cards[0];
@@ -955,10 +975,10 @@ const editRowStyle = (groupIndex, rowIndex) => {
   } else {
     editingRowStyle.textStyle = {}; // 如果没有卡片，使用空对象
   }
-  
+
   // 显示行样式对话框
   rowStyleDialogVisible.value = true;
-  
+
   // 确保在对话框打开后正确设置样式
   nextTick(() => {
     if (rowStyleManager.value) {
@@ -980,22 +1000,22 @@ const applyRowTextStyle = (style) => {
 // 保存行样式编辑
 const saveRowStyleEdit = () => {
   const { groupIndex, rowIndex, textStyle } = editingRowStyle;
-  
+
   if (groupIndex >= 0 && rowIndex >= 0 && cardGroups.value[groupIndex]?.rows[rowIndex]) {
     const row = cardGroups.value[groupIndex].rows[rowIndex];
-    
+
     // 将样式应用到行中的所有卡片
     if (row.cards && row.cards.length > 0) {
       row.cards.forEach(card => {
         card.textStyle = JSON.parse(JSON.stringify(textStyle)); // 深拷贝应用样式
       });
-      
+
       // 关闭对话框
       rowStyleDialogVisible.value = false;
-      
+
       // 提示成功
       ElMessage.success(`已将样式应用到第${rowIndex + 1}行的${row.cards.length}个卡片`);
-      
+
       // 触发更新
       updateStyle();
     }
@@ -1016,7 +1036,7 @@ const getStyleManagerDefaults = () => {
   } catch (err) {
     console.error('无法获取StyleManager默认样式', err);
   }
-  
+
   // 如果获取失败，返回一个基础默认值
   return {
     fontSize: 16,
@@ -1045,20 +1065,20 @@ const getCardTextStyle = (card) => {
 
   // 获取卡片文本样式
   const textStyle = card.textStyle || {}
-  
+
   // 获取StyleManager的默认样式
   // 从defaultStyleManagerRef中获取localStyle作为默认样式
   const defaultStyle = getStyleManagerDefaults();
-  
+
   // 构建样式对象
   const style = {}
 
   // 字体样式
-  style.fontSize = textStyle.fontSize !== undefined ? 
+  style.fontSize = textStyle.fontSize !== undefined ?
     `${textStyle.fontSize}px` : `${defaultStyle.fontSize}px`
-  
+
   style.color = textStyle.color || defaultStyle.color
-  
+
   if (textStyle.fontWeight && textStyle.fontWeight !== 'normal') {
     style.fontWeight = textStyle.fontWeight
   } else if (defaultStyle.fontWeight !== 'normal') {
@@ -1076,15 +1096,15 @@ const getCardTextStyle = (card) => {
 
   // 布局样式
   style.textAlign = textStyle.textAlign || defaultStyle.textAlign
-  
-  style.lineHeight = textStyle.lineHeight !== undefined ? 
+
+  style.lineHeight = textStyle.lineHeight !== undefined ?
     textStyle.lineHeight : defaultStyle.lineHeight
 
   // 盒模型样式
-  style.padding = textStyle.padding !== undefined ? 
+  style.padding = textStyle.padding !== undefined ?
     `${textStyle.padding}px` : `${defaultStyle.padding}px`
-  
-  style.margin = textStyle.margin !== undefined ? 
+
+  style.margin = textStyle.margin !== undefined ?
     `${textStyle.margin}px` : `${defaultStyle.margin}px`
 
   // 边框样式
@@ -1100,7 +1120,7 @@ const getCardTextStyle = (card) => {
     style.border = 'none'
   }
 
-  style.borderRadius = textStyle.borderRadius !== undefined ? 
+  style.borderRadius = textStyle.borderRadius !== undefined ?
     `${textStyle.borderRadius}px` : `${defaultStyle.borderRadius}px`
 
   // 高级样式
@@ -1111,8 +1131,15 @@ const getCardTextStyle = (card) => {
   }
 
   style.boxShadow = textStyle.boxShadow || defaultStyle.boxShadow
-  
+
   style.transform = textStyle.transform || defaultStyle.transform
+
+  // 为支持transform，需要设置display为inline-block
+  if (textStyle.transform || defaultStyle.transform) {
+    style.display = 'inline-block'
+    // 添加will-change属性优化变换性能
+    style.willChange = 'transform'
+  }
 
   // 文字特有样式
   if (textStyle.textDecoration && textStyle.textDecoration !== 'none') {
@@ -1127,12 +1154,12 @@ const getCardTextStyle = (card) => {
     style.textTransform = defaultStyle.textTransform
   }
 
-  style.letterSpacing = textStyle.letterSpacing !== undefined ? 
-    `${textStyle.letterSpacing}px` : (defaultStyle.letterSpacing ? 
+  style.letterSpacing = textStyle.letterSpacing !== undefined ?
+    `${textStyle.letterSpacing}px` : (defaultStyle.letterSpacing ?
       `${defaultStyle.letterSpacing}px` : undefined)
-  
-  style.wordSpacing = textStyle.wordSpacing !== undefined ? 
-    `${textStyle.wordSpacing}px` : (defaultStyle.wordSpacing ? 
+
+  style.wordSpacing = textStyle.wordSpacing !== undefined ?
+    `${textStyle.wordSpacing}px` : (defaultStyle.wordSpacing ?
       `${defaultStyle.wordSpacing}px` : undefined)
 
   return style
@@ -1143,17 +1170,60 @@ const toggleGlobalStylePanel = () => {
   showGlobalStylePanel.value = !showGlobalStylePanel.value
 }
 
-// 应用全局样式到所有卡片
-const applyGlobalStyles = (styles) => {
-  // 更新全局样式数据
-  globalTextStyles.value = { ...styles }
+// 打开全局样式设置面板
+const openGlobalStylePanel = () => {
+  // 深拷贝当前全局样式或使用默认样式
+  const currentGlobalStyle = globalTextStyles.value || {}
+  globalTextStyles.value = JSON.parse(JSON.stringify(currentGlobalStyle))
+  globalStyleDialogVisible.value = true
 
-  // 触发重新渲染以应用样式
-  updateStyle()
+  // 确保在对话框打开后正确设置样式
+  nextTick(() => {
+    if (globalStyleManager.value) {
+      globalStyleManager.value.$forceUpdate();
+    }
+  });
 }
 
-</script>
+// 更新全局文本样式
+const updateGlobalTextStyle = (style) => {
+  globalTextStyles.value = { ...style };
+}
 
+// 应用全局文本样式
+const applyGlobalTextStyle = (style) => {
+  globalTextStyles.value = { ...style };
+}
+
+// 保存全局样式编辑
+const saveGlobalStyleEdit = () => {
+  // 将样式应用到所有卡片
+  cardGroups.value.forEach(group => {
+    group.rows.forEach(row => {
+      if (row.cards && row.cards.length > 0) {
+        row.cards.forEach(card => {
+          card.textStyle = JSON.parse(JSON.stringify(globalTextStyles.value));
+        });
+      }
+    });
+  });
+
+  // 关闭对话框
+  globalStyleDialogVisible.value = false;
+
+  // 提示成功
+  ElMessage.success('已将样式应用到所有卡片');
+
+  // 触发更新
+  updateStyle();
+}
+
+// 全局样式对话框关闭处理
+const onGlobalStyleDialogClose = () => {
+  // 重置编辑状态
+  globalTextStyles.value = {}
+}
+</script>
 
 <style scoped>
 .setting-item {
@@ -1179,7 +1249,7 @@ const applyGlobalStyles = (styles) => {
   width: 100%;
   min-height: 100%;
   padding: 0px;
-  background-color: #f5f5f5;
+  background: transparent;
   position: relative;
   box-sizing: border-box;
   display: flex;
@@ -1196,7 +1266,7 @@ const applyGlobalStyles = (styles) => {
   align-items: center;
   overflow: hidden;
   /* 隐藏滚动条 */
-  background-color: #f0f0f0;
+  background: transparent;
   /* 简化的背景 */
   padding: 0px;
   /* 去掉内边距 */
@@ -1207,7 +1277,7 @@ const applyGlobalStyles = (styles) => {
     height: calc(100% - 40px);
     margin: 20px;
     padding: 0;
-    background-color: #ffffff;
+    background: transparent;
     /* 打印时使用纯白背景 */
   }
 }
@@ -1278,20 +1348,16 @@ const applyGlobalStyles = (styles) => {
 }
 
 .card-group {
-  background-color: transparent;
-  margin-bottom: v-bind('converterSettings.rowSpacing + "px"');
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
+  background: transparent;
   overflow: hidden;
   max-width: 100%;
   /* 根据页面尺寸设置固定宽度 */
   width: v-bind('containerStyle.width');
   box-sizing: border-box;
-  border: 1px solid #e0e0e0;
   margin: 0 auto v-bind('converterSettings.rowSpacing + "px"') auto;
   position: relative;
   /* 添加明确的内边距 */
-  padding: 10px;
+  padding: 0px;
 }
 
 .card-group:last-child {
@@ -1314,39 +1380,59 @@ const applyGlobalStyles = (styles) => {
   box-sizing: border-box;
   overflow: hidden;
   scroll-behavior: smooth;
-  background: #fafafa;
+  background: transparent;
   max-height: calc(100vh - 120px);
 }
 
 .card-row {
   display: flex;
+  /* 允许换行以适应大尺寸变换后的文本 */
   flex-wrap: wrap;
+  /* 设置容器尺寸跟随内容变化 */
+  width: 100%;
+  height: fit-content;
   margin: 0;
   gap: v-bind('converterSettings.spacing + "px"');
   /* 使用间距设置 */
+  /* 添加以下样式以适应变换后的文本 */
+  align-items: flex-start;
+  padding: 0.5em 0;
+  /* 确保行容器不会裁剪内容 */
+  overflow: visible;
+  /* 移除固定最小高度，让容器完全根据内容自适应 */
+  min-height: unset;
+  /* 确保行内元素正确对齐 */
+  align-content: flex-start;
+  /* 根据子元素实际尺寸进行布局 */
+  align-self: flex-start;
 }
 
 .card-row:last-child {
   margin-bottom: 0;
 }
 
-.text-card {
-  box-shadow: none !important;
-  border: none !important;
-  flex-shrink: 0;
-  display: inline-flex;
-  justify-content: center;
+.text-card-container {
+  /* 为旋转和缩放后的文本预留足够空间 */
+  display: flex;
   align-items: center;
-  padding: 0;
-  color: v-bind('converterSettings.textColor');
-  /* 应用字体颜色设置 */
-  background-color: v-bind('converterSettings.showBackground ? converterSettings.backgroundColor : "transparent"');
-}
-
-.text-card:hover {
-  transform: scale(1.1);
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
-  z-index: 10;
+  justify-content: center;
+  /* 设置容器尺寸跟随内容变化 */
+  width: fit-content;
+  height: fit-content;
+  /* 添加相对定位，确保变换基于容器中心 */
+  position: relative;
+  /* 减小内边距，更精确地适应文本 */
+  padding: 0.75em;
+  /* 确保容器本身不会阻挡变换效果 */
+  overflow: visible;
+  /* 设置容器的变换原点，使其在布局中更居中 */
+  transform-origin: center;
+  /* 允许容器根据内容调整 */
+  flex: 0 0 auto;
+  /* 添加以下样式以更好地适应变换 */
+  box-sizing: content-box;
+  /* 确保容器在布局中正确对齐 */
+  align-self: flex-start;
 }
 
 .card-text {
@@ -1354,45 +1440,19 @@ const applyGlobalStyles = (styles) => {
   user-select: none;
   transform-origin: center;
   white-space: pre;
+  /* 添加以下样式以适应变换后的文本 */
+  display: inline-block;
+  /* 确保文本本身不会被裁剪 */
+  overflow: visible;
+  /* 添加z-index确保文本在顶层显示 */
+  z-index: 1;
+  /* 确保文本不会换行 */
+  white-space: nowrap;
 }
 
 .vertical-layout .card-text {
   writing-mode: vertical-rl;
   text-orientation: mixed;
-}
-
-/* 不同行类型的样式 */
-.card-row.title-row {
-  /* 标题行样式 */
-}
-
-.card-row.value-row {
-  /* 内容行样式 */
-}
-
-.card-row.remark-row {
-  /* 备注行样式 */
-}
-
-.card-row.empty-row {
-  /* 空行样式 */
-}
-
-/* 不同类型的卡片可以有不同的样式 */
-.text-card.title {
-  /* 标题卡片样式 */
-}
-
-.text-card.value {
-  /* 内容卡片样式 */
-}
-
-.text-card.remark {
-  /* 备注卡片样式 */
-}
-
-.text-card.empty {
-  /* 空卡片样式 */
 }
 
 /* 卡片样式选择器样式 */
