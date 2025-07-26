@@ -19,10 +19,21 @@
           @update:model-value="updateStyle" />
 
         <!-- 添加card-text样式管理器 -->
-        <CardTextManager ref="cardTextManager" v-if="converterSettings" v-model="converterSettings"
-          :predefine-colors="predefineColors" @change="updateStyle" @apply="updateStyle" />
-
-
+        <div class="global-style-settings">
+          <el-button @click="toggleGlobalStylePanel" size="small" type="primary">
+            统一样式设置
+          </el-button>
+          
+          <!-- 全局样式设置面板 -->
+          <div v-show="showGlobalStylePanel" class="global-style-panel">
+            <CardTextManager
+              v-model="globalTextStyles"
+              :predefine-colors="predefineColors"
+              @change="applyGlobalStyles"
+              @apply="applyGlobalStyles"
+            />
+          </div>
+        </div>
         <!-- 卡片样式选择器 -->
         <span class="control-label">卡片样式：</span>
         <el-select v-model="selectedCardStyle" placeholder="选择卡片样式" size="small" @change="handleCardStyleChange">
@@ -35,14 +46,14 @@
     <div class="cards-display-area">
       <div class="card-group" v-for="(group, groupIndex) in cardGroups" :key="group.id || groupIndex"
         :style="getCardGroupStyle()">
-        <div class="group-title">{{ group.title || `表单卡片组 ${groupIndex + 1}` }}</div>
+        <div class="group-title">{{ group.title || '表单卡片组 ' + (groupIndex + 1) }}</div>
         <div class="cards-container" :class="{ 'vertical-layout': converterSettings.layout === 'vertical' }">
-          <div v-for="(row, rowIndex) in group.rows" :key="`${group.id || groupIndex}-${rowIndex}`" class="card-row"
+          <div v-for="(row, rowIndex) in group.rows" :key="'row-' + (group.id || groupIndex) + '-' + rowIndex" class="card-row"
             :class="row.type">
-            <div v-for="(card, cardIndex) in row.cards" :key="`${group.id || groupIndex}-${rowIndex}-${cardIndex}`"
+            <div v-for="(card, cardIndex) in row.cards" :key="'card-' + (group.id || groupIndex) + '-' + rowIndex + '-' + cardIndex"
               class="text-card" :style="getCardStyle(card)" @click="editCard(groupIndex, rowIndex, cardIndex)"
               :class="card.type">
-              <span class="card-text" :style="cardTextStyle">{{ card?.text || '示例' }}</span>
+              <text :style="getCardTextStyle(card)">{{ card?.text || '示例' }}</text>
             </div>
           </div>
         </div>
@@ -62,11 +73,15 @@
         @input="value => editingCard.text = value" />
 
       <template #footer>
-        <el-button @click="toggleStylePanel">{{ showStylePanel ? '隐藏样式' : '样式设置' }}</el-button>
-        <!-- 样式设置面板 -->
-        <div v-show="showStylePanel" class="style-panel">
-          <CardTextManager v-model="editingCard.style" :predefine-colors="predefineColors" @change="updateCardStyle"
-            @apply="updateCardStyle" />
+        <el-button @click="toggleTextStylePanel">{{ showTextStylePanel ? '隐藏样式' : '文本样式设置' }}</el-button>
+        <!-- 文本样式设置面板 -->
+        <div v-show="showTextStylePanel" class="text-style-panel">
+          <StyleManager
+            ref="textStyleManager"
+            v-model="editingCard.textStyle"
+            @change="updateEditingCardTextStyle"
+            @apply="applyEditingCardTextStyle"
+          />
         </div>
         <el-button @click="editDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveCardEdit">确定</el-button>
@@ -79,7 +94,8 @@ import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } 
 import StyleSettings from './StyleSettings.vue';
 import { useEventBus } from '@/utils/eventBus';
 import { ElMessage } from 'element-plus';
-import CardTextManager from './CardTextManager.vue'; // 新增导入
+import CardTextManager from './CardTextManager.vue';
+import StyleManager from './StyleManager.vue'; // 导入StyleManager组件
 
 // 创建事件总线实例
 const { on, off, emit } = useEventBus();
@@ -99,7 +115,13 @@ const toolbarPosition = reactive({ x: 20, y: 20 }); // 默认位置
 const pageSize = ref({ width: 800, height: 600 }); // 默认页面尺寸，像素单位
 
 // 添加cardTextManager引用
-const cardTextManager = ref(null)
+// const cardTextManager = ref(null)
+
+// 全局文本样式设置
+const globalTextStyles = ref({})
+
+// 控制全局样式面板显示
+const showGlobalStylePanel = ref(false)
 
 // 定义props
 const props = defineProps({
@@ -248,13 +270,14 @@ const cardGroups = ref([])
 
 // 编辑功能相关
 const editDialogVisible = ref(false)
-const showStylePanel = ref(false) // 控制样式面板显示
+const showTextStylePanel = ref(false) // 控制文本样式面板显示
+const textStyleManager = ref(null) // 文本样式管理器引用
 const editingCard = reactive({
   text: '',
   groupIndex: -1,
   rowIndex: -1,
   cardIndex: -1,
-  style: {} // 添加样式设置
+  textStyle: {} // 添加文本样式设置
 })
 
 // 添加页面尺寸处理方法
@@ -410,13 +433,13 @@ const getRowStyle = () => {
   }
 }
 
-// 获取卡片样式（包括单独设置的样式）
+// 获取卡片样式（包括全局样式）
 const getCardStyle = (card) => {
   // 添加空值检查
   if (!card) {
     return {}
   }
-
+  
   // 确保基础样式属性存在
   const baseSize = converterSettings.fontSize || 24
   const margin = converterSettings.margin !== undefined ? converterSettings.margin : 8
@@ -430,24 +453,28 @@ const getCardStyle = (card) => {
   const showBackground = converterSettings.showBackground !== undefined ? converterSettings.showBackground : true
   const gradient = converterSettings.gradient || 'none'
   const spacing = converterSettings.spacing !== undefined ? converterSettings.spacing : 0 // 添加 spacing
-
-  // 合并全局样式和卡片单独样式
-  const cardStyle = card.style || {}
-
+  
+  // 获取全局样式
+  const globalStyle = globalTextStyles.value || {}
+  
   const style = {
-    width: `${baseSize + padding}px`,
-    height: `${baseSize + padding}px`,
+    width: globalStyle.fontSize ? 
+      `${globalStyle.fontSize + (globalStyle.padding !== undefined ? globalStyle.padding : padding)}px` : 
+      `${baseSize + padding}px`,
+    height: globalStyle.fontSize ? 
+      `${globalStyle.fontSize + (globalStyle.padding !== undefined ? globalStyle.padding : padding)}px` : 
+      `${baseSize + padding}px`,
     margin: margin > 0 ? `${margin}px` : '0',
-    padding: padding > 0 ? `${padding}px` : '0',
-    fontSize: `${baseSize}px`,
-    color: cardStyle.color || textColor,
-    backgroundColor: showBackground
-      ? cardStyle.backgroundColor || (gradient === 'none' ? backgroundColor : gradient)
-      : 'transparent',
-    transform: `rotate(${textRotation}deg)`,
-    border: borderStyle,
-    borderRadius: borderRadius > 0 ? `${borderRadius}px` : '0',
-    boxShadow: boxShadow,
+    padding: globalStyle.padding !== undefined ? `${globalStyle.padding}px` : (padding > 0 ? `${padding}px` : '0'),
+    fontSize: globalStyle.fontSize ? `${globalStyle.fontSize}px` : `${baseSize}px`,
+    color: globalStyle.color || textColor,
+    backgroundColor: (globalStyle.showBackground !== undefined ? globalStyle.showBackground : showBackground) ? 
+      (globalStyle.backgroundColor || (gradient === 'none' ? backgroundColor : gradient)) : 'transparent',
+    transform: globalStyle.transform || `rotate(${textRotation}deg)`,
+    border: globalStyle.borderStyle || borderStyle,
+    borderRadius: (globalStyle.borderRadius !== undefined ? globalStyle.borderRadius : borderRadius) > 0 ? 
+      `${globalStyle.borderRadius !== undefined ? globalStyle.borderRadius : borderRadius}px` : '0',
+    boxShadow: globalStyle.boxShadow || boxShadow,
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
@@ -461,8 +488,8 @@ const getCardStyle = (card) => {
     marginBottom: spacing > 0 ? `${spacing}px` : '0'
   }
 
-  // 应用卡片单独设置的样式
-  Object.assign(style, cardStyle)
+  // 应用全局样式
+  Object.assign(style, globalStyle)
 
   return style
 }
@@ -483,22 +510,22 @@ const editCard = (groupIndex, rowIndex, cardIndex) => {
   editingCard.groupIndex = groupIndex
   editingCard.rowIndex = rowIndex
   editingCard.cardIndex = cardIndex
-  // 添加卡片样式设置
-  editingCard.style = card.style || {}
+  // 添加卡片文本样式设置
+  editingCard.textStyle = card.textStyle || {}
   editDialogVisible.value = true
 }
 
 // 保存卡片编辑
 const saveCardEdit = () => {
-  const { groupIndex, rowIndex, cardIndex, text, style } = editingCard
+  const { groupIndex, rowIndex, cardIndex, text, textStyle } = editingCard
   if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
     cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
     // 更新卡片文本
     cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].text = text
-    // 更新卡片样式
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].style = { ...style }
+    // 更新卡片文本样式
+    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle = { ...textStyle }
     editDialogVisible.value = false
-    showStylePanel.value = false // 关闭样式面板
+    showTextStylePanel.value = false // 关闭文本样式面板
     ElMessage.success('卡片内容已更新')
   }
 }
@@ -747,99 +774,245 @@ const toolbarStyle = computed(() => {
 
 // 计算卡片文本样式
 const cardTextStyle = computed(() => {
-  // 如果cardTextManager可用，使用其getStyle方法获取样式
-  if (cardTextManager.value) {
-    return cardTextManager.value.getStyle()
-  }
-
-  // 否则使用原来的计算逻辑
+  // 获取全局样式
+  const globalStyle = globalTextStyles.value || {};
+  
   const style = {};
-
-  // 字体样式
-  if (converterSettings.fontSize) {
+  
+  // 字体样式（优先使用全局样式）
+  if (globalStyle.fontSize) {
+    style.fontSize = `${globalStyle.fontSize}px`;
+  } else if (converterSettings.fontSize) {
     style.fontSize = `${converterSettings.fontSize}px`;
   }
-
-  if (converterSettings.textColor) {
+  
+  if (globalStyle.color) {
+    style.color = globalStyle.color;
+  } else if (converterSettings.textColor) {
     style.color = converterSettings.textColor;
   }
-
-  if (converterSettings.fontWeight && converterSettings.fontWeight !== 'normal') {
+  
+  if (globalStyle.fontWeight && globalStyle.fontWeight !== 'normal') {
+    style.fontWeight = globalStyle.fontWeight;
+  } else if (converterSettings.fontWeight && converterSettings.fontWeight !== 'normal') {
     style.fontWeight = converterSettings.fontWeight;
   }
-
-  if (converterSettings.fontStyle && converterSettings.fontStyle !== 'normal') {
+  
+  if (globalStyle.fontStyle && globalStyle.fontStyle !== 'normal') {
+    style.fontStyle = globalStyle.fontStyle;
+  } else if (converterSettings.fontStyle && converterSettings.fontStyle !== 'normal') {
     style.fontStyle = converterSettings.fontStyle;
   }
-
-  // 背景样式
-  if (converterSettings.showBackground) {
-    style.backgroundColor = converterSettings.backgroundColor || 'transparent';
+  
+  // 背景样式（优先使用全局样式）
+  if (globalStyle.showBackground !== undefined) {
+    style.backgroundColor = globalStyle.showBackground ? 
+      (globalStyle.backgroundColor || 'transparent') : 'transparent';
+  } else if (converterSettings.showBackground !== undefined) {
+    style.backgroundColor = converterSettings.showBackground ? 
+      (converterSettings.backgroundColor || 'transparent') : 'transparent';
   } else {
     style.backgroundColor = 'transparent';
   }
-
-  // 布局样式
-  if (converterSettings.textAlign) {
+  
+  // 布局样式（优先使用全局样式）
+  if (globalStyle.textAlign) {
+    style.textAlign = globalStyle.textAlign;
+  } else if (converterSettings.textAlign) {
     style.textAlign = converterSettings.textAlign;
   }
-
-  if (converterSettings.lineHeight) {
+  
+  if (globalStyle.lineHeight) {
+    style.lineHeight = globalStyle.lineHeight;
+  } else if (converterSettings.lineHeight) {
     style.lineHeight = converterSettings.lineHeight;
   }
-
-  // 盒模型样式
-  if (converterSettings.padding !== undefined) {
+  
+  // 盒模型样式（优先使用全局样式）
+  if (globalStyle.padding !== undefined) {
+    style.padding = `${globalStyle.padding}px`;
+  } else if (converterSettings.padding !== undefined) {
     style.padding = `${converterSettings.padding}px`;
   }
-
-  if (converterSettings.margin !== undefined) {
+  
+  if (globalStyle.margin !== undefined) {
+    style.margin = `${globalStyle.margin}px`;
+  } else if (converterSettings.margin !== undefined) {
     style.margin = `${converterSettings.margin}px`;
   }
-
-  // 边框样式
-  if (converterSettings.borderStyle && converterSettings.borderStyle !== 'none') {
+  
+  // 边框样式（优先使用全局样式）
+  if (globalStyle.borderStyle && globalStyle.borderStyle !== 'none') {
+    style.borderStyle = globalStyle.borderStyle;
+    style.borderWidth = `${globalStyle.borderWidth || 1}px`;
+    style.borderColor = globalStyle.borderColor || '#000000';
+  } else if (converterSettings.borderStyle && converterSettings.borderStyle !== 'none') {
     style.borderStyle = converterSettings.borderStyle;
     style.borderWidth = `${converterSettings.borderWidth || 1}px`;
     style.borderColor = converterSettings.borderColor || '#000000';
   } else {
     style.border = 'none';
   }
-
-  if (converterSettings.borderRadius) {
+  
+  if (globalStyle.borderRadius) {
+    style.borderRadius = `${globalStyle.borderRadius}px`;
+  } else if (converterSettings.borderRadius) {
     style.borderRadius = `${converterSettings.borderRadius}px`;
   }
-
-  // 高级样式
-  if (converterSettings.opacity !== undefined && converterSettings.opacity !== 1) {
+  
+  // 高级样式（优先使用全局样式）
+  if (globalStyle.opacity !== undefined && globalStyle.opacity !== 1) {
+    style.opacity = globalStyle.opacity;
+  } else if (converterSettings.opacity !== undefined && converterSettings.opacity !== 1) {
     style.opacity = converterSettings.opacity;
   }
-
-  if (converterSettings.boxShadow) {
+  
+  if (globalStyle.boxShadow) {
+    style.boxShadow = globalStyle.boxShadow;
+  } else if (converterSettings.boxShadow) {
     style.boxShadow = converterSettings.boxShadow;
   }
-
-  if (converterSettings.transform) {
+  
+  if (globalStyle.transform) {
+    style.transform = globalStyle.transform;
+  } else if (converterSettings.transform) {
     style.transform = converterSettings.transform;
   }
-
+  
   return style;
 });
 
 // 对话框关闭处理
 const onDialogClose = () => {
-  showStylePanel.value = false // 关闭样式面板
+  showTextStylePanel.value = false // 关闭文本样式面板
 }
 
-// 切换样式面板显示
-const toggleStylePanel = () => {
-  showStylePanel.value = !showStylePanel.value
+// 切换文本样式面板显示
+const toggleTextStylePanel = () => {
+  showTextStylePanel.value = !showTextStylePanel.value
 }
 
-// 更新卡片样式
-const updateCardStyle = (style) => {
-  // 实时更新编辑中的卡片样式
-  editingCard.style = { ...style }
+// 更新编辑中的卡片文本样式
+const updateEditingCardTextStyle = (style) => {
+  editingCard.textStyle = { ...style }
+}
+
+// 应用编辑中的卡片文本样式
+const applyEditingCardTextStyle = (style) => {
+  editingCard.textStyle = { ...style }
+}
+
+// 获取卡片文本样式
+const getCardTextStyle = (card) => {
+  // 添加空值检查
+  if (!card) {
+    return {}
+  }
+    
+  // 获取卡片文本样式
+  const textStyle = card.textStyle || {}
+    
+  // 构建样式对象
+  const style = {}
+    
+  // 字体样式
+  if (textStyle.fontSize) {
+    style.fontSize = `${textStyle.fontSize}px`
+  }
+    
+  if (textStyle.color) {
+    style.color = textStyle.color
+  }
+    
+  if (textStyle.fontWeight && textStyle.fontWeight !== 'normal') {
+    style.fontWeight = textStyle.fontWeight
+  }
+    
+  if (textStyle.fontStyle && textStyle.fontStyle !== 'normal') {
+    style.fontStyle = textStyle.fontStyle
+  }
+    
+  // 背景样式
+  if (textStyle.backgroundColor) {
+    style.backgroundColor = textStyle.backgroundColor
+  }
+    
+  // 布局样式
+  if (textStyle.textAlign) {
+    style.textAlign = textStyle.textAlign
+  }
+    
+  if (textStyle.lineHeight) {
+    style.lineHeight = textStyle.lineHeight
+  }
+    
+  // 盒模型样式
+  if (textStyle.padding !== undefined) {
+    style.padding = `${textStyle.padding}px`
+  }
+    
+  if (textStyle.margin !== undefined) {
+    style.margin = `${textStyle.margin}px`
+  }
+    
+  // 边框样式
+  if (textStyle.borderStyle && textStyle.borderStyle !== 'none') {
+    style.borderStyle = textStyle.borderStyle
+    style.borderWidth = `${textStyle.borderWidth || 1}px`
+    style.borderColor = textStyle.borderColor || '#000000'
+  } else {
+    style.border = 'none'
+  }
+    
+  if (textStyle.borderRadius) {
+    style.borderRadius = `${textStyle.borderRadius}px`
+  }
+    
+  // 高级样式
+  if (textStyle.opacity !== undefined && textStyle.opacity !== 1) {
+    style.opacity = textStyle.opacity
+  }
+    
+  if (textStyle.boxShadow) {
+    style.boxShadow = textStyle.boxShadow
+  }
+    
+  if (textStyle.transform) {
+    style.transform = textStyle.transform
+  }
+    
+  // 文字特有样式
+  if (textStyle.textDecoration && textStyle.textDecoration !== 'none') {
+    style.textDecoration = textStyle.textDecoration
+  }
+    
+  if (textStyle.textTransform && textStyle.textTransform !== 'none') {
+    style.textTransform = textStyle.textTransform
+  }
+    
+  if (textStyle.letterSpacing) {
+    style.letterSpacing = `${textStyle.letterSpacing}px`
+  }
+    
+  if (textStyle.wordSpacing) {
+    style.wordSpacing = `${textStyle.wordSpacing}px`
+  }
+    
+  return style
+}
+
+// 切换全局样式面板显示
+const toggleGlobalStylePanel = () => {
+  showGlobalStylePanel.value = !showGlobalStylePanel.value
+}
+
+// 应用全局样式到所有卡片
+const applyGlobalStyles = (styles) => {
+  // 更新全局样式数据
+  globalTextStyles.value = { ...styles }
+  
+  // 触发重新渲染以应用样式
+  updateStyle()
 }
 
 </script>
@@ -1112,6 +1285,31 @@ const updateCardStyle = (style) => {
   color: #c0c4cc;
 }
 
+.global-style-settings {
+  margin: 10px 0;
+}
+
+.global-style-panel {
+  margin-top: 10px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 文本样式面板样式 */
+.text-style-panel {
+  margin-top: 10px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  padding: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* 移除已删除的样式 */
+/*
 .dialog-actions {
   margin: 15px 0;
   text-align: center;
@@ -1125,4 +1323,5 @@ const updateCardStyle = (style) => {
   max-height: 300px;
   overflow-y: auto;
 }
+*/
 </style>

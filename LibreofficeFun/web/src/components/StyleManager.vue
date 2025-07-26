@@ -38,94 +38,6 @@
           </div>
           
           <div class="setting-item">
-            <label>背景颜色</label>
-            <el-color-picker 
-              v-model="localStyle.backgroundColor" 
-              size="small" 
-              show-alpha
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>边框</label>
-            <el-select 
-              v-model="localStyle.borderStyle" 
-              size="small"
-              @change="updateStyle"
-            >
-              <el-option label="无" value="none" />
-              <el-option label="实线" value="solid" />
-              <el-option label="虚线" value="dashed" />
-              <el-option label="点线" value="dotted" />
-            </el-select>
-          </div>
-          
-          <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
-            <label>边框宽度</label>
-            <el-input-number 
-              v-model="localStyle.borderWidth" 
-              :min="0" 
-              :max="20" 
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="unit">px</span>
-          </div>
-          
-          <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
-            <label>边框颜色</label>
-            <el-color-picker 
-              v-model="localStyle.borderColor" 
-              size="small" 
-              show-alpha
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>圆角</label>
-            <el-input-number 
-              v-model="localStyle.borderRadius" 
-              :min="0" 
-              :max="50" 
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="unit">px</span>
-          </div>
-          
-          <div class="setting-item">
-            <label>内边距</label>
-            <el-input-number 
-              v-model="localStyle.padding" 
-              :min="0" 
-              :max="100" 
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="unit">px</span>
-          </div>
-          
-          <div class="setting-item">
-            <label>外边距</label>
-            <el-input-number 
-              v-model="localStyle.margin" 
-              :min="0" 
-              :max="100" 
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="unit">px</span>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 高级设置 -->
-      <div v-if="showAdvanced" class="settings-section advanced-section">
-        <h4>高级设置</h4>
-        <div class="settings-grid">
-          <div class="setting-item">
             <label>字体粗细</label>
             <el-select 
               v-model="localStyle.fontWeight" 
@@ -183,6 +95,107 @@
               size="small"
               @change="updateStyle"
             />
+          </div>
+          
+          <div class="setting-item">
+            <label>背景颜色</label>
+            <el-color-picker 
+              v-model="localStyle.backgroundColor" 
+              size="small" 
+              show-alpha
+              @change="updateStyle"
+            />
+          </div>
+          
+          <div class="setting-item">
+            <label>透明度</label>
+            <el-slider 
+              v-model="localStyle.opacity" 
+              :min="0" 
+              :max="1" 
+              :step="0.01"
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="value-display">{{ localStyle.opacity }}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 高级设置 -->
+      <div v-if="showAdvanced" class="settings-section advanced-section">
+        <h4>高级设置</h4>
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label>内边距</label>
+            <el-input-number 
+              v-model="localStyle.padding" 
+              :min="0" 
+              :max="100" 
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
+          </div>
+          
+          <div class="setting-item">
+            <label>外边距</label>
+            <el-input-number 
+              v-model="localStyle.margin" 
+              :min="0" 
+              :max="100" 
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
+          </div>
+          
+          <div class="setting-item">
+            <label>边框</label>
+            <el-select 
+              v-model="localStyle.borderStyle" 
+              size="small"
+              @change="updateStyle"
+            >
+              <el-option label="无" value="none" />
+              <el-option label="实线" value="solid" />
+              <el-option label="虚线" value="dashed" />
+              <el-option label="点线" value="dotted" />
+            </el-select>
+          </div>
+          
+          <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
+            <label>边框宽度</label>
+            <el-input-number 
+              v-model="localStyle.borderWidth" 
+              :min="0" 
+              :max="20" 
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
+          </div>
+          
+          <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
+            <label>边框颜色</label>
+            <el-color-picker 
+              v-model="localStyle.borderColor" 
+              size="small" 
+              show-alpha
+              @change="updateStyle"
+            />
+          </div>
+          
+          <div class="setting-item">
+            <label>圆角</label>
+            <el-input-number 
+              v-model="localStyle.borderRadius" 
+              :min="0" 
+              :max="50" 
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
           </div>
           
           <div class="setting-item">
@@ -254,19 +267,6 @@
           </div>
           
           <div class="setting-item">
-            <label>透明度</label>
-            <el-slider 
-              v-model="localStyle.opacity" 
-              :min="0" 
-              :max="1" 
-              :step="0.01"
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="value-display">{{ localStyle.opacity }}</span>
-          </div>
-          
-          <div class="setting-item">
             <label>阴影</label>
             <el-input 
               v-model="localStyle.boxShadow" 
@@ -284,6 +284,60 @@
               placeholder="例: rotate(45deg) scale(1.2)"
               @change="updateStyle"
             />
+          </div>
+          
+          <div class="setting-item">
+            <label>文字装饰</label>
+            <el-select 
+              v-model="localStyle.textDecoration" 
+              size="small"
+              @change="updateStyle"
+            >
+              <el-option label="无" value="none" />
+              <el-option label="下划线" value="underline" />
+              <el-option label="上划线" value="overline" />
+              <el-option label="删除线" value="line-through" />
+            </el-select>
+          </div>
+          
+          <div class="setting-item">
+            <label>文字转换</label>
+            <el-select 
+              v-model="localStyle.textTransform" 
+              size="small"
+              @change="updateStyle"
+            >
+              <el-option label="无" value="none" />
+              <el-option label="大写" value="uppercase" />
+              <el-option label="小写" value="lowercase" />
+              <el-option label="首字母大写" value="capitalize" />
+            </el-select>
+          </div>
+          
+          <div class="setting-item">
+            <label>字母间距</label>
+            <el-input-number 
+              v-model="localStyle.letterSpacing" 
+              :min="-5" 
+              :max="10" 
+              :step="0.1"
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
+          </div>
+          
+          <div class="setting-item">
+            <label>词间距</label>
+            <el-input-number 
+              v-model="localStyle.wordSpacing" 
+              :min="-5" 
+              :max="20" 
+              :step="0.1"
+              size="small"
+              @change="updateStyle"
+            />
+            <span class="unit">px</span>
           </div>
         </div>
       </div>
@@ -323,28 +377,32 @@ const localStyle = reactive({
   // 常用设置
   fontSize: 16,
   color: '#000000',
-  backgroundColor: '#ffffff',
-  borderStyle: 'none',
-  borderWidth: 1,
-  borderColor: '#000000',
-  borderRadius: 0,
-  padding: 0,
-  margin: 0,
-  
-  // 高级设置
   fontWeight: 'normal',
   fontStyle: 'normal',
   textAlign: 'left',
   lineHeight: 1.2,
+  backgroundColor: '#ffffff',
+  opacity: 1,
+  
+  // 高级设置
+  padding: 0,
+  margin: 0,
+  borderStyle: 'none',
+  borderWidth: 1,
+  borderColor: '#000000',
+  borderRadius: 0,
   width: '',
   height: '',
   display: '',
   position: 'static',
   left: '',
   top: '',
-  opacity: 1,
   boxShadow: '',
-  transform: ''
+  transform: '',
+  textDecoration: 'none',
+  textTransform: 'none',
+  letterSpacing: 0,
+  wordSpacing: 0
 })
 
 // 初始化数据
@@ -377,26 +435,30 @@ const resetStyle = () => {
   Object.assign(localStyle, {
     fontSize: 16,
     color: '#000000',
-    backgroundColor: '#ffffff',
-    borderStyle: 'none',
-    borderWidth: 1,
-    borderColor: '#000000',
-    borderRadius: 0,
-    padding: 0,
-    margin: 0,
     fontWeight: 'normal',
     fontStyle: 'normal',
     textAlign: 'left',
     lineHeight: 1.2,
+    backgroundColor: '#ffffff',
+    opacity: 1,
+    padding: 0,
+    margin: 0,
+    borderStyle: 'none',
+    borderWidth: 1,
+    borderColor: '#000000',
+    borderRadius: 0,
     width: '',
     height: '',
     display: '',
     position: 'static',
     left: '',
     top: '',
-    opacity: 1,
     boxShadow: '',
-    transform: ''
+    transform: '',
+    textDecoration: 'none',
+    textTransform: 'none',
+    letterSpacing: 0,
+    wordSpacing: 0
   })
   updateStyle()
 }
@@ -414,7 +476,16 @@ const toCSS = () => {
   // 常用设置
   if (localStyle.fontSize) css['font-size'] = `${localStyle.fontSize}px`
   if (localStyle.color) css['color'] = localStyle.color
+  if (localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
+  if (localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
+  if (localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
+  if (localStyle.lineHeight && localStyle.lineHeight !== 1.2) css['line-height'] = localStyle.lineHeight
   if (localStyle.backgroundColor) css['background-color'] = localStyle.backgroundColor
+  if (localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
+  
+  // 高级设置
+  if (localStyle.padding !== undefined) css['padding'] = `${localStyle.padding}px`
+  if (localStyle.margin !== undefined) css['margin'] = `${localStyle.margin}px`
   
   // 边框设置
   if (localStyle.borderStyle && localStyle.borderStyle !== 'none') {
@@ -426,14 +497,6 @@ const toCSS = () => {
   }
   
   if (localStyle.borderRadius) css['border-radius'] = `${localStyle.borderRadius}px`
-  if (localStyle.padding !== undefined) css['padding'] = `${localStyle.padding}px`
-  if (localStyle.margin !== undefined) css['margin'] = `${localStyle.margin}px`
-  
-  // 高级设置
-  if (localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
-  if (localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
-  if (localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
-  if (localStyle.lineHeight && localStyle.lineHeight !== 1.2) css['line-height'] = localStyle.lineHeight
   if (localStyle.width) css['width'] = localStyle.width
   if (localStyle.height) css['height'] = localStyle.height
   if (localStyle.display) css['display'] = localStyle.display
@@ -442,9 +505,12 @@ const toCSS = () => {
     if (localStyle.left) css['left'] = localStyle.left
     if (localStyle.top) css['top'] = localStyle.top
   }
-  if (localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
   if (localStyle.boxShadow) css['box-shadow'] = localStyle.boxShadow
   if (localStyle.transform) css['transform'] = localStyle.transform
+  if (localStyle.textDecoration && localStyle.textDecoration !== 'none') css['text-decoration'] = localStyle.textDecoration
+  if (localStyle.textTransform && localStyle.textTransform !== 'none') css['text-transform'] = localStyle.textTransform
+  if (localStyle.letterSpacing) css['letter-spacing'] = `${localStyle.letterSpacing}px`
+  if (localStyle.wordSpacing) css['word-spacing'] = `${localStyle.wordSpacing}px`
   
   return css
 }
