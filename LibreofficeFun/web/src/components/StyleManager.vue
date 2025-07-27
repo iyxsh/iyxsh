@@ -17,1009 +17,409 @@
         >
           <el-icon><DocumentCopy /></el-icon>
         </el-button>
-        <el-divider direction="vertical" />
-        <el-switch 
-          v-model="showAdvanced" 
-          active-text="高级设置" 
-          size="small"
-          @change="onAdvancedToggle"
-        />
       </div>
+    </div>
+    <div>
+      <h5 style="color: red;">"操作说明：单双击"设置样式 "Ctrl + 单击"切换样式可见性</h5>
     </div>
     
     <div class="style-manager-content">
-      <!-- 常用设置 -->
-      <div class="settings-section">
-        <h4>常用设置</h4>
-        <div class="settings-grid">
-          <div class="setting-item">
-            <label>字体大小</label>
-            <el-input-number 
-              v-model="localStyle.fontSize" 
-              :min="1" 
-              :max="100" 
-              size="small"
-              controls-position="right"
-              @change="updateStyle"
-            />
-            <span class="unit">px</span>
+      <!-- 样式工具栏 -->
+      <div class="style-toolbar">
+        <div 
+          v-for="category in allStylesTree" 
+          :key="category.id"
+          class="toolbar-category"
+        >
+          <div class="category-header">
+            <h4>{{ category.label }}</h4>
           </div>
-          
-          <div class="setting-item">
-            <label>字体颜色</label>
-            <el-color-picker 
-              v-model="localStyle.color" 
-              size="small" 
-              show-alpha
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>字体粗细</label>
-            <el-select 
-              v-model="localStyle.fontWeight" 
-              size="small"
-              @change="updateStyle"
+          <div class="toolbar-icons">
+            <div
+              v-for="item in category.children"
+              :key="item.id"
+              class="toolbar-item"
+              :class="{ active: isVisibleStyle(item.key) }"
+              @click.stop="handleToolbarItemClick($event, item)"
+              @dblclick.stop="openStyleSettings(item)"
             >
-              <el-option label="正常" value="normal" />
-              <el-option label="粗体" value="bold" />
-              <el-option label="100" value="100" />
-              <el-option label="200" value="200" />
-              <el-option label="300" value="300" />
-              <el-option label="400" value="400" />
-              <el-option label="500" value="500" />
-              <el-option label="600" value="600" />
-              <el-option label="700" value="700" />
-              <el-option label="800" value="800" />
-              <el-option label="900" value="900" />
-            </el-select>
-          </div>
-          
-          <div class="setting-item">
-            <label>字体样式</label>
-            <el-select 
-              v-model="localStyle.fontStyle" 
-              size="small"
-              @change="updateStyle"
-            >
-              <el-option label="正常" value="normal" />
-              <el-option label="斜体" value="italic" />
-              <el-option label="倾斜" value="oblique" />
-            </el-select>
-          </div>
-          
-          <div class="setting-item">
-            <label>文本对齐</label>
-            <div class="button-group">
-              <el-button 
-                size="small" 
-                :type="localStyle.textAlign === 'left' ? 'primary' : 'default'"
-                @click="localStyle.textAlign = 'left'; updateStyle()"
-                title="左对齐"
-              >
-                <el-icon><ArrowLeft /></el-icon>
-              </el-button>
-              <el-button 
-                size="small" 
-                :type="localStyle.textAlign === 'center' ? 'primary' : 'default'"
-                @click="localStyle.textAlign = 'center'; updateStyle()"
-                title="居中"
-              >
-                <el-icon><Close /></el-icon>
-              </el-button>
-              <el-button 
-                size="small" 
-                :type="localStyle.textAlign === 'right' ? 'primary' : 'default'"
-                @click="localStyle.textAlign = 'right'; updateStyle()"
-                title="右对齐"
-              >
-                <el-icon><ArrowRight /></el-icon>
-              </el-button>
-              <el-button 
-                size="small" 
-                :type="localStyle.textAlign === 'justify' ? 'primary' : 'default'"
-                @click="localStyle.textAlign = 'justify'; updateStyle()"
-                title="两端对齐"
-              >
-                <el-icon><ScaleToOriginal /></el-icon>
-              </el-button>
+              <div class="icon-wrapper">
+                <el-icon v-if="getStyleIcon(item.key)">
+                  <component :is="getStyleIcon(item.key)" />
+                </el-icon>
+                <div v-else class="default-icon">{{ item.label.charAt(0) }}</div>
+              </div>
+              <span class="icon-label">{{ item.label }}</span>
             </div>
-          </div>
-          
-          <div class="setting-item">
-            <label>行高</label>
-            <el-slider 
-              v-model="localStyle.lineHeight" 
-              :min="0" 
-              :max="5" 
-              :step="0.1"
-              size="small"
-              show-input
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>背景颜色</label>
-            <el-color-picker 
-              v-model="localStyle.backgroundColor" 
-              size="small" 
-              show-alpha
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>透明度</label>
-            <el-slider 
-              v-model="localStyle.opacity" 
-              :min="0" 
-              :max="1" 
-              :step="0.01"
-              size="small"
-              show-input
-              @change="updateStyle"
-            />
-          </div>
-          
-          <div class="setting-item">
-            <label>文字旋转</label>
-            <el-slider 
-              v-model="localStyle.textRotation" 
-              :min="0" 
-              :max="360" 
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="value-display">{{ localStyle.textRotation }}°</span>
-          </div>
-          
-          <div class="setting-item">
-            <label>缩放比例</label>
-            <el-slider 
-              v-model="localStyle.scale" 
-              :min="0.1" 
-              :max="5" 
-              :step="0.1"
-              size="small"
-              @change="updateStyle"
-            />
-            <span class="value-display">{{ localStyle.scale || 1 }}</span>
           </div>
         </div>
       </div>
       
-      <!-- 高级设置 -->
-      <div v-if="showAdvanced" class="settings-section advanced-section">
-        <h4>高级设置</h4>
-        
-        <!-- 盒模型 -->
-        <div class="settings-subsection">
-          <h5>盒模型</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>内边距</label>
+      <!-- 样式设置区域 -->
+      <div class="settings-section advanced-section">
+        <div class="settings-grid">
+          <!-- 盒模型 -->
+          <div 
+            v-for="item in visibleBoxModelSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'number'">
               <el-input-number 
-                v-model="localStyle.padding" 
-                :min="0" 
-                :max="100" 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
                 size="small"
                 @change="updateStyle"
               />
-              <span class="unit">px</span>
-            </div>
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
             
-            <div class="setting-item">
-              <label>外边距</label>
-              <el-input-number 
-                v-model="localStyle.margin" 
-                :min="0" 
-                :max="100" 
-                size="small"
-                @change="updateStyle"
-              />
-              <span class="unit">px</span>
-            </div>
-            
-            <div class="setting-item">
-              <label>宽度</label>
+            <template v-else-if="item.type === 'input'">
               <el-input 
-                v-model="localStyle.width" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               />
-            </div>
+            </template>
             
-            <div class="setting-item">
-              <label>高度</label>
-              <el-input 
-                v-model="localStyle.height" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>最大宽度</label>
-              <el-input 
-                v-model="localStyle.maxWidth" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>最大高度</label>
-              <el-input 
-                v-model="localStyle.maxHeight" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>最小宽度</label>
-              <el-input 
-                v-model="localStyle.minWidth" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>最小高度</label>
-              <el-input 
-                v-model="localStyle.minHeight" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>盒模型</label>
+            <template v-else-if="item.type === 'select'">
               <el-select 
-                v-model="localStyle.boxSizing" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               >
-                <el-option label="默认" value="" />
-                <el-option label="内容盒" value="content-box" />
-                <el-option label="边框盒" value="border-box" />
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
               </el-select>
-            </div>
+            </template>
           </div>
-        </div>
-        
-        <!-- 边框 -->
-        <div class="settings-subsection">
-          <h5>边框</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>边框</label>
-              <el-select 
-                v-model="localStyle.borderStyle" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="实线" value="solid" />
-                <el-option label="虚线" value="dashed" />
-                <el-option label="点线" value="dotted" />
-                <el-option label="双线" value="double" />
-                <el-option label="凹槽" value="groove" />
-                <el-option label=" ridge" value="ridge" />
-                <el-option label="插入" value="inset" />
-                <el-option label="突出" value="outset" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
-              <label>边框宽度</label>
+          
+          <!-- 边框 -->
+          <div 
+            v-for="item in visibleBorderSettings" 
+            :key="item.key" 
+            class="setting-item"
+            :class="item.type === 'color-picker' ? 'color-picker-item' : ''"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'number' && (!item.condition || localStyle[item.condition] !== 'none')">
               <el-input-number 
-                v-model="localStyle.borderWidth" 
-                :min="0" 
-                :max="20" 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
                 size="small"
                 @change="updateStyle"
               />
-              <span class="unit">px</span>
-            </div>
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
             
-            <div class="setting-item" v-if="localStyle.borderStyle !== 'none'">
-              <label>边框颜色</label>
+            <template v-else-if="item.type === 'color-picker' && (!item.condition || localStyle[item.condition] !== 'none')">
               <el-color-picker 
-                v-model="localStyle.borderColor" 
+                v-model="localStyle[item.key]" 
                 size="small" 
-                show-alpha
+                :show-alpha="item.showAlpha"
                 @change="updateStyle"
               />
-            </div>
+            </template>
             
-            <div class="setting-item">
-              <label>圆角</label>
-              <el-input-number 
-                v-model="localStyle.borderRadius" 
-                :min="0" 
-                :max="50" 
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
-              />
-              <span class="unit">px</span>
-            </div>
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
           </div>
-        </div>
-        
-        <!-- 布局 -->
-        <div class="settings-subsection">
-          <h5>布局</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>显示类型</label>
-              <el-select 
-                v-model="localStyle.display" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="" />
-                <el-option label="块级" value="block" />
-                <el-option label="行内" value="inline" />
-                <el-option label="行内块" value="inline-block" />
-                <el-option label="弹性" value="flex" />
-                <el-option label="网格" value="grid" />
-                <el-option label="表格" value="table" />
-                <el-option label="列表项" value="list-item" />
-                <el-option label="隐藏" value="none" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>定位</label>
-              <el-select 
-                v-model="localStyle.position" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="静态" value="static" />
-                <el-option label="相对" value="relative" />
-                <el-option label="绝对" value="absolute" />
-                <el-option label="固定" value="fixed" />
-                <el-option label="粘性" value="sticky" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.position !== 'static'">
-              <label>左边距</label>
-              <el-input 
-                v-model="localStyle.left" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.position !== 'static'">
-              <label>上边距</label>
-              <el-input 
-                v-model="localStyle.top" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.position !== 'static'">
-              <label>右边距</label>
-              <el-input 
-                v-model="localStyle.right" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.position !== 'static'">
-              <label>下边距</label>
-              <el-input 
-                v-model="localStyle.bottom" 
-                size="small"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>浮动</label>
-              <el-select 
-                v-model="localStyle.float" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="左浮动" value="left" />
-                <el-option label="右浮动" value="right" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>清除浮动</label>
-              <el-select 
-                v-model="localStyle.clear" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="左清除" value="left" />
-                <el-option label="右清除" value="right" />
-                <el-option label="两侧清除" value="both" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>z-index</label>
+          
+          <!-- 布局 -->
+          <div 
+            v-for="item in visibleLayoutSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'number' && (!item.condition || localStyle[item.condition] !== 'static')">
               <el-input-number 
-                v-model="localStyle.zIndex" 
-                :min="-100" 
-                :max="100" 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
                 size="small"
                 controls-position="right"
                 @change="updateStyle"
               />
-            </div>
+            </template>
+            
+            <template v-else-if="item.type === 'input' && (!item.condition || localStyle[item.condition] !== 'static')">
+              <el-input 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              />
+            </template>
+            
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
             
             <!-- Flexbox相关属性 -->
-            <div class="setting-item" v-if="localStyle.display === 'flex'">
-              <label>主轴方向</label>
+            <template v-else-if="item.type === 'flex-select' && localStyle.display === 'flex'">
               <el-select 
-                v-model="localStyle.flexDirection" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               >
-                <el-option label="行" value="row" />
-                <el-option label="行反转" value="row-reverse" />
-                <el-option label="列" value="column" />
-                <el-option label="列反转" value="column-reverse" />
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
               </el-select>
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.display === 'flex'">
-              <label>换行</label>
-              <el-select 
-                v-model="localStyle.flexWrap" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="不换行" value="nowrap" />
-                <el-option label="换行" value="wrap" />
-                <el-option label="反转换行" value="wrap-reverse" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.display === 'flex'">
-              <label>主轴对齐</label>
-              <el-select 
-                v-model="localStyle.justifyContent" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="起始对齐" value="flex-start" />
-                <el-option label="结束对齐" value="flex-end" />
-                <el-option label="居中" value="center" />
-                <el-option label="两端对齐" value="space-between" />
-                <el-option label="均匀分布" value="space-around" />
-                <el-option label="完全均匀分布" value="space-evenly" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.display === 'flex'">
-              <label>交叉轴对齐</label>
-              <el-select 
-                v-model="localStyle.alignItems" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="拉伸" value="stretch" />
-                <el-option label="起始对齐" value="flex-start" />
-                <el-option label="结束对齐" value="flex-end" />
-                <el-option label="居中" value="center" />
-                <el-option label="基线对齐" value="baseline" />
-              </el-select>
-            </div>
+            </template>
             
             <!-- Grid相关属性 -->
-            <div class="setting-item" v-if="localStyle.display === 'grid'">
-              <label>网格模板列</label>
+            <template v-else-if="item.type === 'grid-input' && localStyle.display === 'grid'">
               <el-input 
-                v-model="localStyle.gridTemplateColumns" 
+                v-model="localStyle[item.key]" 
                 size="small"
-                placeholder="例: 1fr 1fr 1fr"
+                :placeholder="item.placeholder"
                 @change="updateStyle"
               />
-            </div>
+            </template>
             
-            <div class="setting-item" v-if="localStyle.display === 'grid'">
-              <label>网格模板行</label>
-              <el-input 
-                v-model="localStyle.gridTemplateRows" 
-                size="small"
-                placeholder="例: auto 1fr auto"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item" v-if="localStyle.display === 'grid'">
-              <label>网格列间隙</label>
+            <template v-else-if="item.type === 'grid-number' && localStyle.display === 'grid'">
               <el-input-number 
-                v-model="localStyle.gridColumnGap" 
-                :min="0" 
-                :max="100" 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
                 size="small"
                 @change="updateStyle"
               />
-              <span class="unit">px</span>
-            </div>
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
+          </div>
+          
+          <!-- 背景 -->
+          <div 
+            v-for="item in visibleBackgroundSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'input'">
+              <el-input 
+                v-model="localStyle[item.key]" 
+                size="small"
+                :placeholder="item.placeholder"
+                @change="updateStyle"
+              />
+            </template>
             
-            <div class="setting-item" v-if="localStyle.display === 'grid'">
-              <label>网格行间隙</label>
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
+          </div>
+          
+          <!-- 文本 -->
+          <div 
+            v-for="item in visibleTextSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'input'">
+              <el-input 
+                v-model="localStyle[item.key]" 
+                size="small"
+                :placeholder="item.placeholder"
+                @change="updateStyle"
+              />
+            </template>
+            
+            <template v-else-if="item.type === 'number'">
               <el-input-number 
-                v-model="localStyle.gridRowGap" 
-                :min="0" 
-                :max="100" 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
+                :step="item.step"
                 size="small"
+                :controls-position="item.controlsPosition"
                 @change="updateStyle"
               />
-              <span class="unit">px</span>
-            </div>
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
+            
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
+            
+            <template v-else-if="item.type === 'switch'">
+              <el-switch
+                v-model="localStyle[item.key]"
+                :active-value="item.activeValue"
+                :inactive-value="item.inactiveValue"
+                @change="updateStyle"
+              />
+              <span v-if="item.switchLabel" class="switch-label">{{ item.switchLabel }}</span>
+            </template>
           </div>
-        </div>
-        
-        <!-- 背景 -->
-        <div class="settings-subsection">
-          <h5>背景</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>背景图片</label>
+          
+          <!-- 列表 -->
+          <div 
+            v-for="item in visibleListSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'input'">
               <el-input 
-                v-model="localStyle.backgroundImage" 
+                v-model="localStyle[item.key]" 
                 size="small"
-                placeholder="例: url(image.jpg)"
+                :placeholder="item.placeholder"
                 @change="updateStyle"
               />
-            </div>
+            </template>
             
-            <div class="setting-item">
-              <label>背景重复</label>
+            <template v-else-if="item.type === 'select'">
               <el-select 
-                v-model="localStyle.backgroundRepeat" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               >
-                <el-option label="重复" value="repeat" />
-                <el-option label="不重复" value="no-repeat" />
-                <el-option label="X轴重复" value="repeat-x" />
-                <el-option label="Y轴重复" value="repeat-y" />
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
               </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>背景大小</label>
-              <el-select 
-                v-model="localStyle.backgroundSize" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="自动" value="auto" />
-                <el-option label="覆盖" value="cover" />
-                <el-option label="包含" value="contain" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>背景位置</label>
-              <el-input 
-                v-model="localStyle.backgroundPosition" 
-                size="small"
-                placeholder="例: center center"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>背景附着</label>
-              <el-select 
-                v-model="localStyle.backgroundAttachment" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="滚动" value="scroll" />
-                <el-option label="固定" value="fixed" />
-                <el-option label="局部" value="local" />
-              </el-select>
-            </div>
+            </template>
           </div>
-        </div>
-        
-        <!-- 文本 -->
-        <div class="settings-subsection">
-          <h5>文本</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>字体族</label>
-              <el-input 
-                v-model="localStyle.fontFamily" 
-                size="small"
-                placeholder="例: Arial, sans-serif"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>字体大小调整</label>
-              <el-switch 
-                v-model="localStyle.fontVariant" 
-                active-value="small-caps"
-                inactive-value="normal"
-                @change="updateStyle"
-              />
-              <span class="switch-label">小型大写字母</span>
-            </div>
-            
-            <div class="setting-item">
-              <label>文字装饰</label>
+          
+          <!-- 交互 -->
+          <div 
+            v-for="item in visibleInteractionSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'select'">
               <el-select 
-                v-model="localStyle.textDecoration" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               >
-                <el-option label="无" value="none" />
-                <el-option label="下划线" value="underline" />
-                <el-option label="上划线" value="overline" />
-                <el-option label="删除线" value="line-through" />
-                <el-option label="下划线+删除线" value="underline line-through" />
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
               </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>文字转换</label>
-              <el-select 
-                v-model="localStyle.textTransform" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="大写" value="uppercase" />
-                <el-option label="小写" value="lowercase" />
-                <el-option label="首字母大写" value="capitalize" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>垂直对齐</label>
-              <el-select 
-                v-model="localStyle.verticalAlign" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="基线" value="baseline" />
-                <el-option label="顶部" value="top" />
-                <el-option label="中间" value="middle" />
-                <el-option label="底部" value="bottom" />
-                <el-option label="文本顶部" value="text-top" />
-                <el-option label="文本底部" value="text-bottom" />
-                <el-option label="上标" value="super" />
-                <el-option label="下标" value="sub" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>字母间距</label>
-              <el-input-number 
-                v-model="localStyle.letterSpacing" 
-                :min="-5" 
-                :max="10" 
-                :step="0.1"
-                size="small"
-                controls-position="right"
-                @change="updateStyle"
-              />
-              <span class="unit">px</span>
-            </div>
-            
-            <div class="setting-item">
-              <label>词间距</label>
-              <el-input-number 
-                v-model="localStyle.wordSpacing" 
-                :min="-5" 
-                :max="20" 
-                :step="0.1"
-                size="small"
-                @change="updateStyle"
-              />
-              <span class="unit">px</span>
-            </div>
-            
-            <div class="setting-item">
-              <label>文本缩进</label>
-              <el-input-number 
-                v-model="localStyle.textIndent" 
-                :min="0" 
-                :max="100" 
-                size="small"
-                @change="updateStyle"
-              />
-              <span class="unit">px</span>
-            </div>
-            
-            <div class="setting-item">
-              <label>文本阴影</label>
-              <el-input 
-                v-model="localStyle.textShadow" 
-                size="small"
-                placeholder="例: 1px 1px 2px #000"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>文本溢出</label>
-              <el-select 
-                v-model="localStyle.textOverflow" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="" />
-                <el-option label="省略号" value="ellipsis" />
-                <el-option label="裁剪" value="clip" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>单词断行</label>
-              <el-select 
-                v-model="localStyle.wordBreak" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="normal" />
-                <el-option label="保持所有" value="keep-all" />
-                <el-option label="断开所有" value="break-all" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>换行处理</label>
-              <el-select 
-                v-model="localStyle.wordWrap" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="normal" />
-                <el-option label="强制换行" value="break-word" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>空白处理</label>
-              <el-select 
-                v-model="localStyle.whiteSpace" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="normal" />
-                <el-option label="不换行" value="nowrap" />
-                <el-option label="预格式化" value="pre" />
-                <el-option label="预格式化+换行" value="pre-wrap" />
-                <el-option label="预格式化+不换行" value="pre-line" />
-              </el-select>
-            </div>
+            </template>
           </div>
-        </div>
-        
-        <!-- 列表 -->
-        <div class="settings-subsection">
-          <h5>列表</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>列表样式类型</label>
-              <el-select 
-                v-model="localStyle.listStyleType" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="圆点" value="disc" />
-                <el-option label="圆圈" value="circle" />
-                <el-option label="方块" value="square" />
-                <el-option label="数字" value="decimal" />
-                <el-option label="小写罗马数字" value="lower-roman" />
-                <el-option label="大写罗马数字" value="upper-roman" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>列表样式位置</label>
-              <el-select 
-                v-model="localStyle.listStylePosition" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="内部" value="inside" />
-                <el-option label="外部" value="outside" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>列表样式图片</label>
+          
+          <!-- 效果 -->
+          <div 
+            v-for="item in visibleEffectSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'input'">
               <el-input 
-                v-model="localStyle.listStyleImage" 
+                v-model="localStyle[item.key]" 
                 size="small"
-                placeholder="例: url(image.png)"
+                :placeholder="item.placeholder"
                 @change="updateStyle"
               />
-            </div>
+            </template>
           </div>
-        </div>
-        
-        <!-- 交互 -->
-        <div class="settings-subsection">
-          <h5>交互</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>光标</label>
-              <el-select 
-                v-model="localStyle.cursor" 
+          
+          <!-- 动画 -->
+          <div 
+            v-for="item in visibleAnimationSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'input'">
+              <el-input 
+                v-model="localStyle[item.key]" 
                 size="small"
+                :placeholder="item.placeholder"
                 @change="updateStyle"
-              >
-                <el-option label="默认" value="default" />
-                <el-option label="指针" value="pointer" />
-                <el-option label="等待" value="wait" />
-                <el-option label="帮助" value="help" />
-                <el-option label="文本" value="text" />
-                <el-option label="移动" value="move" />
-                <el-option label="不允许" value="not-allowed" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>可见性</label>
-              <el-select 
-                v-model="localStyle.visibility" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="可见" value="visible" />
-                <el-option label="隐藏" value="hidden" />
-                <el-option label="折叠" value="collapse" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>用户选择</label>
-              <el-select 
-                v-model="localStyle.userSelect" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="默认" value="" />
-                <el-option label="可选择" value="text" />
-                <el-option label="不可选择" value="none" />
-                <el-option label="所有元素" value="all" />
-              </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>溢出</label>
-              <el-select 
-                v-model="localStyle.overflow" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="可见" value="visible" />
-                <el-option label="隐藏" value="hidden" />
-                <el-option label="滚动" value="scroll" />
-                <el-option label="自动" value="auto" />
-              </el-select>
-            </div>
+              />
+            </template>
           </div>
-        </div>
-        
-        <!-- 效果 -->
-        <div class="settings-subsection">
-          <h5>效果</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>阴影</label>
-              <el-input 
-                v-model="localStyle.boxShadow" 
-                size="small"
-                placeholder="例: 0 2px 4px rgba(0,0,0,0.1)"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>变换</label>
-              <el-input 
-                v-model="localStyle.transform" 
-                size="small"
-                placeholder="例: rotate(45deg) scale(1.2)"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>滤镜</label>
-              <el-input 
-                v-model="localStyle.filter" 
-                size="small"
-                placeholder="例: blur(2px)"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>轮廓</label>
-              <el-input 
-                v-model="localStyle.outline" 
-                size="small"
-                placeholder="例: 2px solid #000"
-                @change="updateStyle"
-              />
-            </div>
-          </div>
-        </div>
-        
-        <!-- 动画 -->
-        <div class="settings-subsection">
-          <h5>动画</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>过渡属性</label>
-              <el-input 
-                v-model="localStyle.transition" 
-                size="small"
-                placeholder="例: all 0.3s ease"
-                @change="updateStyle"
-              />
-            </div>
-            
-            <div class="setting-item">
-              <label>动画</label>
-              <el-input 
-                v-model="localStyle.animation" 
-                size="small"
-                placeholder="例: slide 1s ease-in-out"
-                @change="updateStyle"
-              />
-            </div>
-          </div>
-        </div>
-        
-        <!-- 方向 -->
-        <div class="settings-subsection">
-          <h5>方向</h5>
-          <div class="settings-grid">
-            <div class="setting-item">
-              <label>文本方向</label>
+          
+          <!-- 方向 -->
+          <div 
+            v-for="item in visibleDirectionSettings" 
+            :key="item.key" 
+            class="setting-item"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'select'">
               <el-select 
-                v-model="localStyle.direction" 
+                v-model="localStyle[item.key]" 
                 size="small"
                 @change="updateStyle"
               >
-                <el-option label="默认" value="ltr" />
-                <el-option label="从右到左" value="rtl" />
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
               </el-select>
-            </div>
-            
-            <div class="setting-item">
-              <label>书写模式</label>
-              <el-select 
-                v-model="localStyle.writingMode" 
-                size="small"
-                @change="updateStyle"
-              >
-                <el-option label="水平" value="horizontal-tb" />
-                <el-option label="垂直" value="vertical-rl" />
-                <el-option label="垂直(左到右)" value="vertical-lr" />
-              </el-select>
-            </div>
+            </template>
           </div>
         </div>
       </div>
@@ -1029,20 +429,126 @@
       <el-button @click="resetStyle" size="small">重置</el-button>
       <el-button type="primary" @click="applyStyle" size="small">应用</el-button>
     </div>
+    
+    <!-- 样式设置对话框 -->
+    <el-dialog
+      v-model="styleSettingsDialogVisible"
+      :title="currentSettingItem?.label"
+      width="400px"
+    >
+      <div v-if="currentSettingItem" class="setting-dialog-content">
+        <template v-if="currentSettingItem.type === 'number'">
+          <el-input-number 
+            v-model="localStyle[currentSettingItem.key]" 
+            :min="currentSettingItem.min" 
+            :max="currentSettingItem.max" 
+            :step="currentSettingItem.step"
+            size="small"
+            controls-position="right"
+            @change="updateStyle"
+          />
+          <span v-if="currentSettingItem.unit" class="unit">{{ currentSettingItem.unit }}</span>
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'slider'">
+          <el-slider 
+            v-model="localStyle[currentSettingItem.key]" 
+            :min="currentSettingItem.min" 
+            :max="currentSettingItem.max" 
+            :step="currentSettingItem.step"
+            size="small"
+            :show-input="currentSettingItem.showInput"
+            @change="updateStyle"
+          />
+          <span v-if="currentSettingItem.showValue" class="value-display">{{ localStyle[currentSettingItem.key] }}{{ currentSettingItem.unit || '' }}</span>
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'color-picker'">
+          <el-color-picker 
+            v-model="localStyle[currentSettingItem.key]" 
+            size="small" 
+            :show-alpha="currentSettingItem.showAlpha"
+            @change="updateStyle"
+          />
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'select'">
+          <el-select 
+            v-model="localStyle[currentSettingItem.key]" 
+            size="small"
+            @change="updateStyle"
+          >
+            <el-option 
+              v-for="option in currentSettingItem.options" 
+              :key="option.value" 
+              :label="option.label" 
+              :value="option.value" 
+            />
+          </el-select>
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'button-group'">
+          <div class="button-group">
+            <el-button 
+              v-for="btn in currentSettingItem.buttons" 
+              :key="btn.value"
+              size="small" 
+              :type="localStyle[currentSettingItem.key] === btn.value ? 'primary' : 'default'"
+              @click="localStyle[currentSettingItem.key] = btn.value; updateStyle()"
+              :title="btn.title"
+            >
+              <el-icon v-if="btn.icon"><component :is="btn.icon" /></el-icon>
+              <span v-else>{{ btn.label }}</span>
+            </el-button>
+          </div>
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'input'">
+          <el-input 
+            v-model="localStyle[currentSettingItem.key]" 
+            size="small"
+            @change="updateStyle"
+          />
+        </template>
+        
+        <template v-else-if="currentSettingItem.type === 'switch'">
+          <el-switch
+            v-model="localStyle[currentSettingItem.key]"
+            :active-value="currentSettingItem.activeValue"
+            :inactive-value="currentSettingItem.inactiveValue"
+            @change="updateStyle"
+          />
+          <span v-if="currentSettingItem.switchLabel" class="switch-label">{{ currentSettingItem.switchLabel }}</span>
+        </template>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="styleSettingsDialogVisible = false" size="small">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { 
   CopyDocument, 
   DocumentCopy, 
   ArrowLeft, 
   ArrowRight, 
   Close, 
-  ScaleToOriginal 
+  ScaleToOriginal,
+  Brush,
+  Picture,
+  Box,
+  Crop,
+  Position,
+  Link,
+  Monitor,
+  MagicStick
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 定义props
 const props = defineProps({
@@ -1063,138 +569,530 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change', 'apply'])
 
 // 数据
-const showAdvanced = ref(false)
-const localStyle = reactive({
-  // 常用设置
-  fontSize: 16,
-  color: '#000000',
-  fontWeight: 'normal',
-  fontStyle: 'normal',
-  textAlign: 'left',
-  lineHeight: 1.2,
-  backgroundColor: '#ffffff',
-  opacity: 1,
-  textRotation: 0,
-  scale: 1,
-  
-  // 高级设置
-  padding: 0,
-  margin: 0,
-  borderStyle: 'none',
-  borderWidth: 1,
-  borderColor: '#000000',
-  borderRadius: 0,
-  width: '',
-  height: '',
-  maxWidth: '',
-  maxHeight: '',
-  minWidth: '',
-  minHeight: '',
-  display: '',
-  position: 'static',
-  left: '',
-  top: '',
-  right: '',
-  bottom: '',
-  boxShadow: '',
-  transform: '',
-  textDecoration: 'none',
-  textTransform: 'none',
-  letterSpacing: 0,
-  wordSpacing: 0,
-  fontFamily: '',
-  fontVariant: 'normal',
-  verticalAlign: 'baseline',
-  overflow: 'visible',
-  cursor: 'default',
-  visibility: 'visible',
-  zIndex: 0,
-  float: 'none',
-  clear: 'none',
-  
-  // Flexbox相关属性
-  flexDirection: 'row',
-  flexWrap: 'nowrap',
-  justifyContent: 'flex-start',
-  alignItems: 'stretch',
-  
-  // Grid相关属性
-  gridTemplateColumns: '',
-  gridTemplateRows: '',
-  gridColumnGap: 0,
-  gridRowGap: 0,
-  
-  // 背景相关属性
-  backgroundImage: '',
-  backgroundRepeat: 'repeat',
-  backgroundSize: 'auto',
-  backgroundPosition: '',
-  backgroundAttachment: 'scroll',
-  
-  // 文本相关属性
-  textIndent: 0,
-  textShadow: '',
-  textOverflow: '',
-  wordBreak: 'normal',
-  wordWrap: 'normal',
-  
-  // 列表样式属性
-  listStyleType: 'none',
-  listStylePosition: 'outside',
-  listStyleImage: '',
-  
-  // 过渡和动画属性
-  transition: '',
-  animation: '',
-  
-  // 滤镜属性
-  filter: '',
-  
-  // outline属性
-  outline: '',
-  
-  // white-space属性
-  whiteSpace: 'normal',
-  
-  // 用户选择属性
-  userSelect: '',
-  
-  // 盒模型属性
-  boxSizing: '',
-  
-  // 方向属性
-  direction: 'ltr',
-  writingMode: 'horizontal-tb'
+const localStyle = reactive({})
+const visibleStyles = ref(new Set()) // 存储可见样式属性的集合
+
+// 对话框相关
+const styleSettingsDialogVisible = ref(false)
+const currentSettingItem = ref(null)
+
+// 所有样式定义
+const allStylesDefinition = computed(() => {
+  return {
+    // 常用设置
+    basic: [
+      { key: 'fontSize', label: '字体大小', type: 'number', min: 1, max: 100, unit: 'px' },
+      { key: 'color', label: '字体颜色', type: 'color-picker', showAlpha: true },
+      { key: 'fontWeight', label: '字体粗细', type: 'select', options: [
+        { label: '正常', value: 'normal' },
+        { label: '粗体', value: 'bold' },
+        { label: '100', value: '100' },
+        { label: '200', value: '200' },
+        { label: '300', value: '300' },
+        { label: '400', value: '400' },
+        { label: '500', value: '500' },
+        { label: '600', value: '600' },
+        { label: '700', value: '700' },
+        { label: '800', value: '800' },
+        { label: '900', value: '900' }
+      ]},
+      { key: 'fontStyle', label: '字体样式', type: 'select', options: [
+        { label: '正常', value: 'normal' },
+        { label: '斜体', value: 'italic' },
+        { label: '倾斜', value: 'oblique' }
+      ]},
+      { key: 'textAlign', label: '文本对齐', type: 'button-group', buttons: [
+        { value: 'left', icon: ArrowLeft, title: '左对齐' },
+        { value: 'center', icon: Close, title: '居中' },
+        { value: 'right', icon: ArrowRight, title: '右对齐' },
+        { value: 'justify', icon: ScaleToOriginal, title: '两端对齐' }
+      ]},
+      { key: 'lineHeight', label: '行高', type: 'slider', min: 0, max: 5, step: 0.1, showInput: true },
+      { key: 'backgroundColor', label: '背景颜色', type: 'color-picker', showAlpha: true },
+      { key: 'opacity', label: '透明度', type: 'slider', min: 0, max: 1, step: 0.01, showInput: true },
+      { key: 'textRotation', label: '文字旋转', type: 'slider', min: 0, max: 360, showValue: true, unit: '°' },
+      { key: 'scale', label: '缩放比例', type: 'slider', min: 0.1, max: 5, step: 0.1, showValue: true }
+    ],
+    
+    // 盒模型设置
+    boxModel: [
+      { key: 'padding', label: '内边距', type: 'number', min: 0, max: 100, unit: 'px' },
+      { key: 'margin', label: '外边距', type: 'number', min: 0, max: 100, unit: 'px' },
+      { key: 'width', label: '宽度', type: 'input' },
+      { key: 'height', label: '高度', type: 'input' },
+      { key: 'maxWidth', label: '最大宽度', type: 'input' },
+      { key: 'maxHeight', label: '最大高度', type: 'input' },
+      { key: 'minWidth', label: '最小宽度', type: 'input' },
+      { key: 'minHeight', label: '最小高度', type: 'input' },
+      { key: 'boxSizing', label: '盒模型', type: 'select', options: [
+        { label: '默认', value: '' },
+        { label: '内容盒', value: 'content-box' },
+        { label: '边框盒', value: 'border-box' }
+      ]}
+    ],
+    
+    // 边框设置
+    border: [
+      { key: 'borderStyle', label: '边框', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '实线', value: 'solid' },
+        { label: '虚线', value: 'dashed' },
+        { label: '点线', value: 'dotted' },
+        { label: '双线', value: 'double' },
+        { label: '凹槽', value: 'groove' },
+        { label: 'ridge', value: 'ridge' },
+        { label: '插入', value: 'inset' },
+        { label: '突出', value: 'outset' }
+      ]},
+      { key: 'borderWidth', label: '边框宽度', type: 'number', min: 0, max: 20, unit: 'px', condition: 'borderStyle' },
+      { key: 'borderColor', label: '边框颜色', type: 'color-picker', showAlpha: true, condition: 'borderStyle' },
+      { key: 'borderRadius', label: '圆角', type: 'number', min: 0, max: 50, unit: 'px' }
+    ],
+    
+    // 布局设置
+    layout: [
+      { key: 'display', label: '显示类型', type: 'select', options: [
+        { label: '默认', value: '' },
+        { label: '块级', value: 'block' },
+        { label: '行内', value: 'inline' },
+        { label: '行内块', value: 'inline-block' },
+        { label: '弹性', value: 'flex' },
+        { label: '网格', value: 'grid' },
+        { label: '表格', value: 'table' },
+        { label: '列表项', value: 'list-item' },
+        { label: '隐藏', value: 'none' }
+      ]},
+      { key: 'position', label: '定位', type: 'select', options: [
+        { label: '静态', value: 'static' },
+        { label: '相对', value: 'relative' },
+        { label: '绝对', value: 'absolute' },
+        { label: '固定', value: 'fixed' },
+        { label: '粘性', value: 'sticky' }
+      ]},
+      { key: 'left', label: '左边距', type: 'input', condition: 'position' },
+      { key: 'top', label: '上边距', type: 'input', condition: 'position' },
+      { key: 'right', label: '右边距', type: 'input', condition: 'position' },
+      { key: 'bottom', label: '下边距', type: 'input', condition: 'position' },
+      { key: 'float', label: '浮动', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '左浮动', value: 'left' },
+        { label: '右浮动', value: 'right' }
+      ]},
+      { key: 'clear', label: '清除浮动', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '左清除', value: 'left' },
+        { label: '右清除', value: 'right' },
+        { label: '两侧清除', value: 'both' }
+      ]},
+      { key: 'zIndex', label: 'z-index', type: 'number', min: -100, max: 100 },
+      
+      // Flexbox相关属性
+      { key: 'flexDirection', label: '主轴方向', type: 'flex-select', options: [
+        { label: '行', value: 'row' },
+        { label: '行反转', value: 'row-reverse' },
+        { label: '列', value: 'column' },
+        { label: '列反转', value: 'column-reverse' }
+      ]},
+      { key: 'flexWrap', label: '换行', type: 'flex-select', options: [
+        { label: '不换行', value: 'nowrap' },
+        { label: '换行', value: 'wrap' },
+        { label: '反转换行', value: 'wrap-reverse' }
+      ]},
+      { key: 'justifyContent', label: '主轴对齐', type: 'flex-select', options: [
+        { label: '起始对齐', value: 'flex-start' },
+        { label: '结束对齐', value: 'flex-end' },
+        { label: '居中', value: 'center' },
+        { label: '两端对齐', value: 'space-between' },
+        { label: '均匀分布', value: 'space-around' },
+        { label: '完全均匀分布', value: 'space-evenly' }
+      ]},
+      { key: 'alignItems', label: '交叉轴对齐', type: 'flex-select', options: [
+        { label: '拉伸', value: 'stretch' },
+        { label: '起始对齐', value: 'flex-start' },
+        { label: '结束对齐', value: 'flex-end' },
+        { label: '居中', value: 'center' },
+        { label: '基线对齐', value: 'baseline' }
+      ]},
+      
+      // Grid相关属性
+      { key: 'gridTemplateColumns', label: '网格模板列', type: 'grid-input', placeholder: '例: 1fr 1fr 1fr' },
+      { key: 'gridTemplateRows', label: '网格模板行', type: 'grid-input', placeholder: '例: auto 1fr auto' },
+      { key: 'gridColumnGap', label: '网格列间隙', type: 'grid-number', min: 0, max: 100, unit: 'px' },
+      { key: 'gridRowGap', label: '网格行间隙', type: 'grid-number', min: 0, max: 100, unit: 'px' }
+    ],
+    
+    // 背景设置
+    background: [
+      { key: 'backgroundImage', label: '背景图片', type: 'input', placeholder: '例: url(image.jpg)' },
+      { key: 'backgroundRepeat', label: '背景重复', type: 'select', options: [
+        { label: '重复', value: 'repeat' },
+        { label: '不重复', value: 'no-repeat' },
+        { label: 'X轴重复', value: 'repeat-x' },
+        { label: 'Y轴重复', value: 'repeat-y' }
+      ]},
+      { key: 'backgroundSize', label: '背景大小', type: 'select', options: [
+        { label: '自动', value: 'auto' },
+        { label: '覆盖', value: 'cover' },
+        { label: '包含', value: 'contain' }
+      ]},
+      { key: 'backgroundPosition', label: '背景位置', type: 'input', placeholder: '例: center center' },
+      { key: 'backgroundAttachment', label: '背景附着', type: 'select', options: [
+        { label: '滚动', value: 'scroll' },
+        { label: '固定', value: 'fixed' },
+        { label: '局部', value: 'local' }
+      ]}
+    ],
+    
+    // 文本设置
+    text: [
+      { key: 'fontFamily', label: '字体族', type: 'input', placeholder: '例: Arial, sans-serif' },
+      { key: 'fontVariant', label: '字体大小调整', type: 'switch', activeValue: 'small-caps', inactiveValue: 'normal', switchLabel: '小型大写字母' },
+      { key: 'textDecoration', label: '文字装饰', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '下划线', value: 'underline' },
+        { label: '上划线', value: 'overline' },
+        { label: '删除线', value: 'line-through' },
+        { label: '下划线+删除线', value: 'underline line-through' }
+      ]},
+      { key: 'textTransform', label: '文字转换', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '大写', value: 'uppercase' },
+        { label: '小写', value: 'lowercase' },
+        { label: '首字母大写', value: 'capitalize' }
+      ]},
+      { key: 'verticalAlign', label: '垂直对齐', type: 'select', options: [
+        { label: '基线', value: 'baseline' },
+        { label: '顶部', value: 'top' },
+        { label: '中间', value: 'middle' },
+        { label: '底部', value: 'bottom' },
+        { label: '文本顶部', value: 'text-top' },
+        { label: '文本底部', value: 'text-bottom' },
+        { label: '上标', value: 'super' },
+        { label: '下标', value: 'sub' }
+      ]},
+      { key: 'letterSpacing', label: '字母间距', type: 'number', min: -5, max: 10, step: 0.1, controlsPosition: 'right', unit: 'px' },
+      { key: 'wordSpacing', label: '词间距', type: 'number', min: -5, max: 20, step: 0.1, controlsPosition: 'right', unit: 'px' },
+      { key: 'textIndent', label: '文本缩进', type: 'number', min: 0, max: 100, unit: 'px' },
+      { key: 'textShadow', label: '文本阴影', type: 'input', placeholder: '例: 1px 1px 2px #000' },
+      { key: 'textOverflow', label: '文本溢出', type: 'select', options: [
+        { label: '默认', value: '' },
+        { label: '省略号', value: 'ellipsis' },
+        { label: '裁剪', value: 'clip' }
+      ]},
+      { key: 'wordBreak', label: '单词断行', type: 'select', options: [
+        { label: '默认', value: 'normal' },
+        { label: '保持所有', value: 'keep-all' },
+        { label: '断开所有', value: 'break-all' }
+      ]},
+      { key: 'wordWrap', label: '换行处理', type: 'select', options: [
+        { label: '默认', value: 'normal' },
+        { label: '强制换行', value: 'break-word' }
+      ]},
+      { key: 'whiteSpace', label: '空白处理', type: 'select', options: [
+        { label: '默认', value: 'normal' },
+        { label: '不换行', value: 'nowrap' },
+        { label: '预格式化', value: 'pre' },
+        { label: '预格式化+换行', value: 'pre-wrap' },
+        { label: '预格式化+不换行', value: 'pre-line' }
+      ]}
+    ],
+    
+    // 列表设置
+    list: [
+      { key: 'listStyleType', label: '列表样式类型', type: 'select', options: [
+        { label: '无', value: 'none' },
+        { label: '圆点', value: 'disc' },
+        { label: '圆圈', value: 'circle' },
+        { label: '方块', value: 'square' },
+        { label: '数字', value: 'decimal' },
+        { label: '小写罗马数字', value: 'lower-roman' },
+        { label: '大写罗马数字', value: 'upper-roman' }
+      ]},
+      { key: 'listStylePosition', label: '列表样式位置', type: 'select', options: [
+        { label: '内部', value: 'inside' },
+        { label: '外部', value: 'outside' }
+      ]},
+      { key: 'listStyleImage', label: '列表样式图片', type: 'input', placeholder: '例: url(image.png)' }
+    ],
+    
+    // 交互设置
+    interaction: [
+      { key: 'cursor', label: '光标', type: 'select', options: [
+        { label: '默认', value: 'default' },
+        { label: '指针', value: 'pointer' },
+        { label: '等待', value: 'wait' },
+        { label: '帮助', value: 'help' },
+        { label: '文本', value: 'text' },
+        { label: '移动', value: 'move' },
+        { label: '不允许', value: 'not-allowed' }
+      ]},
+      { key: 'visibility', label: '可见性', type: 'select', options: [
+        { label: '可见', value: 'visible' },
+        { label: '隐藏', value: 'hidden' },
+        { label: '折叠', value: 'collapse' }
+      ]},
+      { key: 'userSelect', label: '用户选择', type: 'select', options: [
+        { label: '默认', value: '' },
+        { label: '可选择', value: 'text' },
+        { label: '不可选择', value: 'none' },
+        { label: '所有元素', value: 'all' }
+      ]},
+      { key: 'overflow', label: '溢出', type: 'select', options: [
+        { label: '可见', value: 'visible' },
+        { label: '隐藏', value: 'hidden' },
+        { label: '滚动', value: 'scroll' },
+        { label: '自动', value: 'auto' }
+      ]}
+    ],
+    
+    // 效果设置
+    effect: [
+      { key: 'boxShadow', label: '阴影', type: 'input', placeholder: '例: 0 2px 4px rgba(0,0,0,0.1)' },
+      { key: 'transform', label: '变换', type: 'input', placeholder: '例: rotate(45deg) scale(1.2)' },
+      { key: 'filter', label: '滤镜', type: 'input', placeholder: '例: blur(2px)' },
+      { key: 'outline', label: '轮廓', type: 'input', placeholder: '例: 2px solid #000' }
+    ],
+    
+    // 动画设置
+    animation: [
+      { key: 'transition', label: '过渡属性', type: 'input', placeholder: '例: all 0.3s ease' },
+      { key: 'animation', label: '动画', type: 'input', placeholder: '例: slide 1s ease-in-out' }
+    ],
+    
+    // 方向设置
+    direction: [
+      { key: 'direction', label: '文本方向', type: 'select', options: [
+        { label: '默认', value: 'ltr' },
+        { label: '从右到左', value: 'rtl' }
+      ]},
+      { key: 'writingMode', label: '书写模式', type: 'select', options: [
+        { label: '水平', value: 'horizontal-tb' },
+        { label: '垂直', value: 'vertical-rl' },
+        { label: '垂直(左到右)', value: 'vertical-lr' }
+      ]}
+    ]
+  }
 })
+
+// 所有样式树形结构
+const allStylesTree = computed(() => {
+  return [
+    {
+      id: 'basic',
+      label: '常用设置',
+      children: allStylesDefinition.value.basic.map(item => ({
+        id: `basic-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'boxModel',
+      label: '盒模型',
+      children: allStylesDefinition.value.boxModel.map(item => ({
+        id: `boxModel-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'border',
+      label: '边框',
+      children: allStylesDefinition.value.border.map(item => ({
+        id: `border-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'layout',
+      label: '布局',
+      children: allStylesDefinition.value.layout.map(item => ({
+        id: `layout-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'background',
+      label: '背景',
+      children: allStylesDefinition.value.background.map(item => ({
+        id: `background-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'text',
+      label: '文本',
+      children: allStylesDefinition.value.text.map(item => ({
+        id: `text-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'list',
+      label: '列表',
+      children: allStylesDefinition.value.list.map(item => ({
+        id: `list-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'interaction',
+      label: '交互',
+      children: allStylesDefinition.value.interaction.map(item => ({
+        id: `interaction-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'effect',
+      label: '效果',
+      children: allStylesDefinition.value.effect.map(item => ({
+        id: `effect-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'animation',
+      label: '动画',
+      children: allStylesDefinition.value.animation.map(item => ({
+        id: `animation-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    },
+    {
+      id: 'direction',
+      label: '方向',
+      children: allStylesDefinition.value.direction.map(item => ({
+        id: `direction-${item.key}`,
+        label: item.label,
+        key: item.key,
+        type: 'style'
+      }))
+    }
+  ]
+})
+
+// 可见的基本设置
+const visibleBasicSettings = computed(() => {
+  return allStylesDefinition.value.basic.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的盒模型设置
+const visibleBoxModelSettings = computed(() => {
+  return allStylesDefinition.value.boxModel.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的边框设置
+const visibleBorderSettings = computed(() => {
+  return allStylesDefinition.value.border.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的布局设置
+const visibleLayoutSettings = computed(() => {
+  return allStylesDefinition.value.layout.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的背景设置
+const visibleBackgroundSettings = computed(() => {
+  return allStylesDefinition.value.background.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的文本设置
+const visibleTextSettings = computed(() => {
+  return allStylesDefinition.value.text.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的列表设置
+const visibleListSettings = computed(() => {
+  return allStylesDefinition.value.list.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的交互设置
+const visibleInteractionSettings = computed(() => {
+  return allStylesDefinition.value.interaction.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的效果设置
+const visibleEffectSettings = computed(() => {
+  return allStylesDefinition.value.effect.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的动画设置
+const visibleAnimationSettings = computed(() => {
+  return allStylesDefinition.value.animation.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 可见的方向设置
+const visibleDirectionSettings = computed(() => {
+  return allStylesDefinition.value.direction.filter(item => visibleStyles.value.has(item.key))
+})
+
+// 检查样式是否可见
+const isVisibleStyle = (key) => {
+  return visibleStyles.value.has(key)
+}
+
+// 获取样式图标
+const getStyleIcon = (key) => {
+  const iconMap = {
+    color: Brush,
+    backgroundColor: MagicStick,
+    backgroundImage: Picture,
+    width: Box,
+    height: Box,
+    padding: Crop,
+    margin: Crop,
+    borderStyle: Box,
+    position: Position,
+    display: Monitor,
+    textAlign: Close
+  }
+  
+  return iconMap[key] || null
+}
 
 // 初始化数据
-onMounted(() => {
-  // 合并传入的样式和默认样式
-  Object.assign(localStyle, props.modelValue)
-})
-
-// 监听modelValue变化
-watch(() => props.modelValue, (newVal) => {
-  if (newVal) {
-    Object.assign(localStyle, newVal)
+const initializeLocalStyle = () => {
+  // 初始化所有样式属性
+  const allStyleKeys = Object.values(allStylesDefinition.value).flat().map(item => item.key)
+  
+  // 设置默认值
+  allStyleKeys.forEach(key => {
+    localStyle[key] = getDefaultValue(key)
+  })
+  
+  // 合并传入的样式
+  if (props.modelValue) {
+    Object.assign(localStyle, props.modelValue)
   }
-}, { deep: true })
-
-// 更新样式
-const updateStyle = () => {
-  // 发出更新事件
-  emit('update:modelValue', { ...localStyle })
-  emit('change', { ...localStyle })
+  
+  // 初始化可见样式集合（默认显示常用设置）
+  allStylesDefinition.value.basic.forEach(item => {
+    visibleStyles.value.add(item.key)
+  })
 }
 
-// 应用样式
-const applyStyle = () => {
-  emit('apply', { ...localStyle })
-}
-
-// 重置样式
-const resetStyle = () => {
-  Object.assign(localStyle, {
+// 获取默认值
+const getDefaultValue = (key) => {
+  const defaults = {
     fontSize: 16,
     color: '#000000',
     fontWeight: 'normal',
@@ -1238,67 +1136,70 @@ const resetStyle = () => {
     zIndex: 0,
     float: 'none',
     clear: 'none',
-    
-    // Flexbox相关属性
     flexDirection: 'row',
     flexWrap: 'nowrap',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
-    
-    // Grid相关属性
     gridTemplateColumns: '',
     gridTemplateRows: '',
     gridColumnGap: 0,
     gridRowGap: 0,
-    
-    // 背景相关属性
     backgroundImage: '',
     backgroundRepeat: 'repeat',
     backgroundSize: 'auto',
     backgroundPosition: '',
     backgroundAttachment: 'scroll',
-    
-    // 文本相关属性
     textIndent: 0,
     textShadow: '',
     textOverflow: '',
     wordBreak: 'normal',
     wordWrap: 'normal',
-    
-    // 列表样式属性
     listStyleType: 'none',
     listStylePosition: 'outside',
     listStyleImage: '',
-    
-    // 过渡和动画属性
     transition: '',
     animation: '',
-    
-    // 滤镜属性
     filter: '',
-    
-    // outline属性
     outline: '',
-    
-    // white-space属性
     whiteSpace: 'normal',
-    
-    // 用户选择属性
     userSelect: '',
-    
-    // 盒模型属性
     boxSizing: '',
-    
-    // 方向属性
     direction: 'ltr',
     writingMode: 'horizontal-tb'
-  })
-  updateStyle()
+  }
+  
+  return defaults[key]
 }
 
-// 高级设置切换
-const onAdvancedToggle = () => {
-  // 切换时触发更新
+onMounted(() => {
+  initializeLocalStyle()
+})
+
+// 监听modelValue变化
+watch(() => props.modelValue, (newVal) => {
+  if (newVal) {
+    Object.assign(localStyle, newVal)
+  }
+}, { deep: true })
+
+// 更新样式
+const updateStyle = () => {
+  // 发出更新事件
+  emit('update:modelValue', { ...localStyle })
+  emit('change', { ...localStyle })
+}
+
+// 应用样式
+const applyStyle = () => {
+  emit('apply', { ...localStyle })
+}
+
+// 重置样式
+const resetStyle = () => {
+  const allStyleKeys = Object.values(allStylesDefinition.value).flat().map(item => item.key)
+  allStyleKeys.forEach(key => {
+    localStyle[key] = getDefaultValue(key)
+  })
   updateStyle()
 }
 
@@ -1306,125 +1207,126 @@ const onAdvancedToggle = () => {
 const toCSS = () => {
   const css = {}
   
+  // 只处理可见的样式属性
+  const visibleStyleKeys = Array.from(visibleStyles.value)
+  
   // 常用设置
-  if (localStyle.fontSize) css['font-size'] = `${localStyle.fontSize}px`
-  if (localStyle.color) css['color'] = localStyle.color
-  if (localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
-  if (localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
-  if (localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
-  if (localStyle.lineHeight && localStyle.lineHeight !== 1.2) css['line-height'] = localStyle.lineHeight
-  if (localStyle.backgroundColor) css['background-color'] = localStyle.backgroundColor
-  if (localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
+  if (visibleStyles.value.has('fontSize') && localStyle.fontSize) css['font-size'] = `${localStyle.fontSize}px`
+  if (visibleStyles.value.has('color') && localStyle.color) css['color'] = localStyle.color
+  if (visibleStyles.value.has('fontWeight') && localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
+  if (visibleStyles.value.has('fontStyle') && localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
+  if (visibleStyles.value.has('textAlign') && localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
+  if (visibleStyles.value.has('lineHeight') && localStyle.lineHeight && localStyle.lineHeight !== 1.2) css['line-height'] = localStyle.lineHeight
+  if (visibleStyles.value.has('backgroundColor') && localStyle.backgroundColor) css['background-color'] = localStyle.backgroundColor
+  if (visibleStyles.value.has('opacity') && localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
   
   // 处理旋转和缩放
-  if (localStyle.textRotation !== undefined || localStyle.scale !== undefined) {
+  if (visibleStyles.value.has('textRotation') || visibleStyles.value.has('scale')) {
     const rotation = localStyle.textRotation || 0;
     const scale = localStyle.scale || 1;
     css['transform'] = `rotate(${rotation}deg) scale(${scale})`;
-  } else if (localStyle.transform) {
+  } else if (visibleStyles.value.has('transform') && localStyle.transform) {
     css['transform'] = localStyle.transform;
   }
   
   // 高级设置
-  if (localStyle.padding !== undefined) css['padding'] = `${localStyle.padding}px`
-  if (localStyle.margin !== undefined) css['margin'] = `${localStyle.margin}px`
+  if (visibleStyles.value.has('padding') && localStyle.padding !== undefined) css['padding'] = `${localStyle.padding}px`
+  if (visibleStyles.value.has('margin') && localStyle.margin !== undefined) css['margin'] = `${localStyle.margin}px`
   
   // 边框设置
-  if (localStyle.borderStyle && localStyle.borderStyle !== 'none') {
-    css['border-width'] = `${localStyle.borderWidth}px`
+  if (visibleStyles.value.has('borderStyle') && localStyle.borderStyle && localStyle.borderStyle !== 'none') {
+    if (visibleStyles.value.has('borderWidth')) css['border-width'] = `${localStyle.borderWidth}px`
     css['border-style'] = localStyle.borderStyle
-    css['border-color'] = localStyle.borderColor
-  } else if (localStyle.borderStyle === 'none') {
+    if (visibleStyles.value.has('borderColor') && localStyle.borderColor) css['border-color'] = localStyle.borderColor
+  } else if (visibleStyles.value.has('borderStyle') && localStyle.borderStyle === 'none') {
     css['border'] = 'none'
   }
   
-  if (localStyle.borderRadius !== undefined && localStyle.borderRadius !== 0) css['border-radius'] = `${localStyle.borderRadius}px`
-  if (localStyle.width) css['width'] = localStyle.width
-  if (localStyle.height) css['height'] = localStyle.height
-  if (localStyle.maxWidth) css['max-width'] = localStyle.maxWidth
-  if (localStyle.maxHeight) css['max-height'] = localStyle.maxHeight
-  if (localStyle.minWidth) css['min-width'] = localStyle.minWidth
-  if (localStyle.minHeight) css['min-height'] = localStyle.minHeight
-  if (localStyle.display) css['display'] = localStyle.display
-  if (localStyle.position && localStyle.position !== 'static') {
+  if (visibleStyles.value.has('borderRadius') && localStyle.borderRadius !== undefined && localStyle.borderRadius !== 0) css['border-radius'] = `${localStyle.borderRadius}px`
+  if (visibleStyles.value.has('width') && localStyle.width) css['width'] = localStyle.width
+  if (visibleStyles.value.has('height') && localStyle.height) css['height'] = localStyle.height
+  if (visibleStyles.value.has('maxWidth') && localStyle.maxWidth) css['max-width'] = localStyle.maxWidth
+  if (visibleStyles.value.has('maxHeight') && localStyle.maxHeight) css['max-height'] = localStyle.maxHeight
+  if (visibleStyles.value.has('minWidth') && localStyle.minWidth) css['min-width'] = localStyle.minWidth
+  if (visibleStyles.value.has('minHeight') && localStyle.minHeight) css['min-height'] = localStyle.minHeight
+  if (visibleStyles.value.has('display') && localStyle.display) css['display'] = localStyle.display
+  if (visibleStyles.value.has('position') && localStyle.position && localStyle.position !== 'static') {
     css['position'] = localStyle.position
-    if (localStyle.left) css['left'] = localStyle.left
-    if (localStyle.top) css['top'] = localStyle.top
-    if (localStyle.right) css['right'] = localStyle.right
-    if (localStyle.bottom) css['bottom'] = localStyle.bottom
+    if (visibleStyles.value.has('left') && localStyle.left) css['left'] = localStyle.left
+    if (visibleStyles.value.has('top') && localStyle.top) css['top'] = localStyle.top
+    if (visibleStyles.value.has('right') && localStyle.right) css['right'] = localStyle.right
+    if (visibleStyles.value.has('bottom') && localStyle.bottom) css['bottom'] = localStyle.bottom
   }
-  if (localStyle.boxShadow) css['box-shadow'] = localStyle.boxShadow
-  if (localStyle.textDecoration && localStyle.textDecoration !== 'none') css['text-decoration'] = localStyle.textDecoration
-  if (localStyle.textTransform && localStyle.textTransform !== 'none') css['text-transform'] = localStyle.textTransform
-  if (localStyle.letterSpacing) css['letter-spacing'] = `${localStyle.letterSpacing}px`
-  if (localStyle.wordSpacing) css['word-spacing'] = `${localStyle.wordSpacing}px`
-  if (localStyle.fontFamily) css['font-family'] = localStyle.fontFamily
-  if (localStyle.fontVariant && localStyle.fontVariant !== 'normal') css['font-variant'] = localStyle.fontVariant
-  if (localStyle.verticalAlign && localStyle.verticalAlign !== 'baseline') css['vertical-align'] = localStyle.verticalAlign
-  if (localStyle.overflow && localStyle.overflow !== 'visible') css['overflow'] = localStyle.overflow
-  if (localStyle.cursor && localStyle.cursor !== 'default') css['cursor'] = localStyle.cursor
-  if (localStyle.visibility && localStyle.visibility !== 'visible') css['visibility'] = localStyle.visibility
-  if (localStyle.zIndex && localStyle.zIndex !== 0) css['z-index'] = localStyle.zIndex
-  if (localStyle.float && localStyle.float !== 'none') css['float'] = localStyle.float
-  if (localStyle.clear && localStyle.clear !== 'none') css['clear'] = localStyle.clear
+  if (visibleStyles.value.has('boxShadow') && localStyle.boxShadow) css['box-shadow'] = localStyle.boxShadow
+  if (visibleStyles.value.has('textDecoration') && localStyle.textDecoration && localStyle.textDecoration !== 'none') css['text-decoration'] = localStyle.textDecoration
+  if (visibleStyles.value.has('textTransform') && localStyle.textTransform && localStyle.textTransform !== 'none') css['text-transform'] = localStyle.textTransform
+  if (visibleStyles.value.has('letterSpacing') && localStyle.letterSpacing) css['letter-spacing'] = `${localStyle.letterSpacing}px`
+  if (visibleStyles.value.has('wordSpacing') && localStyle.wordSpacing) css['word-spacing'] = `${localStyle.wordSpacing}px`
+  if (visibleStyles.value.has('fontFamily') && localStyle.fontFamily) css['font-family'] = localStyle.fontFamily
+  if (visibleStyles.value.has('fontVariant') && localStyle.fontVariant && localStyle.fontVariant !== 'normal') css['font-variant'] = localStyle.fontVariant
+  if (visibleStyles.value.has('verticalAlign') && localStyle.verticalAlign && localStyle.verticalAlign !== 'baseline') css['vertical-align'] = localStyle.verticalAlign
+  if (visibleStyles.value.has('overflow') && localStyle.overflow && localStyle.overflow !== 'visible') css['overflow'] = localStyle.overflow
+  if (visibleStyles.value.has('cursor') && localStyle.cursor && localStyle.cursor !== 'default') css['cursor'] = localStyle.cursor
+  if (visibleStyles.value.has('visibility') && localStyle.visibility && localStyle.visibility !== 'visible') css['visibility'] = localStyle.visibility
+  if (visibleStyles.value.has('zIndex') && localStyle.zIndex && localStyle.zIndex !== 0) css['z-index'] = localStyle.zIndex
+  if (visibleStyles.value.has('float') && localStyle.float && localStyle.float !== 'none') css['float'] = localStyle.float
+  if (visibleStyles.value.has('clear') && localStyle.clear && localStyle.clear !== 'none') css['clear'] = localStyle.clear
   
   // Flexbox相关属性
-  if (localStyle.display === 'flex') {
-    if (localStyle.flexDirection && localStyle.flexDirection !== 'row') css['flex-direction'] = localStyle.flexDirection
-    if (localStyle.flexWrap && localStyle.flexWrap !== 'nowrap') css['flex-wrap'] = localStyle.flexWrap
-    if (localStyle.justifyContent && localStyle.justifyContent !== 'flex-start') css['justify-content'] = localStyle.justifyContent
-    if (localStyle.alignItems && localStyle.alignItems !== 'stretch') css['align-items'] = localStyle.alignItems
+  if (visibleStyles.value.has('display') && localStyle.display === 'flex') {
+    if (visibleStyles.value.has('flexDirection') && localStyle.flexDirection && localStyle.flexDirection !== 'row') css['flex-direction'] = localStyle.flexDirection
+    if (visibleStyles.value.has('flexWrap') && localStyle.flexWrap && localStyle.flexWrap !== 'nowrap') css['flex-wrap'] = localStyle.flexWrap
+    if (visibleStyles.value.has('justifyContent') && localStyle.justifyContent && localStyle.justifyContent !== 'flex-start') css['justify-content'] = localStyle.justifyContent
+    if (visibleStyles.value.has('alignItems') && localStyle.alignItems && localStyle.alignItems !== 'stretch') css['align-items'] = localStyle.alignItems
   }
   
   // Grid相关属性
-  if (localStyle.display === 'grid') {
-    if (localStyle.gridTemplateColumns) css['grid-template-columns'] = localStyle.gridTemplateColumns
-    if (localStyle.gridTemplateRows) css['grid-template-rows'] = localStyle.gridTemplateRows
-    if (localStyle.gridColumnGap) css['grid-column-gap'] = `${localStyle.gridColumnGap}px`
-    if (localStyle.gridRowGap) css['grid-row-gap'] = `${localStyle.gridRowGap}px`
+  if (visibleStyles.value.has('display') && localStyle.display === 'grid') {
+    if (visibleStyles.value.has('gridTemplateColumns') && localStyle.gridTemplateColumns) css['grid-template-columns'] = localStyle.gridTemplateColumns
+    if (visibleStyles.value.has('gridTemplateRows') && localStyle.gridTemplateRows) css['grid-template-rows'] = localStyle.gridTemplateRows
+    if (visibleStyles.value.has('gridColumnGap') && localStyle.gridColumnGap) css['grid-column-gap'] = `${localStyle.gridColumnGap}px`
+    if (visibleStyles.value.has('gridRowGap') && localStyle.gridRowGap) css['grid-row-gap'] = `${localStyle.gridRowGap}px`
   }
   
   // 背景相关属性
-  if (localStyle.backgroundImage) css['background-image'] = localStyle.backgroundImage
-  if (localStyle.backgroundRepeat && localStyle.backgroundRepeat !== 'repeat') css['background-repeat'] = localStyle.backgroundRepeat
-  if (localStyle.backgroundSize && localStyle.backgroundSize !== 'auto') css['background-size'] = localStyle.backgroundSize
-  if (localStyle.backgroundPosition) css['background-position'] = localStyle.backgroundPosition
-  if (localStyle.backgroundAttachment && localStyle.backgroundAttachment !== 'scroll') css['background-attachment'] = localStyle.backgroundAttachment
+  if (visibleStyles.value.has('backgroundImage') && localStyle.backgroundImage) css['background-image'] = localStyle.backgroundImage
+  if (visibleStyles.value.has('backgroundRepeat') && localStyle.backgroundRepeat && localStyle.backgroundRepeat !== 'repeat') css['background-repeat'] = localStyle.backgroundRepeat
+  if (visibleStyles.value.has('backgroundSize') && localStyle.backgroundSize && localStyle.backgroundSize !== 'auto') css['background-size'] = localStyle.backgroundSize
+  if (visibleStyles.value.has('backgroundPosition') && localStyle.backgroundPosition) css['background-position'] = localStyle.backgroundPosition
+  if (visibleStyles.value.has('backgroundAttachment') && localStyle.backgroundAttachment && localStyle.backgroundAttachment !== 'scroll') css['background-attachment'] = localStyle.backgroundAttachment
   
   // 文本相关属性
-  if (localStyle.textIndent) css['text-indent'] = `${localStyle.textIndent}px`
-  if (localStyle.textShadow) css['text-shadow'] = localStyle.textShadow
-  if (localStyle.textOverflow) css['text-overflow'] = localStyle.textOverflow
-  if (localStyle.wordBreak && localStyle.wordBreak !== 'normal') css['word-break'] = localStyle.wordBreak
-  if (localStyle.wordWrap && localStyle.wordWrap !== 'normal') css['word-wrap'] = localStyle.wordWrap
+  if (visibleStyles.value.has('textIndent') && localStyle.textIndent) css['text-indent'] = `${localStyle.textIndent}px`
+  if (visibleStyles.value.has('textShadow') && localStyle.textShadow) css['text-shadow'] = localStyle.textShadow
+  if (visibleStyles.value.has('textOverflow') && localStyle.textOverflow) css['text-overflow'] = localStyle.textOverflow
+  if (visibleStyles.value.has('wordBreak') && localStyle.wordBreak && localStyle.wordBreak !== 'normal') css['word-break'] = localStyle.wordBreak
+  if (visibleStyles.value.has('wordWrap') && localStyle.wordWrap && localStyle.wordWrap !== 'normal') css['word-wrap'] = localStyle.wordWrap
+  if (visibleStyles.value.has('whiteSpace') && localStyle.whiteSpace && localStyle.whiteSpace !== 'normal') css['white-space'] = localStyle.whiteSpace
   
   // 列表样式属性
-  if (localStyle.listStyleType && localStyle.listStyleType !== 'none') css['list-style-type'] = localStyle.listStyleType
-  if (localStyle.listStylePosition && localStyle.listStylePosition !== 'outside') css['list-style-position'] = localStyle.listStylePosition
-  if (localStyle.listStyleImage) css['list-style-image'] = localStyle.listStyleImage
+  if (visibleStyles.value.has('listStyleType') && localStyle.listStyleType && localStyle.listStyleType !== 'none') css['list-style-type'] = localStyle.listStyleType
+  if (visibleStyles.value.has('listStylePosition') && localStyle.listStylePosition && localStyle.listStylePosition !== 'outside') css['list-style-position'] = localStyle.listStylePosition
+  if (visibleStyles.value.has('listStyleImage') && localStyle.listStyleImage) css['list-style-image'] = localStyle.listStyleImage
   
   // 过渡和动画属性
-  if (localStyle.transition) css['transition'] = localStyle.transition
-  if (localStyle.animation) css['animation'] = localStyle.animation
+  if (visibleStyles.value.has('transition') && localStyle.transition) css['transition'] = localStyle.transition
+  if (visibleStyles.value.has('animation') && localStyle.animation) css['animation'] = localStyle.animation
   
   // 滤镜属性
-  if (localStyle.filter) css['filter'] = localStyle.filter
+  if (visibleStyles.value.has('filter') && localStyle.filter) css['filter'] = localStyle.filter
   
   // outline属性
-  if (localStyle.outline) css['outline'] = localStyle.outline
-  
-  // white-space属性
-  if (localStyle.whiteSpace && localStyle.whiteSpace !== 'normal') css['white-space'] = localStyle.whiteSpace
+  if (visibleStyles.value.has('outline') && localStyle.outline) css['outline'] = localStyle.outline
   
   // 用户选择属性
-  if (localStyle.userSelect) css['user-select'] = localStyle.userSelect
+  if (visibleStyles.value.has('userSelect') && localStyle.userSelect) css['user-select'] = localStyle.userSelect
   
   // 盒模型属性
-  if (localStyle.boxSizing) css['box-sizing'] = localStyle.boxSizing
+  if (visibleStyles.value.has('boxSizing') && localStyle.boxSizing) css['box-sizing'] = localStyle.boxSizing
   
   // 方向属性
-  if (localStyle.direction && localStyle.direction !== 'ltr') css['direction'] = localStyle.direction
-  if (localStyle.writingMode && localStyle.writingMode !== 'horizontal-tb') css['writing-mode'] = localStyle.writingMode
+  if (visibleStyles.value.has('direction') && localStyle.direction && localStyle.direction !== 'ltr') css['direction'] = localStyle.direction
+  if (visibleStyles.value.has('writingMode') && localStyle.writingMode && localStyle.writingMode !== 'horizontal-tb') css['writing-mode'] = localStyle.writingMode
   
   return css
 }
@@ -1453,6 +1355,47 @@ const pasteStyle = () => {
   }).catch(() => {
     ElMessage.error('粘贴失败')
   })
+}
+
+// 切换样式可见性
+const toggleStyleVisibility = (data) => {
+  if (data && data.type === 'style' && data.key) {
+    if (visibleStyles.value.has(data.key)) {
+      visibleStyles.value.delete(data.key)
+      ElMessage.success(`已隐藏样式: ${data.label}`)
+    } else {
+      visibleStyles.value.add(data.key)
+      ElMessage.success(`已显示样式: ${data.label}`)
+    }
+    
+    // 强制更新视图
+    visibleStyles.value = new Set(visibleStyles.value)
+  }
+}
+
+// 处理工具栏项目点击事件
+const handleToolbarItemClick = (event, item) => {
+  // Ctrl+单击切换样式可见性
+  if (event.ctrlKey) {
+    toggleStyleVisibility(item)
+  } else {
+    // 普通单击打开样式设置
+    openStyleSettings(item)
+  }
+}
+
+// 打开样式设置对话框
+const openStyleSettings = (data) => {
+  if (data && data.type === 'style' && data.key) {
+    // 查找对应的设置项
+    const allStyles = Object.values(allStylesDefinition.value).flat()
+    const settingItem = allStyles.find(item => item.key === data.key)
+    
+    if (settingItem) {
+      currentSettingItem.value = settingItem
+      styleSettingsDialogVisible.value = true
+    }
+  }
 }
 
 // 暴露方法
@@ -1487,6 +1430,97 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.style-toolbar {
+  margin-bottom: 20px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 20px;
+}
+
+.toolbar-category {
+  margin-bottom: 15px;
+}
+
+.category-header h4 {
+  margin: 0 0 10px 0;
+  font-weight: 500;
+  color: #333;
+  font-size: 14px;
+}
+
+.toolbar-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.toolbar-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 60px;
+}
+
+.toolbar-item:hover {
+  background-color: #f5f7fa;
+}
+
+.toolbar-item.active {
+  background-color: #ecf5ff;
+  border: 1px solid #409eff;
+}
+
+.icon-wrapper {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.icon-wrapper .el-icon {
+  font-size: 18px;
+  color: #666;
+}
+
+.toolbar-item.active .icon-wrapper .el-icon {
+  color: #409eff;
+}
+
+.default-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background-color: #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  color: #666;
+}
+
+.toolbar-item.active .default-icon {
+  background-color: #409eff;
+  color: white;
+}
+
+.icon-label {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.toolbar-item.active .icon-label {
+  color: #409eff;
+  font-weight: 500;
 }
 
 .settings-section {
@@ -1582,5 +1616,11 @@ defineExpose({
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #eee;
+}
+
+.setting-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 </style>
