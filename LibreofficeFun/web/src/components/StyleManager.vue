@@ -100,6 +100,146 @@
             </template>
           </div>
           
+          <!-- 字体族特殊处理 -->
+          <div 
+            v-for="item in visibleTextSettings" 
+            :key="item.key" 
+            class="setting-item"
+            v-show="item.key === 'fontFamily'"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="handleFontFamilyChange"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
+            
+            <!-- 当选择自定义字体时显示输入框 -->
+            <template v-if="localStyle.fontFamily === 'custom'">
+              <el-input 
+                v-model="customFontFamily" 
+                size="small"
+                placeholder="请输入字体族，如：Arial, sans-serif"
+                @change="updateCustomFontFamily"
+              />
+              <div class="font-family-tip">
+                <p>提示：可以输入多个字体名称，用逗号分隔，如：Arial, Helvetica, sans-serif</p>
+                <p>系统会按顺序查找，使用第一个找到的字体</p>
+              </div>
+            </template>
+          </div>
+          
+          <!-- 文本设置（除字体族外） -->
+          <div 
+            v-for="item in visibleTextSettings" 
+            :key="item.key" 
+            class="setting-item"
+            v-show="item.key !== 'fontFamily'"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'number'">
+              <el-input-number 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
+                :step="item.step"
+                size="small"
+                controls-position="right"
+                @change="updateStyle"
+              />
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
+            
+            <template v-else-if="item.type === 'color-picker'">
+              <el-color-picker 
+                v-model="localStyle[item.key]" 
+                size="small" 
+                :show-alpha="item.showAlpha"
+                @change="updateStyle"
+              />
+            </template>
+            
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
+          </div>
+          
+          <!-- 常用设置（除字体族外） -->
+          <div 
+            v-for="item in visibleBasicSettings" 
+            :key="item.key" 
+            class="setting-item"
+            v-show="item.key !== 'fontFamily'"
+          >
+            <label>{{ item.label }}</label>
+            <template v-if="item.type === 'number'">
+              <el-input-number 
+                v-model="localStyle[item.key]" 
+                :min="item.min" 
+                :max="item.max" 
+                :step="item.step"
+                size="small"
+                controls-position="right"
+                @change="updateStyle"
+              />
+              <span v-if="item.unit" class="unit">{{ item.unit }}</span>
+            </template>
+            
+            <template v-else-if="item.type === 'color-picker'">
+              <el-color-picker 
+                v-model="localStyle[item.key]" 
+                size="small" 
+                :show-alpha="item.showAlpha"
+                @change="updateStyle"
+              />
+            </template>
+            
+            <template v-else-if="item.type === 'select'">
+              <el-select 
+                v-model="localStyle[item.key]" 
+                size="small"
+                @change="updateStyle"
+              >
+                <el-option 
+                  v-for="option in item.options" 
+                  :key="option.value" 
+                  :label="option.label" 
+                  :value="option.value" 
+                />
+              </el-select>
+            </template>
+            
+            <template v-else-if="item.type === 'switch'">
+              <el-switch
+                v-model="localStyle[item.key]"
+                :active-value="item.activeValue"
+                :inactive-value="item.inactiveValue"
+                @change="updateStyle"
+              />
+              <span v-if="item.switchLabel" class="switch-label">{{ item.switchLabel }}</span>
+            </template>
+          </div>
+          
           <!-- 边框 -->
           <div 
             v-for="item in visibleBorderSettings" 
@@ -571,6 +711,7 @@ const emit = defineEmits(['update:modelValue', 'change', 'apply'])
 // 数据
 const localStyle = reactive({})
 const visibleStyles = ref(new Set()) // 存储可见样式属性的集合
+const customFontFamily = ref('') // 存储自定义字体族
 
 // 对话框相关
 const styleSettingsDialogVisible = ref(false)
@@ -745,7 +886,49 @@ const allStylesDefinition = computed(() => {
     
     // 文本设置
     text: [
-      { key: 'fontFamily', label: '字体族', type: 'input', placeholder: '例: Arial, sans-serif' },
+      { key: 'fontFamily', label: '字体族', type: 'select', options: [
+        { label: '默认', value: '' },
+        { label: '宋体/SimSun', value: 'SimSun, STSong, serif' },
+        { label: '黑体/SimHei', value: 'SimHei, STHeiti, sans-serif' },
+        { label: '微软雅黑/Microsoft YaHei', value: 'Microsoft YaHei, STHeiti, sans-serif' },
+        { label: '楷体/KaiTi', value: 'KaiTi, STKaiti, serif' },
+        { label: '仿宋/FangSong', value: 'FangSong, STFangsong, serif' },
+        { label: '华文细黑/STXihei', value: 'STXihei, SimHei, sans-serif' },
+        { label: '华文宋体/STSong', value: 'STSong, SimSun, serif' },
+        { label: '华文仿宋/STFangsong', value: 'STFangsong, FangSong, serif' },
+        { label: '华文楷体/STKaiti', value: 'STKaiti, KaiTi, serif' },
+        { label: '思源黑体/Source Han Sans', value: 'Source Han Sans SC, Source Han Sans, Noto Sans CJK SC, sans-serif' },
+        { label: '思源宋体/Source Han Serif', value: 'Source Han Serif SC, Source Han Serif, Noto Serif CJK SC, serif' },
+        { label: '苹方/PingFang SC', value: 'PingFang SC, Helvetica Neue, Helvetica, Arial, sans-serif' },
+        { label: '苹方粗体/PingFang SC Bold', value: 'PingFang SC Bold, PingFang SC, Helvetica Neue, Helvetica, Arial, sans-serif' },
+        { label: '兰亭黑/Lantinghei SC', value: 'Lantinghei SC, SimHei, sans-serif' },
+        { label: '汉仪旗黑/HanYiQiHei', value: 'HanYiQiHei, SimHei, sans-serif' },
+        { label: '汉仪楷体/HanYiKaiti', value: 'HanYiKaiti, KaiTi, serif' },
+        { label: '方正兰亭黑/FZLanTingHei', value: 'FZLanTingHei, SimHei, sans-serif' },
+        { label: '方正楷体/FZKaiTi', value: 'FZKaiTi, KaiTi, serif' },
+        { label: '方正书宋/FZShuSong', value: 'FZShuSong, SimSun, serif' },
+        { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+        { label: 'Arial Black', value: 'Arial Black, Arial Bold, Gadget, sans-serif' },
+        { label: 'Helvetica', value: 'Helvetica, Arial, sans-serif' },
+        { label: 'Times New Roman', value: '"Times New Roman", Times, serif' },
+        { label: 'Times', value: 'Times, "Times New Roman", serif' },
+        { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+        { label: 'Tahoma', value: 'Tahoma, Geneva, sans-serif' },
+        { label: 'Trebuchet MS', value: '"Trebuchet MS", Helvetica, sans-serif' },
+        { label: 'Georgia', value: 'Georgia, serif' },
+        { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+        { label: 'Brush Script MT', value: '"Brush Script MT", cursive' },
+        { label: 'Impact', value: 'Impact, Charcoal, sans-serif' },
+        { label: 'Comic Sans MS', value: '"Comic Sans MS", cursive, sans-serif' },
+        { label: 'Open Sans', value: 'Open Sans, sans-serif' },
+        { label: 'Roboto', value: 'Roboto, sans-serif' },
+        { label: 'Lato', value: 'Lato, sans-serif' },
+        { label: 'Montserrat', value: 'Montserrat, sans-serif' },
+        { label: 'Oswald', value: 'Oswald, sans-serif' },
+        { label: 'Raleway', value: 'Raleway, sans-serif' },
+        { label: 'Ubuntu', value: 'Ubuntu, sans-serif' },
+        { label: '自定义', value: 'custom' }
+      ]},
       { key: 'fontVariant', label: '字体大小调整', type: 'switch', activeValue: 'small-caps', inactiveValue: 'normal', switchLabel: '小型大写字母' },
       { key: 'textDecoration', label: '文字装饰', type: 'select', options: [
         { label: '无', value: 'none' },
@@ -1082,12 +1265,26 @@ const initializeLocalStyle = () => {
   // 合并传入的样式
   if (props.modelValue) {
     Object.assign(localStyle, props.modelValue)
+    
+    // 处理自定义字体族
+    initCustomFontFamily(localStyle.fontFamily)
   }
   
   // 初始化可见样式集合（默认显示常用设置）
   allStylesDefinition.value.basic.forEach(item => {
     visibleStyles.value.add(item.key)
   })
+}
+
+// 检查字体族是否为预设值
+const isPredefinedFontFamily = (fontFamily) => {
+  const predefinedFonts = allStylesDefinition.value.text
+    .find(item => item.key === 'fontFamily')
+    ?.options
+    .filter(option => option.value !== 'custom')
+    .map(option => option.value) || []
+  
+  return predefinedFonts.includes(fontFamily)
 }
 
 // 获取默认值
@@ -1103,6 +1300,7 @@ const getDefaultValue = (key) => {
     opacity: 1,
     textRotation: 0,
     scale: 1,
+    fontFamily: '', // 默认不设置字体族
     padding: 0,
     margin: 0,
     borderStyle: 'none',
@@ -1213,6 +1411,11 @@ const toCSS = () => {
   // 常用设置
   if (visibleStyles.value.has('fontSize') && localStyle.fontSize) css['font-size'] = `${localStyle.fontSize}px`
   if (visibleStyles.value.has('color') && localStyle.color) css['color'] = localStyle.color
+  if (visibleStyles.value.has('fontFamily') && localStyle.fontFamily) {
+    // 处理字体族，如果是自定义则使用customFontFamily的值
+    const fontFamilyValue = localStyle.fontFamily === 'custom' ? customFontFamily.value : localStyle.fontFamily
+    if (fontFamilyValue) css['font-family'] = fontFamilyValue
+  }
   if (visibleStyles.value.has('fontWeight') && localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
   if (visibleStyles.value.has('fontStyle') && localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
   if (visibleStyles.value.has('textAlign') && localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
@@ -1331,9 +1534,67 @@ const toCSS = () => {
   return css
 }
 
+// 处理字体族变化
+const handleFontFamilyChange = (value) => {
+  if (value === 'custom') {
+    // 如果选择自定义，使用当前自定义值或空字符串
+    localStyle.fontFamily = customFontFamily.value || ''
+  } else {
+    // 如果选择预设值，直接使用
+    localStyle.fontFamily = value
+  }
+  updateStyle()
+}
+
+// 更新自定义字体族
+const updateCustomFontFamily = () => {
+  // 只有当字体族设置为自定义时才更新
+  if (localStyle.fontFamily === 'custom') {
+    localStyle.fontFamily = customFontFamily.value || ''
+    updateStyle()
+  }
+}
+
+// 检查字体族是否为预设值
+const isPresetFontFamily = (fontFamily) => {
+  if (!fontFamily) return false
+  
+  // 获取所有预设字体族选项
+  const textSettings = allStylesDefinition.value.text
+  const fontFamilySetting = textSettings.find(setting => setting.key === 'fontFamily')
+  
+  if (!fontFamilySetting) return false
+  
+  // 检查是否为预设选项（除了"自定义"）
+  return fontFamilySetting.options.some(option => 
+    option.value === fontFamily && option.value !== 'custom'
+  )
+}
+
+// 初始化自定义字体族
+const initCustomFontFamily = (fontFamily) => {
+  // 如果是预设字体族，则清空自定义字体
+  if (isPresetFontFamily(fontFamily)) {
+    customFontFamily.value = ''
+  } else if (fontFamily) {
+    // 如果不是预设字体族，则设置为自定义字体
+    customFontFamily.value = fontFamily
+    // 如果当前字体族不是"自定义"，则设置为"自定义"
+    if (localStyle.fontFamily !== 'custom') {
+      localStyle.fontFamily = 'custom'
+    }
+  }
+}
+
 // 复制样式
 const copyStyle = () => {
-  const styleText = JSON.stringify(localStyle, null, 2)
+  // 创建一个副本用于复制，处理自定义字体族
+  const styleToCopy = { ...localStyle }
+  if (styleToCopy.fontFamily === 'custom') {
+    styleToCopy.fontFamily = customFontFamily.value || ''
+  }
+  
+  const styleText = JSON.stringify(styleToCopy, null, 2)
   navigator.clipboard.writeText(styleText).then(() => {
     ElMessage.success('样式已复制到剪贴板')
   }).catch(() => {
@@ -1346,6 +1607,16 @@ const pasteStyle = () => {
   navigator.clipboard.readText().then(text => {
     try {
       const parsedStyle = JSON.parse(text)
+      
+      // 处理字体族
+      if (parsedStyle.fontFamily) {
+        if (!isPresetFontFamily(parsedStyle.fontFamily)) {
+          // 如果不是预设字体族，设置为自定义
+          customFontFamily.value = parsedStyle.fontFamily
+          parsedStyle.fontFamily = 'custom'
+        }
+      }
+      
       Object.assign(localStyle, parsedStyle)
       updateStyle()
       ElMessage.success('样式已粘贴')
@@ -1392,6 +1663,12 @@ const openStyleSettings = (data) => {
     const settingItem = allStyles.find(item => item.key === data.key)
     
     if (settingItem) {
+      // 检查样式是否可见，如果不可见则提示并设置为可见
+      if (!visibleStyles.value.has(data.key)) {
+        visibleStyles.value.add(data.key)
+        ElMessage.info(`已显示样式: ${data.label}，现在可以进行设置了`)
+      }
+      
       currentSettingItem.value = settingItem
       styleSettingsDialogVisible.value = true
     }
@@ -1406,18 +1683,53 @@ defineExpose({
 
 <style scoped>
 .style-manager {
-  background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-  padding: 16px;
-  max-width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
 }
 
 .style-manager-header {
+  padding: 10px;
+  border-bottom: 1px solid #e0e0e0;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+}
+
+.style-manager-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.style-manager-footer {
+  padding: 10px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 字体族提示样式 */
+.font-family-tip {
+  margin-top: 5px;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.font-family-tip p {
+  margin: 3px 0;
+}
+
+.setting-tree {
+  :deep(.el-tree-node__content) {
+    height: 32px;
+    font-size: 12px;
+  }
 }
 
 .style-manager-header h3 {
