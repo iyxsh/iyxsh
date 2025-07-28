@@ -1,6 +1,6 @@
 <template>
   <div class="page-manager">
-    <h1>页面管理器</h1>
+    <h1>页面管理器引文</h1>
 
     <!-- 导航区域 -->
     <div class="navigation">

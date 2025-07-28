@@ -709,7 +709,9 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'change', 'apply'])
 
 // 数据
-const localStyle = reactive({})
+const localStyle = reactive({}) // 全部默认值
+const localTextStyle = reactive({}) // 文本相关默认值
+const localContainerStyle = reactive({}) // 容器相关默认值
 const visibleStyles = ref(new Set()) // 存储可见样式属性的集合
 const customFontFamily = ref('') // 存储自定义字体族
 
@@ -1259,8 +1261,15 @@ const initializeLocalStyle = () => {
   
   // 设置默认值
   allStyleKeys.forEach(key => {
+    //全部默认值
     localStyle[key] = getDefaultValue(key)
   })
+  
+  // 初始化文本相关默认值
+  Object.assign(localTextStyle, getTextStyleDefaults())
+  
+  // 初始化容器相关默认值
+  Object.assign(localContainerStyle, getContainerStyleDefaults())
   
   // 合并传入的样式
   if (props.modelValue) {
@@ -1288,6 +1297,40 @@ const isPredefinedFontFamily = (fontFamily) => {
 }
 
 // 获取默认值
+onMounted(() => {
+  // 初始化全部默认值（合并文本和容器样式默认值）
+  const textStyleDefaults = getTextStyleDefaults()
+  const containerStyleDefaults = getContainerStyleDefaults()
+  Object.assign(localStyle, textStyleDefaults, containerStyleDefaults)
+  
+  // 初始化文本相关默认值
+  Object.assign(localTextStyle, textStyleDefaults)
+  
+  // 初始化容器相关默认值
+  Object.assign(localContainerStyle, containerStyleDefaults)
+  
+  // 合并传入的样式
+  if (props.modelValue) {
+    Object.assign(localStyle, props.modelValue)
+    
+    // 处理自定义字体族
+    initCustomFontFamily(localStyle.fontFamily)
+  }
+  
+  // 初始化可见样式集合（默认显示常用设置）
+  allStylesDefinition.value.basic.forEach(item => {
+    visibleStyles.value.add(item.key)
+  })
+  
+  // 同时初始化盒模型相关样式为可见（确保padding等样式默认可见）
+  allStylesDefinition.value.boxModel.forEach(item => {
+    visibleStyles.value.add(item.key)
+  })
+  
+  // 强制触发响应式更新
+  visibleStyles.value = new Set(visibleStyles.value)
+})
+
 const getDefaultValue = (key) => {
   const defaults = {
     fontSize: 16,
@@ -1675,6 +1718,74 @@ const openStyleSettings = (data) => {
   }
 }
 
+// 获取文本相关样式的默认值
+const getTextStyleDefaults = () => {
+  const textStyleDefaults = {}
+  
+  // 文本相关样式分类
+  const textStyleCategories = ['basic', 'text']
+  
+  textStyleCategories.forEach(category => {
+    if (allStylesDefinition.value[category]) {
+      allStylesDefinition.value[category].forEach(item => {
+        textStyleDefaults[item.key] = getDefaultValue(item.key)
+      })
+    }
+  })
+  
+  // 额外的文本相关属性
+  const additionalTextKeys = [
+    'textDecoration', 'textTransform', 'letterSpacing', 'wordSpacing',
+    'fontVariant', 'verticalAlign', 'textIndent', 'textShadow',
+    'textOverflow', 'wordBreak', 'wordWrap', 'whiteSpace',
+    'direction', 'writingMode'
+  ]
+  
+  additionalTextKeys.forEach(key => {
+    if (!textStyleDefaults.hasOwnProperty(key)) {
+      textStyleDefaults[key] = getDefaultValue(key)
+    }
+  })
+  
+  return textStyleDefaults
+}
+
+// 获取容器相关样式的默认值
+const getContainerStyleDefaults = () => {
+  const containerStyleDefaults = {}
+  
+  // 容器相关样式分类
+  const containerStyleCategories = ['boxModel', 'border', 'layout', 'background', 'effect', 'animation', 'list', 'interaction']
+  
+  containerStyleCategories.forEach(category => {
+    if (allStylesDefinition.value[category]) {
+      allStylesDefinition.value[category].forEach(item => {
+        containerStyleDefaults[item.key] = getDefaultValue(item.key)
+      })
+    }
+  })
+  
+  // 额外的容器相关属性
+  const additionalContainerKeys = [
+    'display', 'position', 'left', 'top', 'right', 'bottom',
+    'overflow', 'cursor', 'visibility', 'zIndex', 'float', 'clear',
+    'flexDirection', 'flexWrap', 'justifyContent', 'alignItems',
+    'gridTemplateColumns', 'gridTemplateRows', 'gridColumnGap', 'gridRowGap',
+    'backgroundImage', 'backgroundRepeat', 'backgroundSize', 'backgroundPosition', 'backgroundAttachment',
+    'listStyleType', 'listStylePosition', 'listStyleImage',
+    'transition', 'animation', 'filter', 'outline',
+    'userSelect', 'boxSizing'
+  ]
+  
+  additionalContainerKeys.forEach(key => {
+    if (!containerStyleDefaults.hasOwnProperty(key)) {
+      containerStyleDefaults[key] = getDefaultValue(key)
+    }
+  })
+  
+  return containerStyleDefaults
+}
+
 // 暴露方法
 defineExpose({
   toCSS
@@ -1682,11 +1793,47 @@ defineExpose({
 </script>
 
 <style scoped>
-.style-manager {
-  height: 100%;
+.setting-item {
   display: flex;
-  flex-direction: column;
-  user-select: none;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.control-label {
+  margin-right: 8px;
+  font-size: 14px;
+  color: #606266;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.unit {
+  margin-left: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.color-picker-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-picker-trigger {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.color-picker-trigger:hover {
+  border-color: #409eff;
+}
+
+.style-manager {
+  width: 100%;
 }
 
 .style-manager-header {
