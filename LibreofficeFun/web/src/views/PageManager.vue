@@ -14,25 +14,26 @@
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
-          <FormGrid v-show="currentPageType === 'form'" 
-            v-if="pages[currentPageIdx] && Array.isArray(pages[currentPageIdx].forms)"
+          <FormGrid v-if="pages[currentPageIdx] && Array.isArray(pages[currentPageIdx].forms)"
             v-model="pages[currentPageIdx].forms"
             :editable="editPageIdx === currentPageIdx" 
             :cardStyleOn="cardStyleOn"
             :pageSize="pages[currentPageIdx]?.pageSize" 
             @update:modelValue="handleFormUpdate"
             ref="formGridRef" />
-          <FloatingBar v-show="currentPageType === 'form'" v-if="pages[currentPageIdx]"
+          <FloatingBar v-if="pages[currentPageIdx]"
             :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
             :onToggleCardStyle="onToggleCardStyle" @add-form="onAddForm" />
         </template>
 
         <!-- 卡片转换页面 -->
-        <SimpleCardConverter v-show="currentPageType === 'cards'" 
-          :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
-          :pageSize="pages[currentPageIdx]?.pageSize" 
-          ref="cardConverterRef"
-          :key="`${currentPageType}-${currentPageIdx}`" />
+        <template v-else-if="currentPageType === 'cards'">
+          <SimpleCardConverter 
+            :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
+            :pageSize="pages[currentPageIdx]?.pageSize" 
+            ref="cardConverterRef"
+            :key="`${currentPageType}-${currentPageIdx}`" />
+        </template>
       </el-main>
       <!-- 可拖动侧边栏 -->
       <div class="resizable-aside-container" :style="{ width: asideWidth + 'px' }">
