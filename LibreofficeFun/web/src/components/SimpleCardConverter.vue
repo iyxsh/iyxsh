@@ -6,17 +6,6 @@
         <h3>全局样式设置</h3>
         <div class="drag-handle">⋮⋮</div>
       </div>
-      <!-- 添加空值检查 -->
-      <el-switch v-if="converterSettings" v-model="converterSettings.showBorder" active-text="显示边框" inactive-text="隐藏边框"
-        @change="updateStyle" />
-      <!-- 添加空值检查 -->
-      <el-switch v-if="converterSettings" v-model="converterSettings.showBackground" active-text="显示背景"
-        inactive-text="隐藏背景" @change="updateStyle" />
-
-      <!-- 添加card-text样式管理器 -->
-      <StyleSettings v-if="converterSettings" v-model="converterSettings" :predefine-colors="predefineColors"
-        @update:model-value="updateStyle" />
-
       <!-- 添加card-text样式管理器 -->
       <div class="global-style-settings">
         <el-button @click="openGlobalStylePanel" size="small" type="primary">
@@ -33,13 +22,32 @@
         </el-button>
       </div>
       <div class="toolbar-content">
-
-        <!-- 卡片样式选择器 -->
-        <span class="control-label">卡片样式：</span>
-        <el-select v-model="selectedCardStyle" placeholder="选择卡片样式" size="small" @change="handleCardStyleChange">
-          <el-option v-for="option in cardStyleOptions" :key="option.value" :label="option.label"
-            :value="option.value" />
-        </el-select>
+        <!-- 卡片样式模板选择器 -->
+        <div class="style-template-selector">
+          <div class="selector-group">
+            <span class="control-label">单卡片样式模板：</span>
+            <el-select v-model="selectedCardStyle" placeholder="选择单卡片样式模板" size="small" @change="(val) => handleCardStyleTemplateChange('card', val)">
+              <el-option v-for="option in cardStyleTemplates" :key="option.value" :label="option.label"
+                :value="option.value" />
+            </el-select>
+          </div>
+          
+          <div class="selector-group">
+            <span class="control-label">卡片行样式模板：</span>
+            <el-select v-model="selectedCardRowStyle" placeholder="选择卡片行样式模板" size="small" @change="(val) => handleCardStyleTemplateChange('row', val)">
+              <el-option v-for="option in cardRowStyleTemplates" :key="option.value" :label="option.label"
+                :value="option.value" />
+            </el-select>
+          </div>
+          
+          <div class="selector-group">
+            <span class="control-label">卡片组样式模板：</span>
+            <el-select v-model="selectedCardGroupStyle" placeholder="选择卡片组样式模板" size="small" @change="(val) => handleCardStyleTemplateChange('group', val)">
+              <el-option v-for="option in cardGroupStyleTemplates" :key="option.value" :label="option.label"
+                :value="option.value" />
+            </el-select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -73,7 +81,6 @@
 
         <template #footer>
           <el-button @click="toggleTextStylePanel">{{ showTextStylePanel ? '隐藏样式设置' : '文本样式设置' }}</el-button>
-          <el-button @click="openCardStyleFromDialog">单个卡片样式</el-button>
           <!-- 文本样式设置面板 -->
           <div v-show="showTextStylePanel" class="text-style-panel">
             <StyleManager ref="textStyleManager" v-model="editingCard.textStyle" @change="updateEditingCardTextStyle"
@@ -158,7 +165,6 @@
 </template>
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue';
-import StyleSettings from './StyleSettings.vue';
 import { useEventBus } from '@/utils/eventBus';
 import { ElMessage } from 'element-plus';
 import StyleManager from './StyleManager.vue'; // 导入StyleManager组件
@@ -346,18 +352,38 @@ const predefineColors = [
   'rgba(255, 69, 0, 0.68)'
 ]
 
-// 卡片样式选项
-const cardStyleOptions = [
-  { value: 'default', label: '默认样式' },
-  { value: 'minimal', label: '极简样式' },
-  { value: 'rounded', label: '圆角样式' },
-  { value: 'outlined', label: '边框样式' },
-  { value: 'elevation', label: '投影样式' },
-  { value: 'gradient', label: '渐变样式' }
+// 单卡片样式模板选项
+const cardStyleTemplates = [
+  { value: 'card-default', label: '默认卡片样式' },
+  { value: 'card-minimal', label: '极简卡片样式' },
+  { value: 'card-rounded', label: '圆角卡片样式' },
+  { value: 'card-outlined', label: '边框卡片样式' },
+  { value: 'card-elevation', label: '投影卡片样式' },
+  { value: 'card-gradient', label: '渐变卡片样式' }
 ]
 
-// 选定的卡片样式
-const selectedCardStyle = ref('default')
+// 卡片行样式模板选项
+const cardRowStyleTemplates = [
+  { value: 'row-default', label: '默认行样式' },
+  { value: 'row-compact', label: '紧凑行样式' },
+  { value: 'row-spaced', label: '宽松行样式' },
+  { value: 'row-centered', label: '居中行样式' },
+  { value: 'row-highlighted', label: '高亮行样式' }
+]
+
+// 卡片组样式模板选项
+const cardGroupStyleTemplates = [
+  { value: 'group-default', label: '默认组样式' },
+  { value: 'group-minimal', label: '极简组样式' },
+  { value: 'group-bordered', label: '边框组样式' },
+  { value: 'group-elevated', label: '投影组样式' },
+  { value: 'group-spaced', label: '间隔组样式' }
+]
+
+// 选定的卡片样式模板
+const selectedCardStyle = ref('card-default')
+const selectedCardRowStyle = ref('row-default')
+const selectedCardGroupStyle = ref('group-default')
 
 // 转换器设置
 const converterSettings = reactive({
@@ -447,11 +473,13 @@ const convertFormsToCards = (forms) => {
         text: char,
         type: 'title',
         // 使用StyleManager的默认样式
-        textStyle: { ...getStyleManagerDefaults() }
+        textStyle: { ...getStyleManagerDefaults() },
+        style: cardStyles.value ? JSON.parse(JSON.stringify(cardStyles.value)) : {} // 使用单卡片样式
       }))
       rows.push({
         type: 'title-row',
-        cards: titleCards
+        cards: titleCards,
+        style: cardRowStyles.value ? JSON.parse(JSON.stringify(cardRowStyles.value)) : {} // 使用单行样式
       });
     }
 
@@ -463,11 +491,13 @@ const convertFormsToCards = (forms) => {
         text: char,
         type: 'value',
         // 使用StyleManager的默认样式
-        textStyle: { ...getStyleManagerDefaults() }
+        textStyle: { ...getStyleManagerDefaults() },
+        style: cardStyles.value ? JSON.parse(JSON.stringify(cardStyles.value)) : {} // 使用单卡片样式
       }))
       rows.push({
         type: 'value-row',
-        cards: valueCards
+        cards: valueCards,
+        style: cardRowStyles.value ? JSON.parse(JSON.stringify(cardRowStyles.value)) : {} // 使用单行样式
       });
     }
 
@@ -479,11 +509,13 @@ const convertFormsToCards = (forms) => {
         text: char,
         type: 'remark',
         // 使用StyleManager的默认样式
-        textStyle: { ...getStyleManagerDefaults() }
+        textStyle: { ...getStyleManagerDefaults() },
+        style: cardStyles.value ? JSON.parse(JSON.stringify(cardStyles.value)) : {} // 使用单卡片样式
       }))
       rows.push({
         type: 'remark-row',
-        cards: remarkCards
+        cards: remarkCards,
+        style: cardRowStyles.value ? JSON.parse(JSON.stringify(cardRowStyles.value)) : {} // 使用单行样式
       });
     }
 
@@ -495,7 +527,8 @@ const convertFormsToCards = (forms) => {
           text: '',
           type: 'empty',
           // 使用StyleManager的默认样式
-          textStyle: { ...getStyleManagerDefaults() }
+          textStyle: { ...getStyleManagerDefaults() },
+          style: cardStyles.value ? JSON.parse(JSON.stringify(cardStyles.value)) : {} // 使用单卡片样式
         }]
       });
     }
@@ -503,7 +536,8 @@ const convertFormsToCards = (forms) => {
     return {
       id: form.id || `group-${Date.now()}-${index}`,
       title: form.title || `表单 ${index + 1}`,
-      rows
+      rows,
+      style: cardGroupStyles.value ? JSON.parse(JSON.stringify(cardGroupStyles.value)) : {} // 使用卡片组样式
     }
   })
 
@@ -529,39 +563,13 @@ const updateStyle = () => {
 // 获取卡片组样式
 const getCardGroupStyle = () => {
   // 默认返回全局卡片组样式
-  const style = {
-    marginBottom: `${converterSettings.rowSpacing}px`, // 使用 converterSettings 中的行距
-    border: converterSettings.showBorder ? '1px solid #ddd' : 'none',
-    borderRadius: '4px',
-    padding: '0px',
-    backgroundColor: '#fff',
-    // 添加自适应宽度，使其根据内容调整
-    width: 'fit-content',
-    minWidth: '100%', // 至少填满容器宽度
-    // 添加自适应高度
-    height: 'fit-content',
-    // 确保内容不会被裁剪
-    overflow: 'visible'
-  };
+  const style = {};
 
   // 如果有已处理的CSS样式，优先使用
   if (cardGroupStyles.value && cardGroupStyles.value._css) {
     Object.assign(style, cardGroupStyles.value._css);
   } else if (cardGroupStyles.value) {
-    // 检查是否有特定的卡片组样式
-    let hasGroupStyle = false;
-    for (let i = 0; i < cardGroups.value.length; i++) {
-      if (cardGroups.value[i].style) {
-        Object.assign(style, cardGroups.value[i].style);
-        hasGroupStyle = true;
-        break;
-      }
-    }
-
-    // 如果没有特定的卡片组样式，则使用全局样式
-    if (!hasGroupStyle) {
-      Object.assign(style, cardGroupStyles.value);
-    }
+    Object.assign(style, cardGroupStyles.value);
   }
 
   return style;
@@ -607,7 +615,7 @@ const getRowStyle = (groupIndex, rowIndex) => {
   }
 
   // 默认返回全局行样式
-  const style = {};
+  const style = cardRowStyles.value || {}; // 使用卡片组样式
   // 如果有已处理的CSS样式，优先使用
   if (cardRowStyles.value && cardRowStyles.value._css) {
     Object.assign(style, cardRowStyles.value._css);
@@ -623,18 +631,21 @@ const getCardContainerStyle = (card) => {
   const style = {};
 
   // 如果卡片有特定的容器样式，优先使用
-  if (card.containerStyle) {
+  if (card && card.style) {
     // 如果有已处理的CSS样式，优先使用
-    if (card.containerStyle._css) {
-      Object.assign(style, card.containerStyle._css);
+    if (card.style._css) {
+      return { ...card.style._css };
     } else {
-      Object.assign(style, card.containerStyle);
+      return { ...card.style };
     }
-  } else {
-    // 如果有全局单卡片样式设置，作为默认值使用
-    if (cardStyles.value && cardStyles.value._css) {
+  }
+
+  // 如果有全局单卡片样式设置，作为默认值使用
+  if (cardStyles.value) {
+    // 如果有已处理的CSS样式，优先使用
+    if (cardStyles.value._css) {
       Object.assign(style, cardStyles.value._css);
-    } else if (cardStyles.value) {
+    } else {
       Object.assign(style, cardStyles.value);
     }
   }
@@ -686,7 +697,13 @@ const saveCardEdit = () => {
     // 更新卡片文本
     cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].text = text
     // 更新卡片文本样式
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle = { ...textStyle }
+    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle = JSON.parse(JSON.stringify(textStyle || {}))
+    
+    // 关闭对话框
+    editDialogVisible.value = false
+    
+    // 提示成功
+    ElMessage.success('卡片内容已更新')
   }
 }
 
@@ -696,23 +713,52 @@ const applyStyleToCard = () => {
   const { groupIndex, rowIndex, cardIndex } = editingCardStyle;
   if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
     cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle =
-      JSON.parse(JSON.stringify(cardStyles.value || getTextStyleDefaults()));
+    // 确保深拷贝样式对象，防止引用问题
+    const styleToApply = JSON.parse(JSON.stringify(cardStyles.value || getTextStyleDefaults()));
+    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle = styleToApply;
 
-    editDialogVisible.value = false
-    showTextStylePanel.value = false // 关闭文本样式面板
-    ElMessage.success('卡片内容已更新')
+    // 关闭对话框
+    cardStyleDialogVisible.value = false;
+    editDialogVisible.value = false;
+    showTextStylePanel.value = false; // 关闭文本样式面板
+    
+    // 提示成功
+    ElMessage.success('卡片样式已更新');
+    
+    // 触发更新
+    updateStyle();
   }
 }
 
-// 处理卡片样式变化
+// 处理卡片样式模板变化
+const handleCardStyleTemplateChange = (type, styleValue) => {
+  console.log(`Card ${type} style template changed to:`, styleValue);
+
+  switch (type) {
+    case 'card':
+      handleCardStyleChange(styleValue);
+      break;
+    case 'row':
+      handleCardRowStyleChange(styleValue);
+      break;
+    case 'group':
+      handleCardGroupStyleChange(styleValue);
+      break;
+  }
+
+  // 触发样式更新
+  updateStyle();
+}
+
+// 处理单卡片样式变化
 const handleCardStyleChange = (styleValue) => {
   console.log('Card style changed to:', styleValue);
 
+  let cardStyle = {};
   // 根据选择的样式更新设置
   switch (styleValue) {
-    case 'minimal':
-      Object.assign(converterSettings, {
+    case 'card-minimal':
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: '#ffffff',
@@ -725,10 +771,10 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
-    case 'rounded':
-      Object.assign(converterSettings, {
+      };
+      break;
+    case 'card-rounded':
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: '#ffffff',
@@ -741,10 +787,10 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
-    case 'outlined':
-      Object.assign(converterSettings, {
+      };
+      break;
+    case 'card-outlined':
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: 'transparent',
@@ -759,10 +805,10 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
-    case 'elevation':
-      Object.assign(converterSettings, {
+      };
+      break;
+    case 'card-elevation':
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: '#f8f8f8',
@@ -775,10 +821,10 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
-    case 'gradient':
-      Object.assign(converterSettings, {
+      };
+      break;
+    case 'card-gradient':
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: 'linear-gradient(135deg, #ffffff, #f0f0f0)',
@@ -791,11 +837,11 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
+      };
+      break;
     default:
       // 默认样式
-      Object.assign(converterSettings, {
+      cardStyle = {
         padding: 2,
         margin: 3,
         backgroundColor: '#ffffff',
@@ -808,12 +854,173 @@ const handleCardStyleChange = (styleValue) => {
         fontStyle: 'normal',
         textAlign: 'center',
         lineHeight: 1.2
-      })
-      break
+      };
+      break;
   }
 
-  // 触发样式更新
-  updateStyle()
+  // 将样式应用到所有卡片
+  cardGroups.value.forEach(group => {
+    group.rows.forEach(row => {
+      row.cards.forEach(card => {
+        card.style = { ...cardStyle };
+      });
+    });
+  });
+
+  // 更新卡片样式
+  cardStyles.value = { ...cardStyle };
+}
+
+// 处理卡片行样式变化
+const handleCardRowStyleChange = (styleValue) => {
+  console.log('Card row style changed to:', styleValue);
+
+  let rowStyle = {};
+  switch (styleValue) {
+    case 'row-compact':
+      rowStyle = {
+        padding: '2px',
+        margin: '1px',
+        gap: '1px',
+        backgroundColor: 'transparent'
+      };
+      break;
+    case 'row-spaced':
+      rowStyle = {
+        padding: '8px',
+        margin: '4px 0',
+        gap: '8px',
+        backgroundColor: '#f9f9f9'
+      };
+      break;
+    case 'row-centered':
+      rowStyle = {
+        padding: '5px',
+        margin: '3px 0',
+        gap: '3px',
+        justifyContent: 'center',
+        backgroundColor: 'transparent'
+      };
+      break;
+    case 'row-highlighted':
+      rowStyle = {
+        padding: '6px',
+        margin: '4px 0',
+        gap: '4px',
+        backgroundColor: '#e6f7ff',
+        border: '1px solid #91d5ff',
+        borderRadius: '4px'
+      };
+      break;
+    default:
+      // 默认行样式
+      rowStyle = {
+        padding: '5px',
+        margin: '2px 0',
+        gap: '2px',
+        backgroundColor: 'transparent'
+      };
+      break;
+  }
+
+  // 应用行样式到所有行
+  cardGroups.value.forEach(group => {
+    group.rows.forEach(row => {
+      row.style = { ...rowStyle };
+    });
+  });
+
+  // 更新卡片行样式
+  cardRowStyles.value = { ...rowStyle };
+}
+
+// 处理卡片组样式变化
+const handleCardGroupStyleChange = (styleValue) => {
+  console.log('Card group style changed to:', styleValue);
+
+  let groupStyle = {};
+  switch (styleValue) {
+    case 'group-minimal':
+      groupStyle = {
+        padding: '0',
+        margin: '5px 0',
+        border: 'none',
+        backgroundColor: 'transparent'
+      };
+      break;
+    case 'group-bordered':
+      groupStyle = {
+        padding: '10px',
+        margin: '10px 0',
+        border: '1px solid #d9d9d9',
+        borderRadius: '6px',
+        backgroundColor: '#ffffff'
+      };
+      break;
+    case 'group-elevated':
+      groupStyle = {
+        padding: '12px',
+        margin: '12px 0',
+        border: 'none',
+        borderRadius: '6px',
+        backgroundColor: '#ffffff',
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
+      };
+      break;
+    case 'group-spaced':
+      groupStyle = {
+        padding: '8px',
+        margin: '15px 0',
+        border: 'none',
+        backgroundColor: 'transparent'
+      };
+      break;
+    default:
+      // 默认组样式
+      groupStyle = {
+        padding: '8px',
+        margin: '10px 0',
+        border: 'none',
+        borderRadius: '4px',
+        backgroundColor: '#ffffff'
+      };
+      break;
+  }
+
+  // 应用组样式到所有组
+  cardGroups.value.forEach(group => {
+    group.style = { ...groupStyle };
+  });
+
+  // 更新卡片组样式
+  cardGroupStyles.value = { ...groupStyle };
+}
+
+// 将样式应用到所有卡片
+const applyStyleToAllCards = () => {
+  cardGroups.value.forEach(group => {
+    group.rows.forEach(row => {
+      if (row.cards && row.cards.length > 0) {
+        row.cards.forEach(card => {
+          // 确保card.textStyle不为null或undefined
+          card.textStyle = {
+            fontSize: converterSettings.fontSize,
+            color: converterSettings.textColor,
+            fontWeight: converterSettings.fontWeight,
+            fontStyle: converterSettings.fontStyle,
+            textAlign: converterSettings.textAlign,
+            lineHeight: converterSettings.lineHeight,
+            backgroundColor: converterSettings.backgroundColor,
+            borderStyle: converterSettings.borderStyle,
+            borderWidth: converterSettings.borderWidth,
+            borderColor: converterSettings.borderColor,
+            borderRadius: converterSettings.borderRadius,
+            boxShadow: converterSettings.boxShadow
+          };
+        });
+      }
+    });
+  });
 }
 
 // 添加内存泄漏检查
@@ -947,136 +1154,6 @@ const toolbarStyle = computed(() => {
   };
 });
 
-// 计算卡片文本样式
-const cardTextStyle = computed(() => {
-  // 获取全局样式
-  const globalStyle = globalTextStyles.value || {};
-
-  const style = {};
-
-  // 字体样式（优先使用全局样式）
-  if (globalStyle.fontSize) {
-    style.fontSize = `${globalStyle.fontSize}px`;
-  } else if (converterSettings.fontSize) {
-    style.fontSize = `${converterSettings.fontSize}px`;
-  }
-
-  if (globalStyle.color) {
-    style.color = globalStyle.color;
-  } else if (converterSettings.textColor) {
-    style.color = converterSettings.textColor;
-  }
-
-  if (globalStyle.fontWeight && globalStyle.fontWeight !== 'normal') {
-    style.fontWeight = globalStyle.fontWeight;
-  } else if (converterSettings.fontWeight && converterSettings.fontWeight !== 'normal') {
-    style.fontWeight = converterSettings.fontWeight;
-  }
-
-  if (globalStyle.fontStyle && globalStyle.fontStyle !== 'normal') {
-    style.fontStyle = globalStyle.fontStyle;
-  } else if (converterSettings.fontStyle && converterSettings.fontStyle !== 'normal') {
-    style.fontStyle = converterSettings.fontStyle;
-  }
-
-  // 背景样式（优先使用全局样式）
-  if (globalStyle.showBackground !== undefined) {
-    style.backgroundColor = globalStyle.showBackground ?
-      (globalStyle.backgroundColor || 'transparent') : 'transparent';
-  } else if (converterSettings.showBackground !== undefined) {
-    style.backgroundColor = converterSettings.showBackground ?
-      (converterSettings.backgroundColor || 'transparent') : 'transparent';
-  } else {
-    style.backgroundColor = 'transparent';
-  }
-
-  // 布局样式（优先使用全局样式）
-  if (globalStyle.textAlign) {
-    style.textAlign = globalStyle.textAlign;
-  } else if (converterSettings.textAlign) {
-    style.textAlign = converterSettings.textAlign;
-  }
-
-  if (globalStyle.lineHeight) {
-    style.lineHeight = globalStyle.lineHeight;
-  } else if (converterSettings.lineHeight) {
-    style.lineHeight = converterSettings.lineHeight;
-  }
-
-  // 盒模型样式（优先使用全局样式）
-  if (globalStyle.padding !== undefined) {
-    style.padding = `${globalStyle.padding}px`;
-  } else if (converterSettings.padding !== undefined) {
-    style.padding = `${converterSettings.padding}px`;
-  }
-
-  if (globalStyle.margin !== undefined) {
-    style.margin = `${globalStyle.margin}px`;
-  } else if (converterSettings.margin !== undefined) {
-    style.margin = `${converterSettings.margin}px`;
-  }
-
-  // 边框样式（优先使用全局样式）
-  if (globalStyle.borderStyle && globalStyle.borderStyle !== 'none') {
-    style.borderStyle = globalStyle.borderStyle;
-    style.borderWidth = `${globalStyle.borderWidth || 1}px`;
-    style.borderColor = globalStyle.borderColor || '#000000';
-  } else if (converterSettings.borderStyle && converterSettings.borderStyle !== 'none') {
-    style.borderStyle = converterSettings.borderStyle;
-    style.borderWidth = `${converterSettings.borderWidth || 1}px`;
-    style.borderColor = converterSettings.borderColor || '#000000';
-  } else {
-    style.border = 'none';
-  }
-
-  if (globalStyle.borderRadius) {
-    style.borderRadius = `${globalStyle.borderRadius}px`;
-  } else if (converterSettings.borderRadius) {
-    style.borderRadius = `${converterSettings.borderRadius}px`;
-  }
-
-  // 高级样式（优先使用全局样式）
-  if (globalStyle.opacity !== undefined && globalStyle.opacity !== 1) {
-    style.opacity = globalStyle.opacity;
-  } else if (converterSettings.opacity !== undefined && converterSettings.opacity !== 1) {
-    style.opacity = converterSettings.opacity;
-  }
-
-  // 修复引用错误的变量
-  const defaultStyle = getStyleManagerDefaults();
-  style.boxShadow = defaultStyle.boxShadow;
-
-  // 处理transform属性，优先使用textRotation
-  // 注意：这里缺少textStyle变量定义，需要修复
-  if (defaultStyle.transform) {
-    style.transform = defaultStyle.transform;
-  }
-
-  // 为支持transform，需要设置display为inline-block
-  if (defaultStyle.transform) {
-    style.display = 'inline-block';
-    // 添加will-change属性优化变换性能
-    style.willChange = 'transform';
-  }
-
-  // 文字特有样式
-  if (defaultStyle.textDecoration !== 'none') {
-    style.textDecoration = defaultStyle.textDecoration;
-  }
-
-  if (defaultStyle.textTransform !== 'none') {
-    style.textTransform = defaultStyle.textTransform;
-  }
-
-  style.letterSpacing = defaultStyle.letterSpacing ?
-    `${defaultStyle.letterSpacing}px` : undefined;
-
-  style.wordSpacing = defaultStyle.wordSpacing ?
-    `${defaultStyle.wordSpacing}px` : undefined;
-
-  return style;
-});
-
 // 对话框关闭处理
 const onDialogClose = () => {
   showTextStylePanel.value = false // 关闭文本样式面板
@@ -1137,37 +1214,6 @@ const toggleTextStylePanel = () => {
       }
     });
   }
-}
-
-// 从卡片编辑对话框打开单个卡片样式设置面板
-const openCardStyleFromDialog = () => {
-  // 设置当前编辑的卡片索引
-  editingCardStyle.groupIndex = editingCard.groupIndex;
-  editingCardStyle.rowIndex = editingCard.rowIndex;
-  editingCardStyle.cardIndex = editingCard.cardIndex;
-
-  // 尝试获取当前卡片的样式作为初始值
-  const cardGroup = cardGroups.value[editingCard.groupIndex];
-  if (cardGroup && cardGroup.rows[editingCard.rowIndex] &&
-    cardGroup.rows[editingCard.rowIndex].cards[editingCard.cardIndex]) {
-    const card = cardGroup.rows[editingCard.rowIndex].cards[editingCard.cardIndex];
-    editingCardStyle.textStyle = JSON.parse(JSON.stringify(card.textStyle || {}));
-  } else {
-    editingCardStyle.textStyle = {}; // 如果没有卡片，使用空对象
-  }
-
-  // 关闭卡片编辑对话框
-  editDialogVisible.value = false;
-
-  // 显示单个卡片样式对话框
-  cardStyleDialogVisible.value = true;
-
-  // 确保在对话框打开后正确设置样式
-  nextTick(() => {
-    if (cardStyleManager.value) {
-      cardStyleManager.value.$forceUpdate();
-    }
-  });
 }
 
 // 强制刷新文本样式
@@ -1945,7 +1991,7 @@ const saveCardRowStyleEdit = () => {
   updateStyle();
 }
 
-// 保存单个卡片样式编辑
+// 保存单个卡片文本样式编辑
 const saveCardStyleEdit = () => {
   // 使用当前单个卡片样式管理器的toCSS方法来处理样式
   const tempStyleManager = cardStyleManager.value;
@@ -1971,20 +2017,22 @@ const saveCardStyleEdit = () => {
     }
   }
 
-  // 将样式应用到当前选中的卡片容器
-  const { groupIndex, rowIndex, cardIndex } = editingCardStyle;
-  if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
-    cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
-    // 保存到containerStyle而不是textStyle
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].containerStyle =
-      { ...cardStyles.value };
-  }
+  // 将样式应用到所有卡片容器
+  cardGroups.value.forEach((group, gIndex) => {
+    group.rows.forEach((row, rIndex) => {
+      row.cards.forEach((card, cIndex) => {
+        // 保存到style保持一致性
+        cardGroups.value[gIndex].rows[rIndex].cards[cIndex].style =
+          JSON.parse(JSON.stringify(cardStyles.value));
+      });
+    });
+  });
 
   // 关闭对话框
   cardStyleDialogVisible.value = false;
 
   // 提示成功
-  ElMessage.success('已保存卡片样式设置');
+  ElMessage.success('已应用样式到所有卡片');
 
   // 触发更新
   updateStyle();
@@ -2118,12 +2166,28 @@ const onCardStyleDialogClose = () => {
 .toolbar-content {
   padding: 16px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 12px;
-  align-items: center;
   background-color: #fff;
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
+}
+
+.style-template-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.selector-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selector-group .control-label {
+  min-width: 100px;
+  text-align: right;
 }
 
 .card-group {
@@ -2261,6 +2325,14 @@ const onCardStyleDialogClose = () => {
 
 .global-style-settings {
   margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.global-style-settings .el-button {
+  flex: 1;
+  min-width: 120px;
 }
 
 .global-style-panel {
