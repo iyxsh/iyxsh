@@ -141,8 +141,7 @@
       <el-dialog v-model="cardStyleDialogVisible" title="单个卡片样式设置" width="400px" @close="onCardStyleDialogClose">
         <p class="dialog-description">设置将应用于当前选中的卡片</p>
 
-        <StyleManager ref="cardStyleManager" v-model="cardStyles" @change="updateCardStyle"
-          @apply="applyCardStyle" />
+        <StyleManager ref="cardStyleManager" v-model="cardStyles" @change="updateCardStyle" @apply="applyCardStyle" />
 
         <template #footer>
           <el-button @click="cardStyleDialogVisible = false">取消</el-button>
@@ -544,7 +543,7 @@ const getCardGroupStyle = () => {
     // 确保内容不会被裁剪
     overflow: 'visible'
   };
-  
+
   // 如果有已处理的CSS样式，优先使用
   if (cardGroupStyles.value && cardGroupStyles.value._css) {
     Object.assign(style, cardGroupStyles.value._css);
@@ -558,7 +557,7 @@ const getCardGroupStyle = () => {
         break;
       }
     }
-    
+
     // 如果没有特定的卡片组样式，则使用全局样式
     if (!hasGroupStyle) {
       Object.assign(style, cardGroupStyles.value);
@@ -622,7 +621,7 @@ const getRowStyle = (groupIndex, rowIndex) => {
 // 获取单个卡片容器样式
 const getCardContainerStyle = (card) => {
   const style = {};
-  
+
   // 如果卡片有特定的容器样式，优先使用
   if (card.containerStyle) {
     // 如果有已处理的CSS样式，优先使用
@@ -639,7 +638,7 @@ const getCardContainerStyle = (card) => {
       Object.assign(style, cardStyles.value);
     }
   }
-  
+
   return style;
 }
 
@@ -697,9 +696,9 @@ const applyStyleToCard = () => {
   const { groupIndex, rowIndex, cardIndex } = editingCardStyle;
   if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
     cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle = 
+    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].textStyle =
       JSON.parse(JSON.stringify(cardStyles.value || getTextStyleDefaults()));
-    
+
     editDialogVisible.value = false
     showTextStylePanel.value = false // 关闭文本样式面板
     ElMessage.success('卡片内容已更新')
@@ -1146,11 +1145,11 @@ const openCardStyleFromDialog = () => {
   editingCardStyle.groupIndex = editingCard.groupIndex;
   editingCardStyle.rowIndex = editingCard.rowIndex;
   editingCardStyle.cardIndex = editingCard.cardIndex;
-  
+
   // 尝试获取当前卡片的样式作为初始值
   const cardGroup = cardGroups.value[editingCard.groupIndex];
-  if (cardGroup && cardGroup.rows[editingCard.rowIndex] && 
-      cardGroup.rows[editingCard.rowIndex].cards[editingCard.cardIndex]) {
+  if (cardGroup && cardGroup.rows[editingCard.rowIndex] &&
+    cardGroup.rows[editingCard.rowIndex].cards[editingCard.cardIndex]) {
     const card = cardGroup.rows[editingCard.rowIndex].cards[editingCard.cardIndex];
     editingCardStyle.textStyle = JSON.parse(JSON.stringify(card.textStyle || {}));
   } else {
@@ -1159,7 +1158,7 @@ const openCardStyleFromDialog = () => {
 
   // 关闭卡片编辑对话框
   editDialogVisible.value = false;
-  
+
   // 显示单个卡片样式对话框
   cardStyleDialogVisible.value = true;
 
@@ -1404,7 +1403,7 @@ const getTextStyleDefaults = () => {
     opacity: 1,
     textRotation: 0,
     scale: 1,
-    
+
     // 文本相关属性
     textDecoration: 'none',
     textTransform: 'none',
@@ -1421,7 +1420,7 @@ const getTextStyleDefaults = () => {
     whiteSpace: 'normal',
     direction: 'ltr',
     writingMode: 'horizontal-tb',
-    
+
     // 盒模型相关（文本容器）
     padding: 0,
     margin: 0,
@@ -1429,7 +1428,7 @@ const getTextStyleDefaults = () => {
     borderWidth: 1,
     borderColor: '#000000',
     borderRadius: 0,
-    
+
     // 其他可能影响文本显示的属性
     boxShadow: '',
     transform: '',
@@ -1471,7 +1470,7 @@ const getContainerStyleDefaults = () => {
     borderWidth: 1,
     borderColor: '#000000',
     borderRadius: 0,
-    
+
     // 布局
     display: '',
     position: 'static',
@@ -1484,7 +1483,7 @@ const getContainerStyleDefaults = () => {
     zIndex: 0,
     overflow: 'visible',
     boxSizing: '',
-    
+
     // 背景
     backgroundColor: '#ffffff',
     backgroundImage: '',
@@ -1493,38 +1492,38 @@ const getContainerStyleDefaults = () => {
     backgroundPosition: '',
     backgroundAttachment: 'scroll',
     opacity: 1,
-    
+
     // Flexbox相关
     flexDirection: 'row',
     flexWrap: 'nowrap',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
-    
+
     // Grid相关
     gridTemplateColumns: '',
     gridTemplateRows: '',
     gridColumnGap: 0,
     gridRowGap: 0,
-    
+
     // 效果
     boxShadow: '',
     transform: '',
     filter: '',
     outline: '',
-    
+
     // 交互
     cursor: 'default',
     visibility: 'visible',
-    
+
     // 列表
     listStyleType: 'none',
     listStylePosition: 'outside',
     listStyleImage: '',
-    
+
     // 动画
     transition: '',
     animation: '',
-    
+
     // 其他
     userSelect: ''
   };
@@ -1950,6 +1949,7 @@ const saveCardRowStyleEdit = () => {
 const saveCardStyleEdit = () => {
   // 使用当前单个卡片样式管理器的toCSS方法来处理样式
   const tempStyleManager = cardStyleManager.value;
+
   if (tempStyleManager && tempStyleManager.localStyle && typeof tempStyleManager.toCSS === 'function') {
     try {
       // 将样式应用到临时的StyleManager上
@@ -1958,7 +1958,6 @@ const saveCardStyleEdit = () => {
 
       // 获取转换后的CSS（仅包含可见样式）
       const css = tempStyleManager.toCSS();
-
       // 恢复原始样式
       Object.assign(tempStyleManager.localStyle, originalLocalStyle);
 
@@ -1977,7 +1976,7 @@ const saveCardStyleEdit = () => {
   if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
     cardGroups.value[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
     // 保存到containerStyle而不是textStyle
-    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].containerStyle = 
+    cardGroups.value[groupIndex].rows[rowIndex].cards[cardIndex].containerStyle =
       { ...cardStyles.value };
   }
 
@@ -2169,7 +2168,7 @@ const onCardStyleDialogClose = () => {
   /* 使用间距设置 */
   /* 添加以下样式以适应变换后的文本 */
   align-items: flex-start;
-  padding: 0.5em 0;
+  padding: 0px;
   /* 确保行容器不会裁剪内容 */
   overflow: visible;
   /* 移除固定最小高度，让容器完全根据内容自适应 */
@@ -2195,7 +2194,7 @@ const onCardStyleDialogClose = () => {
   /* 添加相对定位，确保变换基于容器中心 */
   position: relative;
   /* 减小内边距，更精确地适应文本 */
-  padding: 0.5em;
+  padding: 0px;
   /* 确保容器本身不会阻挡变换效果 */
   overflow: visible;
   /* 设置容器的变换原点，使其在布局中更居中 */
@@ -2233,7 +2232,7 @@ const onCardStyleDialogClose = () => {
   /* 确保文本在容器中居中 */
   text-align: center;
   /* 添加一些内边距使文本不会贴边 */
-  padding: 0.2em;
+  padding: 0px;
 }
 
 .vertical-layout .card-text {
