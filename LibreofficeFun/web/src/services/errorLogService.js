@@ -100,6 +100,25 @@ function clearErrorLogs() {
 function handleUnhandledRejection(event) {
   console.warn('[errorLogService] 捕获到未处理的Promise拒绝:', event);
   
+  // 特别处理消息端口关闭的错误
+  if (event.reason && typeof event.reason === 'object') {
+    if (event.reason.message && 
+        event.reason.message.includes('The message port closed before a response was received')) {
+      console.warn('[errorLogService] 检测到消息端口关闭错误，这可能是一个Chrome扩展相关的问题，不会影响应用功能');
+      // 阻止该特定错误的默认处理
+      event.preventDefault();
+      return;
+    }
+    
+    // 处理其他特定的命令错误
+    if (event.reason.cmd) {
+      console.warn('[errorLogService] 检测到命令执行错误:', event.reason.cmd);
+      // 根据命令类型决定是否阻止默认处理
+      event.preventDefault();
+      return;
+    }
+  }
+  
   // 防止默认处理（会将错误暴露给用户）
   event.preventDefault();
   

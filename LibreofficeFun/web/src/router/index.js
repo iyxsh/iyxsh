@@ -3,27 +3,10 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 // 需要懒加载的组件
 import AboutView from '../views/AboutView.vue';
-import PageManager from '../views/PageManager.vue';
 
 // 修改 PageManager 路由配置，使用异步组件加载
-import { defineAsyncComponent } from 'vue';
 const lazyLoadView = (view) => {
-  return defineAsyncComponent({
-    loader: () => import(`../views/${view}.vue`),
-    loadingComponent: () => import('../components/LoadingComponent.vue'),
-    errorComponent: () => import('../components/ErrorComponent.vue'),
-    delay: 200,
-    timeout: 10000,
-    suspensible: true,
-    onError(error, retry, fail, attempts) {
-      if (attempts <= 3) {
-        retry();
-      } else {
-        console.error(`组件加载失败: ${error.message}`);
-        fail();
-      }
-    }
-  });
+  return () => import(`../views/${view}.vue`);
 };
 
 const routes = [

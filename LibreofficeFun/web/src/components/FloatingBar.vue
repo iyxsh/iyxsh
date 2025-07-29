@@ -11,15 +11,17 @@
         </el-tooltip>
 
         <el-tooltip effect="dark" content="清空当前页" placement="top">
-          <el-popconfirm title="确定要清空当前页面吗？" @confirm="handleClearCurrentPageForms" confirm-button-type="danger">
-            <template #reference>
-              <el-button type="danger" size="small" circle>
-                <el-icon>
-                  <Delete />
-                </el-icon>
-              </el-button>
-            </template>
-          </el-popconfirm>
+          <div>
+            <el-popconfirm title="确定要清空当前页面吗？" @confirm="handleClearCurrentPageForms" confirm-button-type="danger">
+              <template #reference>
+                <el-button type="danger" size="small" circle>
+                  <el-icon>
+                    <Delete />
+                  </el-icon>
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
         </el-tooltip>
 
         <el-tooltip effect="dark" content="样式开关" placement="top">

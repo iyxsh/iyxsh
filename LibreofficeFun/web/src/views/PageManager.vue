@@ -101,8 +101,8 @@
             <!-- 页面类型选择 -->
             <div class="page-type-selector">
               <el-radio-group v-model="currentPageType" size="small" @change="handlePageTypeChange">
-                <el-radio-button label="form">{{ i18nTrans('pageManager.formPage') }}</el-radio-button>
-                <el-radio-button label="cards">{{ i18nTrans('pageManager.cardPage') }}</el-radio-button>
+                <el-radio-button value="form">{{ i18nTrans('pageManager.formPage') }}</el-radio-button>
+                <el-radio-button value="cards">{{ i18nTrans('pageManager.cardPage') }}</el-radio-button>
               </el-radio-group>
             </div>
           </div>
@@ -137,7 +137,7 @@
               <div class="papers-group">
                 <div v-for="paper in papers" :key="paper.name" class="paper-option-compact">
                   <el-radio 
-                    :label="paper.name" 
+                    :value="paper.name" 
                     class="paper-radio" 
                     v-model="selectedPageSize"
                     @change="selectPaper(paper)"

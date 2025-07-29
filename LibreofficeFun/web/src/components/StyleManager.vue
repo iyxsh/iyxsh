@@ -319,6 +319,18 @@ const allStylesDefinition = computed(() => {
           { label: '基线对齐', value: 'baseline' }
         ]
       },
+      {
+        key: 'placeContent', label: '内容分布', type: 'select', options: [
+          { label: '默认', value: '' },
+          { label: '起始对齐', value: 'start' },
+          { label: '结束对齐', value: 'end' },
+          { label: '居中', value: 'center' },
+          { label: '拉伸', value: 'stretch' },
+          { label: '两端对齐', value: 'space-between' },
+          { label: '均匀分布', value: 'space-around' },
+          { label: '等间距分布', value: 'space-evenly' }
+        ]
+      },
 
       // Grid相关属性
       { key: 'gridTemplateColumns', label: '网格模板列', type: 'grid-input', placeholder: '例: 1fr 1fr 1fr' },
@@ -882,8 +894,10 @@ const getDefaultValue = (key) => {
     flexWrap: 'nowrap',
     justifyContent: 'flex-start',
     alignItems: 'stretch',
+    placeContent: '',
     gridTemplateColumns: '',
     gridTemplateRows: '',
+    placeContent: '',
     gridColumnGap: 0,
     gridRowGap: 0,
     backgroundImage: '',
@@ -1025,6 +1039,7 @@ const toCSS = () => {
     if (visibleStyles.value.has('flexWrap') && localStyle.flexWrap && localStyle.flexWrap !== 'nowrap') css['flex-wrap'] = localStyle.flexWrap
     if (visibleStyles.value.has('justifyContent') && localStyle.justifyContent && localStyle.justifyContent !== 'flex-start') css['justify-content'] = localStyle.justifyContent
     if (visibleStyles.value.has('alignItems') && localStyle.alignItems && localStyle.alignItems !== 'stretch') css['align-items'] = localStyle.alignItems
+    if (visibleStyles.value.has('placeContent') && localStyle.placeContent) css['place-content'] = localStyle.placeContent
   }
 
   // Grid相关属性
@@ -1033,6 +1048,7 @@ const toCSS = () => {
     if (visibleStyles.value.has('gridTemplateRows') && localStyle.gridTemplateRows) css['grid-template-rows'] = localStyle.gridTemplateRows
     if (visibleStyles.value.has('gridColumnGap') && localStyle.gridColumnGap) css['grid-column-gap'] = `${localStyle.gridColumnGap}px`
     if (visibleStyles.value.has('gridRowGap') && localStyle.gridRowGap) css['grid-row-gap'] = `${localStyle.gridRowGap}px`
+    if (visibleStyles.value.has('placeContent') && localStyle.placeContent) css['place-content'] = localStyle.placeContent
   }
 
   // 背景相关属性
@@ -1270,7 +1286,7 @@ const getContainerStyleDefaults = () => {
   const additionalContainerKeys = [
     'display', 'position', 'left', 'top', 'right', 'bottom',
     'overflow', 'cursor', 'visibility', 'zIndex', 'float', 'clear',
-    'flexDirection', 'flexWrap', 'justifyContent', 'alignItems',
+    'flexDirection', 'flexWrap', 'justifyContent', 'alignItems', 'placeContent',
     'gridTemplateColumns', 'gridTemplateRows', 'gridColumnGap', 'gridRowGap',
     'backgroundImage', 'backgroundRepeat', 'backgroundSize', 'backgroundPosition', 'backgroundAttachment',
     'listStyleType', 'listStylePosition', 'listStyleImage',

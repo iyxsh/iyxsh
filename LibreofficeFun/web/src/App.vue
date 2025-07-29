@@ -295,6 +295,49 @@ export default {
       localStorage.setItem('locale', lang);
     };
 
+    // 添加全局Promise错误处理
+    window.addEventListener('unhandledrejection', (event) => {
+      console.groupCollapsed('Unhandled Promise Rejection');
+      console.error('Event:', event);
+      console.error('Reason:', event.reason);
+      console.error('Stack trace:', event.reason?.stack);
+      console.groupEnd();
+      
+      // 特别处理消息端口关闭的错误
+      if (event.reason && typeof event.reason === 'object') {
+        if (event.reason.message && 
+            event.reason.message.includes('The message port closed before a response was received')) {
+          console.warn('检测到消息端口关闭错误，这可能是一个Chrome扩展相关的问题，不会影响应用功能');
+          // 阻止该特定错误的默认处理
+          event.preventDefault();
+          return;
+        }
+        
+        // 处理其他特定的命令错误
+        if (event.reason.cmd) {
+          console.warn('检测到命令执行错误:', event.reason.cmd);
+          // 根据命令类型决定是否阻止默认处理
+          event.preventDefault();
+          return;
+        }
+      }
+      
+      // 阻止默认处理
+      event.preventDefault();
+      
+      // 显示错误信息
+      errorMessage.value = `Unhandled Promise Rejection: ${event.reason?.message || 'Unknown error'}`;
+      hasError.value = true;
+      isLoaded.value = true;
+      
+      // 添加错误上报
+      sendErrorReport({
+        error: event.reason?.message || 'Unknown error',
+        stack: event.reason?.stack,
+        type: 'Promise Rejection'
+      });
+    });
+
     return {
       // 状态
       errorMessage,

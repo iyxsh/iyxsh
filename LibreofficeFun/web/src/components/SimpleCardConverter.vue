@@ -3,7 +3,7 @@
     <!-- 浮动工具条 -->
     <div class="floating-toolbar" :style="toolbarStyle" @mousedown="startDrag">
       <div class="toolbar-header">
-        <h3>样式设置</h3>
+        <h3>全局样式设置</h3>
         <div class="drag-handle">⋮⋮</div>
       </div>
       <!-- 添加空值检查 -->
@@ -20,7 +20,7 @@
       <!-- 添加card-text样式管理器 -->
       <div class="global-style-settings">
         <el-button @click="openGlobalStylePanel" size="small" type="primary">
-          统一文本样式设置
+          全局文本样式设置
         </el-button>
         <el-button @click="openCardStylePanel" size="small" type="primary">
           单卡片样式设置
@@ -2134,12 +2134,6 @@ const onCardStyleDialogClose = () => {
   height: fit-content;
   /* 确保内容不会被裁剪 */
   overflow: visible;
-  margin-bottom: v-bind('converterSettings.rowSpacing + "px"');
-  border: v-bind('converterSettings.showBorder ? "1px solid #ddd" : "none"');
-  border-radius: 4px;
-  background-color: #fff;
-  position: relative;
-  padding: 0px;
   /* 确保容器能够适应子元素的变换 */
   box-sizing: border-box;
 }
@@ -2179,8 +2173,6 @@ const onCardStyleDialogClose = () => {
   align-self: flex-start;
   /* 为变换后的元素预留空间 */
   align-items: stretch;
-  /* 确保有足够的空间显示旋转和缩放后的元素 */
-  place-content: stretch center;
 }
 
 .text-card-container {

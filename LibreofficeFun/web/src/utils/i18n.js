@@ -196,28 +196,7 @@ export function createI18n(locale = getInitialLocale()) {
     
     // 设置最终值，如果未找到则使用默认值
     const value = currentValue !== undefined ? currentValue : defaultValue;
-    
-    // 添加详细的错误日志
-    if (!value && key.split('.').length > 1) {
-      const parts = key.split('.');
-      let current = messages[currentLocale.value];
-      
-      console.warn(`[i18n] 翻译查找失败: ${key}`);
-      console.warn(`[i18n] 当前语言: ${currentLocale.value}`);
-      console.warn(`[i18n] 翻译表结构:`, messages[currentLocale.value]);
-      
-      // 输出路径上的所有值，帮助调试
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (current && typeof current === 'object' && parts[i] in current) {
-          current = current[parts[i]];
-        } else {
-          console.warn(`[i18n] 查找中断路径: ${parts.slice(0, i+1).join('.')}`);
-          console.warn(`[i18n] 当前值类型: ${typeof current}, 值内容:`, current);
-          break;
-        }
-      }
-    }
-    console.log(`[i18n] 翻译查找: ${key} = ${value}`);
+
     // 处理参数替换
     const finalValue = typeof value === 'string' ? 
       value.replace(/\{([^}]+)\}/g, (match, param) => 
@@ -228,84 +207,17 @@ export function createI18n(locale = getInitialLocale()) {
     // 只有当finalValue有效时才缓存
     if (finalValue !== undefined && finalValue !== null && finalValue !== '') {
       translationCache.set(cacheKey, finalValue);
-      console.log(`[i18n] 新缓存翻译: ${cacheKey} = ${finalValue}`);
-    } else {
-      console.warn(`[i18n] 翻译值无效，未缓存: ${cacheKey}`);
-      console.warn(`[i18n] 当前语言包内容:`, messages[currentLocale.value]);
     }
     
     return finalValue;
   }
 
-  // 添加内存泄漏检查
-  function checkMemoryUsage() {
-    if (performance && performance.memory) {
-      const memoryUsage = performance.memory;
-      console.log('i18n Memory Usage:', {
-        usedJSHeapSize: formatBytes(memoryUsage.usedJSHeapSize),
-        totalJSHeapSize: formatBytes(memoryUsage.totalJSHeapSize),
-        jsHeapSizeLimit: formatBytes(memoryUsage.jsHeapSizeLimit)
-      });
-      
-      // 如果内存使用超过阈值，触发警告
-      if (memoryUsage.usedJSHeapSize / memoryUsage.jsHeapSizeLimit > 0.7) {
-        console.warn('i18n: Memory usage is high, consider optimizing');
-      }
-    }
-  }
-
-  // 格式化字节大小
-  function formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-
-  // 添加资源清理
-  const cleanupTasks = [];
-
-  // 添加内存泄漏检查间隔
-  let memoryCheckInterval = null;
-
-  // 初始化内存泄漏检查
-  function setupMemoryLeakCheck() {
-    if (!memoryCheckInterval) {
-      memoryCheckInterval = setInterval(() => {
-        checkMemoryUsage();
-      }, 5 * 60 * 1000); // 每5分钟检查一次
-    }
-  }
-
-  // 停止内存泄漏检查
-  function stopMemoryLeakCheck() {
-    if (memoryCheckInterval) {
-      clearInterval(memoryCheckInterval);
-      memoryCheckInterval = null;
-    }
-  }
-
-  // 添加清理任务
-  cleanupTasks.push(stopMemoryLeakCheck);
-
-  // 在组件卸载前执行清理
-  function cleanupResources() {
-    // 执行清理任务
-    cleanupTasks.forEach(task => task());
-    // 清除缓存
-    translationCache.clear();
-  }
-
-  // 初始化内存泄漏检查
-  setupMemoryLeakCheck();
 
   return {
     locale: computed(() => currentLocale.value),
     setLocale,
     t,
-    supportedLocales,
-    cleanupResources
+    supportedLocales
   };
 }
 
