@@ -80,14 +80,7 @@
                     <Lock v-if="editPageIdx !== idx" />
                     <svg v-else width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
                       <path
-                        d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v384c0 17.7-14.3 32-32 32H320c-17.7 0-32-14.3-32-32V448h480z" />
-                    </svg>
-                  </el-icon>
-                  <!-- 旋转按钮 -->
-                  <el-icon class="rotate-icon" @click.stop="rotatePage(idx)" title="旋转页面">
-                    <svg width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
-                      <path
-                        d="M784 464h-80c-35.3 0-64 28.7-64 64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm-80 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
+                        d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
                       <path
                         d="M756 872H268c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10h488c5.5 0 10-4.5 10-10v-46c0-5.5-4.5-10-10-10zM258 114h508c5.5 0 10-4.5 10-10V58c0-5.5-4.5-10-10-10H258c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10z" />
                       <animateTransform attributeName="transform" type="rotate" from="0 512 512" to="360 512 512" dur="1s"
@@ -1065,16 +1058,24 @@ function convertFormsToCardsAuto() {
     if (cardConverterRef.value) {
       try {
         console.log('[PageManager] 自动转换表单为卡片，表单数量:', validForms.length);
-        cardConverterRef.value.convertFormsToCards(currentPage.forms);
-        console.log('[PageManager] 自动转换完成');
+        // 添加错误处理
+        if (typeof cardConverterRef.value.convertFormsToCards === 'function') {
+          cardConverterRef.value.convertFormsToCards(currentPage.forms);
+          console.log('[PageManager] 自动转换完成');
+        } else {
+          console.error('[PageManager] 卡片转换器缺少convertFormsToCards方法');
+          ElMessage.error('卡片转换功能不可用');
+        }
       } catch (error) {
-        console.error('[PageManager] 卡片自动转换过程中出错:', error);
+        console.error('[PageManager] 调用卡片转换器时出错:', error);
+        ElMessage.error('卡片转换失败: ' + (error.message || '未知错误'));
       }
     } else {
-      console.error('[PageManager] 卡片转换组件未加载');
+      console.warn('[PageManager] 卡片转换器引用不存在');
     }
   } catch (error) {
-    console.error('[PageManager] 调用卡片自动转换功能时出错:', error);
+    console.error('[PageManager] 自动转换表单为卡片时出错:', error);
+    ElMessage.error('自动转换失败: ' + (error.message || '未知错误'));
   }
 }
 

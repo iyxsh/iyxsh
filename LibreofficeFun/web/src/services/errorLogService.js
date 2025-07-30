@@ -129,11 +129,15 @@ function handleUnhandledRejection(event) {
 // 监听未捕获的Promise错误
 if (typeof window !== 'undefined' && window.addEventListener) {
   window.addEventListener('unhandledrejection', handleUnhandledRejection);
-  
-  // 组件卸载时移除事件监听器
-  // 注意：在Vue组件中应该在onBeforeUnmount钩子中移除
-  // 这里可以添加一个清理函数
-  // window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+}
+
+/**
+ * 清理函数 - 移除事件监听器
+ */
+function cleanup() {
+  if (typeof window !== 'undefined' && window.removeEventListener) {
+    window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+  }
 }
 
 // 导出服务
@@ -141,5 +145,6 @@ export default {
   addErrorLog,
   getErrorLogs,
   clearErrorLogs,
-  handleUnhandledRejection
+  handleUnhandledRejection,
+  cleanup
 };

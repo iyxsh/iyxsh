@@ -55,7 +55,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { t, setLocale, getLocale } from './utils/i18n';
 import AppLoading from './components/AppLoading.vue';
 import AppError from './components/AppError.vue';
-import errorLogService from '@/services/errorLogService';
+import errorLogService from './services/errorLogService';
 export default {
   name: 'App',
   components: {
@@ -330,12 +330,12 @@ export default {
       hasError.value = true;
       isLoaded.value = true;
       
-      // 添加错误上报
-      sendErrorReport({
-        error: event.reason?.message || 'Unknown error',
-        stack: event.reason?.stack,
-        type: 'Promise Rejection'
-      });
+      // 使用现有的errorLogService记录错误，替代未定义的sendErrorReport函数
+      errorLogService.addErrorLog(
+        event.reason || new Error('Unknown Promise rejection'),
+        '未处理的Promise拒绝',
+        'error'
+      );
     });
 
     return {

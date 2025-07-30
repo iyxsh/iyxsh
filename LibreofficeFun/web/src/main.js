@@ -92,6 +92,25 @@ try {
 
   // 添加未处理的Promise拒绝监听
   window.addEventListener('unhandledrejection', (event) => {
+    // 特别处理消息端口关闭的错误
+    if (event.reason && typeof event.reason === 'object') {
+      if (event.reason.message && 
+          event.reason.message.includes('The message port closed before a response was received')) {
+        console.warn('检测到消息端口关闭错误，这可能是一个Chrome扩展相关的问题，不会影响应用功能');
+        // 阻止该特定错误的默认处理
+        event.preventDefault();
+        return;
+      }
+      
+      // 处理其他特定的命令错误
+      if (event.reason.cmd) {
+        console.warn('检测到命令执行错误:', event.reason.cmd);
+        // 根据命令类型决定是否阻止默认处理
+        event.preventDefault();
+        return;
+      }
+    }
+    
     errorLogService.addErrorLog(
       event.reason,
       '未处理的Promise拒绝',
@@ -127,49 +146,6 @@ try {
   console.error('[main] 应用程序挂载失败:', error);
 }
 
-// 添加全局错误处理
-window.onerror = function(message, source, lineno, colno, error) {
-  console.groupCollapsed('Global Error');
-  console.error('Message:', message);
-  console.error('Source:', source);
-  console.error('Line:', lineno, 'Column:', colno);
-  console.error('Error object:', error);
-  console.error('Stack trace:', error ? error.stack : 'N/A');
-  console.groupEnd();
-  
-  // 可以在这里添加错误上报逻辑
-  return true; // 阻止默认处理
-};
-
-// 添加Promise错误处理
-window.onunhandledrejection = function(event) {
-  console.groupCollapsed('Unhandled Promise Rejection');
-  console.error('Reason:', event.reason);
-  console.error('Stack trace:', event.reason ? event.reason.stack : 'N/A');
-  console.error('Promise:', event.promise);
-  console.groupEnd();
-  
-  // 特别处理消息端口关闭的错误
-  if (event.reason && typeof event.reason === 'object') {
-    if (event.reason.message && 
-        event.reason.message.includes('The message port closed before a response was received')) {
-      console.warn('检测到消息端口关闭错误，这可能是一个Chrome扩展相关的问题，不会影响应用功能');
-      // 阻止该特定错误的默认处理
-      event.preventDefault();
-      return;
-    }
-    
-    // 处理其他特定的命令错误
-    if (event.reason.cmd) {
-      console.warn('检测到命令执行错误:', event.reason.cmd);
-      // 根据命令类型决定是否阻止默认处理
-      event.preventDefault();
-      return;
-    }
-  }
-  
-  event.preventDefault();
-};
 
 
 // 导出app实例以便其他模块可以使用
