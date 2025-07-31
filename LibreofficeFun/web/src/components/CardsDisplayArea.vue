@@ -59,6 +59,9 @@ defineExpose({
   // 移除了与样式面板相关的暴露方法，因为这些功能已移到浮动工具条组件中
 });
 
+// 导入默认样式配置
+import { defaultTextStyles } from '../utils/styleConfig.ts';
+
 // 获取卡片组样式
 const getCardGroupStyle = (groupIndex) => {
   // 首先尝试获取特定卡片组的样式（如果支持）
@@ -66,9 +69,9 @@ const getCardGroupStyle = (groupIndex) => {
   if (cardGroup && cardGroup.style) {
     // 如果卡片组有特定样式，返回该样式
     if (cardGroup.style._css) {
-      return { ...cardGroup.style._css };
+      return Object.assign({}, cardGroup.style._css);
     } else {
-      return { ...cardGroup.style };
+      return Object.assign({}, cardGroup.style);
     }
   }
 
@@ -95,9 +98,9 @@ const getRowStyle = (groupIndex, rowIndex) => {
     if (row.style) {
       // 如果有已处理的CSS样式，优先使用
       if (row.style._css) {
-        return { ...row.style._css };
+        return Object.assign({}, row.style._css);
       } else if (row.style) {
-        return { ...row.style };
+        return Object.assign({}, row.style);
       }
     }
   }
@@ -122,9 +125,9 @@ const getCardContainerStyle = (card) => {
   if (card && card.style) {
     // 如果有已处理的CSS样式，优先使用
     if (card.style._css) {
-      return { ...card.style._css };
+      return Object.assign({}, card.style._css);
     } else {
-      return { ...card.style };
+      return Object.assign({}, card.style);
     }
   }
 
@@ -349,57 +352,7 @@ const getTextStyleDefaults = () => {
   }
 
   // 如果获取失败，回退到基础默认值
-  return {
-    // 常用设置
-    fontSize: 16,
-    color: '#000000',
-    fontWeight: 'normal',
-    fontStyle: 'normal',
-    textAlign: 'left',
-    lineHeight: 1.2,
-    backgroundColor: '#ffffff',
-    opacity: 1,
-    textRotation: 0,
-    scale: 1,
-
-    // 文本相关属性
-    textDecoration: 'none',
-    textTransform: 'none',
-    letterSpacing: 0,
-    wordSpacing: 0,
-    fontFamily: '',
-    fontVariant: 'normal',
-    verticalAlign: 'baseline',
-    textIndent: 0,
-    textShadow: '',
-    textOverflow: '',
-    wordBreak: 'normal',
-    wordWrap: 'normal',
-    whiteSpace: 'normal',
-    direction: 'ltr',
-    writingMode: 'horizontal-tb',
-
-    // 盒模型相关（文本容器）
-    padding: 0,
-    margin: 0,
-    borderStyle: 'none',
-    borderWidth: 1,
-    borderColor: '#000000',
-    borderRadius: 0,
-
-    // 其他可能影响文本显示的属性
-    boxShadow: '',
-    transform: '',
-    cursor: 'default',
-    visibility: 'visible',
-    zIndex: 0,
-    display: '',
-    overflow: 'visible',
-    userSelect: '',
-    filter: '',
-    outline: '',
-    boxSizing: ''
-  };
+  return { ...defaultTextStyles };
 };
 </script>
 

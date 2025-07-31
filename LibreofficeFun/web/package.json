@@ -12,10 +12,12 @@
   },
   "dependencies": {
     "@vueuse/core": "^10.9.0",
+    "axios": "^1.11.0",
     "element-plus": "^2.3.6",
     "lodash-es": "^4.17.21",
     "pinia": "^3.0.3",
     "resize-observer-polyfill": "^1.5.1",
+    "typescript": "^5.8.3",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"
   },

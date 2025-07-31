@@ -33,7 +33,7 @@ export default defineConfig({
       '@utils': path.resolve(__dirname, './src/utils')
     },
     // 确保正确解析.vue文件
-    extensions: ['.js', '.vue', '.json', '.css', '.scss']
+    extensions: ['.js', '.vue', '.json', '.css', '.scss','.ts']
   },
   // 配置服务器选项
   server: {

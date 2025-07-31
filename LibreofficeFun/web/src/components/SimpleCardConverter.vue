@@ -1,21 +1,12 @@
 <template>
   <div class="simple-card-converter" :style="containerStyle">
     <!-- 浮动工具条 -->
-    <FloatingToolbar 
-      v-model:cardGroups="cardGroups"
-      v-model:cardGroupStyles="cardGroupStyles" 
-      v-model:cardRowStyles="cardRowStyles"
-      v-model:cardStyles="cardStyles" 
-      v-model:globalTextStyles="globalTextStyles" 
-      :defaultStyleManagerRef="defaultStyleManagerRef" />
-    <CardsDisplayArea 
-      v-model:cardGroups="cardGroups"
-      v-model:cardGroupStyles="cardGroupStyles" 
-      v-model:cardRowStyles="cardRowStyles"
-      v-model:cardStyles="cardStyles" 
-      v-model:globalTextStyles="globalTextStyles"
-      :defaultStyleManagerRef="defaultStyleManagerRef"
-      :page-size="{ width: 800, height: 600 }" />
+    <FloatingToolbar v-model:cardGroups="cardGroups" v-model:cardGroupStyles="cardGroupStyles"
+      v-model:cardRowStyles="cardRowStyles" v-model:cardStyles="cardStyles" v-model:globalTextStyles="globalTextStyles"
+      :defaultStyleManagerRef="defaultStyleManagerRef" @save-data-to-server="saveCardDataToServer" />
+    <CardsDisplayArea v-model:cardGroups="cardGroups" v-model:cardGroupStyles="cardGroupStyles"
+      v-model:cardRowStyles="cardRowStyles" v-model:cardStyles="cardStyles" v-model:globalTextStyles="globalTextStyles"
+      :defaultStyleManagerRef="defaultStyleManagerRef" :page-size="{ width: 800, height: 600 }" />
   </div>
 </template>
 <script setup>
@@ -24,6 +15,9 @@ import { useEventBus } from '@/utils/eventBus';
 import { ElMessage } from 'element-plus';
 import CardsDisplayArea from './CardsDisplayArea.vue'; // 导入CardsDisplayArea组件
 import FloatingToolbar from './FloatingToolbar.vue'; // 导入FloatingToolbar组件
+// 修复导入语句，明确指定.ts扩展名
+// 导入API服务管理组件
+import ApiServiceManager from './ApiServiceManager.vue';
 
 // 创建事件总线实例
 const { on, off, emit } = useEventBus();
@@ -50,21 +44,6 @@ const cardRowStyleDialogVisible = ref(false)
 // 单个卡片样式对话框显示控制
 const cardStyleDialogVisible = ref(false)
 
-// 卡片组数据
-const cardGroups = ref([])
-
-// 添加卡片组样式引用
-const cardGroupStyles = ref({});
-
-// 添加卡片行样式引用
-const cardRowStyles = ref({});
-
-// 添加单个卡片样式引用
-const cardStyles = ref({});
-
-// 添加全局文本样式引用
-const globalTextStyles = ref({});
-
 const defaultStyleManagerRef = ref({});
 
 
@@ -89,6 +68,20 @@ const props = defineProps({
   }
 });
 
+// 使用新定义的接口类型定义响应式数据 注意此处CardGroupStyles等在 Vue 文件中可以通过 defineModel 的类型推导自动获取，不需要显式导入这些类型。显示导入会报错
+// 从styleConfig.ts导入CardGroups类型
+// 使用导入的CardGroups类型重新定义cardGroups
+
+// 使用 defineModel 替代 ref，以保持响应式集成和 TypeScript 支持
+const cardGroups = defineModel<CardGroups>('cardGroups', { required: true, type: Array, default: () => [] });
+const cardGroupStyles = defineModel<CardGroupStyles>('cardGroupStyles', { required: true, type: Object, default: () => ({}) });
+const cardRowStyles = defineModel<CardRowStyles>('cardRowStyles', { required: true, type: Object, default: () => ({}) });
+const cardStyles = defineModel<CardStyles>('cardStyles', { required: true,type: Object, default: () => ({}) });
+const globalTextStyles = defineModel<GlobalTextStyles>('globalTextStyles', { required: true,type: Object, default: () => ({}) });
+
+// 创建API服务管理器引用
+const apiServiceManager = ref(null);
+
 // 在组件挂载时注册事件
 onMounted(() => {
   // 监听页面尺寸变化事件
@@ -99,7 +92,78 @@ onMounted(() => {
     console.log('[SimpleCardConverter] 检测到传入的表单数据，自动进行转换');
     convertFormsToCards(props.forms);
   }
+
+  // 从后端加载数据
+  //loadCardDataFromServer();
 })
+
+// 从后端加载卡片数据
+const loadCardDataFromServer = async () => {
+  try {
+    // 检查apiServiceManager是否已初始化
+    if (!apiServiceManager.value) {
+      console.warn('API服务管理器未初始化');
+      return;
+    }
+    
+    // 加载卡片组数据
+    const cardGroupsData = await apiServiceManager.value.getCardGroups();
+    if (cardGroupsData && cardGroupsData.length > 0) {
+      cardGroups.value = cardGroupsData;
+    }
+
+    // 加载样式配置
+    const styleConfig = await apiServiceManager.value.getStyleConfig();
+    if (styleConfig) {
+      if (styleConfig.cardGroupStyles) {
+        cardGroupStyles.value = styleConfig.cardGroupStyles;
+      }
+      if (styleConfig.cardRowStyles) {
+        cardRowStyles.value = styleConfig.cardRowStyles;
+      }
+      if (styleConfig.cardStyles) {
+        cardStyles.value = styleConfig.cardStyles;
+      }
+      if (styleConfig.globalTextStyles) {
+        globalTextStyles.value = styleConfig.globalTextStyles;
+      }
+    }
+
+    ElMessage.success('数据加载成功');
+  } catch (error) {
+    console.error('加载数据失败:', error);
+    ElMessage.error('数据加载失败: ' + error.message);
+  }
+};
+
+// 保存卡片数据到后端
+const saveCardDataToServer = async () => {
+  try {
+    // 检查apiServiceManager是否已初始化
+    if (!apiServiceManager.value) {
+      console.warn('API服务管理器未初始化');
+      ElMessage.warning('API服务不可用');
+      return;
+    }
+    
+    // 保存卡片组数据
+    await apiServiceManager.value.saveCardGroups(cardGroups.value);
+
+    // 保存样式配置
+    const styleConfig = {
+      cardGroupStyles: cardGroupStyles.value,
+      cardRowStyles: cardRowStyles.value,
+      cardStyles: cardStyles.value,
+      globalTextStyles: globalTextStyles.value
+    };
+    await apiServiceManager.value.saveStyleConfig(styleConfig);
+
+    ElMessage.success('数据保存成功');
+  } catch (error) {
+    console.error('保存数据失败:', error);
+    ElMessage.error('数据保存失败: ' + error.message);
+  }
+};
 
 // 监听页面尺寸变化
 watch(() => props.pageSize, (newSize) => {
@@ -158,51 +222,9 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 添加预定义颜色
-const predefineColors = [
-  '#ffffff',
-  '#f5f5f5',
-  '#e6f7ff',
-  '#f0f5ff',
-  '#f9f0ff',
-  '#fff0f6',
-  'rgba(255, 69, 0, 0.68)'
-]
-// 转换器设置
-const converterSettings = reactive({
-  showBorder: true,
-  showBackground: false, // 默认不显示背景
-  fontSize: 24,
-  padding: 0,
-  margin: 0,
-  spacing: 0,
-  rowSpacing: 10, // 添加行距属性，默认值为10px
-  textRotation: 0,
-  backgroundColor: '#ffffff',
-  textColor: '#000000',
-  borderStyle: 'none',
-  borderWidth: 1,
-  borderColor: '#000000',
-  borderRadius: 0,
-  boxShadow: 'none',
-  gradient: 'none',
-  layout: 'horizontal',
-  fontWeight: 'normal',
-  fontStyle: 'normal',
-  textAlign: 'center',
-  lineHeight: 1.2,
-  opacity: 1,
-  transform: '',
-  width: '',
-  height: '',
-  display: 'flex',
-  position: 'static'
-})
-
 // 添加页面尺寸处理方法
 const setPageSize = (size) => {
   if (size) {
-    converterSettings.fontSize = Math.min(size.width, size.height) * 0.8
     // 通知其他组件页面尺寸已更改
     emit('page-size-changed', size)
   }
@@ -221,8 +243,6 @@ const handlePageSizeChange = (size) => {
   if (size && size.width && size.height) {
     // 根据页面尺寸调整字体大小
     const baseSize = Math.min(size.width, size.height)
-    converterSettings.fontSize = baseSize * 0.8
-
     // 更新样式
     updateStyle()
 
@@ -336,6 +356,9 @@ const convertFormsToCards = (forms) => {
   nextTick(() => {
     updateStyle()
     ElMessage.success(`成功将 ${validForms.length} 个表单转换为卡片`)
+
+    // 保存到后端
+    saveCardDataToServer();
   })
 }
 
@@ -351,7 +374,9 @@ import { defineExpose } from 'vue'
 // 暴露方法
 defineExpose({
   convertFormsToCards,
-  setPageSize
+  setPageSize,
+  saveCardDataToServer,
+  loadCardDataFromServer
 })
 
 // 监听页面尺寸变化
@@ -460,7 +485,7 @@ const containerStyle = computed(() => {
   width: 100%;
   height: fit-content;
   margin: 0;
-  gap: v-bind('converterSettings.spacing + "px"');
+  gap: 2px;
   /* 使用间距设置 */
   /* 添加以下样式以适应变换后的文本 */
   align-items: flex-start;

@@ -27,3 +27,7 @@ npm run dev
 
 ## 说明
 如需自定义功能，请在 copilot-instructions.md 中补充说明。
+
+
+下一步计划 
+将卡片页文本显示替换为svg图片显示；配合后台文转图功能，直接取转换后的svg图片

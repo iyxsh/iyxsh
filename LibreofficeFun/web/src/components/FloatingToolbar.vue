@@ -174,6 +174,14 @@
 import { ref, reactive, computed, defineProps, defineEmits, nextTick, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import StyleManager from './StyleManager.vue';
+import {
+  cardStyleTemplates, 
+  cardRowStyleTemplates, 
+  cardGroupStyleTemplates,
+  cardStyleDefaults,
+  cardRowStyleDefaults,
+  cardGroupStyleDefaults
+} from '@/utils/styleConfig.ts';
 
 // 使用v-model定义样式数据
 const cardGroupStyles = defineModel('cardGroupStyles', { type: Object, default: () => ({}) });
@@ -182,32 +190,12 @@ const cardStyles = defineModel('cardStyles', { type: Object, default: () => ({})
 const globalTextStyles = defineModel('globalTextStyles', { type: Object, default: () => ({}) });
 
 // 单卡片样式模板选项
-const cardStyleTemplates = [
-  { value: 'card-default', label: '默认卡片样式' },
-  { value: 'card-minimal', label: '极简卡片样式' },
-  { value: 'card-rounded', label: '圆角卡片样式' },
-  { value: 'card-outlined', label: '边框卡片样式' },
-  { value: 'card-elevation', label: '投影卡片样式' },
-  { value: 'card-gradient', label: '渐变卡片样式' }
-]
 
 // 卡片行样式模板选项
-const cardRowStyleTemplates = [
-  { value: 'row-default', label: '默认行样式' },
-  { value: 'row-compact', label: '紧凑行样式' },
-  { value: 'row-spaced', label: '宽松行样式' },
-  { value: 'row-centered', label: '居中行样式' },
-  { value: 'row-highlighted', label: '高亮行样式' }
-]
 
 // 卡片组样式模板选项
-const cardGroupStyleTemplates = [
-  { value: 'group-default', label: '默认组样式' },
-  { value: 'group-minimal', label: '极简组样式' },
-  { value: 'group-bordered', label: '边框组样式' },
-  { value: 'group-elevated', label: '投影组样式' },
-  { value: 'group-spaced', label: '间隔组样式' }
-]
+
+// 导入样式模板选项
 
 // 选定的卡片样式模板
 const selectedCardStyle = defineModel('selectedCardStyle', { default: 'card-default' })
@@ -276,7 +264,8 @@ const emit = defineEmits([
   'open-card-style-panel',
   'open-card-row-style-panel',
   'open-card-group-style-panel',
-  'update:cardGroups'
+  'update:cardGroups',
+  'save-data-to-server' // 添加保存数据到服务器的事件
 ]);
 
 // 开始拖动
@@ -464,12 +453,13 @@ const saveCardGroupStyleEdit = () => {
   updatedCardGroups.forEach(cardGroup => {
     // 修改: 确保样式正确应用，使用Object.assign保证样式对象正确合并
     // 修改为更明确的样式赋值方式，确保样式能正确应用
-    cardGroup.style = { ...(cardGroup.style || {}), ...actualStyles, _css: actualStyles };
+    cardGroup.style = Object.assign({}, cardGroup.style || {}, actualStyles, { _css: actualStyles });
   });
   
   // 向父组件发送事件通知样式已更新
   emit('update:cardGroups', updatedCardGroups);
   emit('save-card-group-style-edit', actualStyles);
+  emit('save-data-to-server'); // 触发保存到服务器的事件
 }
 
 
@@ -505,13 +495,14 @@ const saveCardRowStyleEdit = () => {
     cardGroup.rows.forEach(cardRow => {
       // 修改: 确保样式正确应用，使用Object.assign保证样式对象正确合并
       // 修改为更明确的样式赋值方式，确保样式能正确应用
-      cardRow.style = { ...(cardRow.style || {}), ...actualStyles, _css: actualStyles };
+      cardRow.style = Object.assign({}, cardRow.style || {}, actualStyles, { _css: actualStyles });
     });
   });
   
   // 向父组件发送事件通知样式已更新
   emit('update:cardGroups', updatedCardGroups);
   emit('save-card-row-style-edit', actualStyles);
+  emit('save-data-to-server'); // 触发保存到服务器的事件
 }
 
 // 更新卡片样式
@@ -550,7 +541,7 @@ const saveCardStyleEdit = () => {
         cardRow.cards.forEach(card => {
           // 修改: 确保样式正确应用，使用Object.assign保证样式对象正确合并
           // 修改为更明确的样式赋值方式，确保样式能正确应用
-          card.style = { ...(card.style || {}), ...actualStyles, _css: actualStyles };
+          card.style = Object.assign({}, card.style || {}, actualStyles, { _css: actualStyles });
         });
       }
     });
@@ -559,6 +550,7 @@ const saveCardStyleEdit = () => {
   // 向父组件发送事件通知样式已更新
   emit('update:cardGroups', updatedCardGroups);
   emit('save-card-style-edit', actualStyles);
+  emit('save-data-to-server'); // 触发保存到服务器的事件
 }
 
 // 编辑功能相关
@@ -930,109 +922,8 @@ const handleCardStyleTemplateChange = (type, styleValue) => {
 const handleCardStyleChange = (styleValue) => {
   console.log('Card style changed to:', styleValue);
 
-  let cardStyle = {};
-  // 根据选择的样式更新设置
-  switch (styleValue) {
-    case 'card-minimal':
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: '#ffffff',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 0,
-        boxShadow: 'none',
-        gradient: 'none',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-    case 'card-rounded':
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: '#ffffff',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 5,
-        boxShadow: 'none',
-        gradient: 'none',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-    case 'card-outlined':
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: 'transparent',
-        textColor: '#333333',
-        borderStyle: 'solid',
-        borderWidth: 1,
-        borderColor: '#cccccc',
-        borderRadius: 5,
-        boxShadow: 'none',
-        gradient: 'none',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-    case 'card-elevation':
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: '#f8f8f8',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 5,
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-        gradient: 'none',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-    case 'card-gradient':
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: 'linear-gradient(135deg, #ffffff, #f0f0f0)',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 5,
-        boxShadow: 'none',
-        gradient: 'linear-gradient(135deg, #ffffff, #f0f0f0)',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-    default:
-      // 默认样式
-      cardStyle = {
-        padding: 2,
-        margin: 3,
-        backgroundColor: '#ffffff',
-        textColor: '#000000',
-        borderStyle: 'none',
-        borderRadius: 5,
-        boxShadow: 'none',
-        gradient: 'none',
-        fontWeight: 'normal',
-        fontStyle: 'normal',
-        textAlign: 'center',
-        lineHeight: 1.2
-      };
-      break;
-  }
+  // 使用从配置文件导入的默认值
+  const cardStyle = cardStyleDefaults[styleValue] || cardStyleDefaults['card-default'];
 
   // 将样式应用到所有卡片
   const updatedCardGroups = [...props.cardGroups];
@@ -1055,53 +946,8 @@ const handleCardStyleChange = (styleValue) => {
 const handleCardRowStyleChange = (styleValue) => {
   console.log('Card row style changed to:', styleValue);
 
-  let rowStyle = {};
-  switch (styleValue) {
-    case 'row-compact':
-      rowStyle = {
-        padding: '2px',
-        margin: '1px',
-        gap: '1px',
-        backgroundColor: 'transparent'
-      };
-      break;
-    case 'row-spaced':
-      rowStyle = {
-        padding: '8px',
-        margin: '4px 0',
-        gap: '8px',
-        backgroundColor: '#f9f9f9'
-      };
-      break;
-    case 'row-centered':
-      rowStyle = {
-        padding: '5px',
-        margin: '3px 0',
-        gap: '3px',
-        justifyContent: 'center',
-        backgroundColor: 'transparent'
-      };
-      break;
-    case 'row-highlighted':
-      rowStyle = {
-        padding: '6px',
-        margin: '4px 0',
-        gap: '4px',
-        backgroundColor: '#e6f7ff',
-        border: '1px solid #91d5ff',
-        borderRadius: '4px'
-      };
-      break;
-    default:
-      // 默认行样式
-      rowStyle = {
-        padding: '5px',
-        margin: '2px 0',
-        gap: '2px',
-        backgroundColor: 'transparent'
-      };
-      break;
-  }
+  // 使用从配置文件导入的默认值
+  const rowStyle = cardRowStyleDefaults[styleValue] || cardRowStyleDefaults['row-default'];
 
   // 应用行样式到所有行
   const updatedCardGroups = [...props.cardGroups];
@@ -1122,54 +968,8 @@ const handleCardRowStyleChange = (styleValue) => {
 const handleCardGroupStyleChange = (styleValue) => {
   console.log('Card group style changed to:', styleValue);
 
-  let groupStyle = {};
-  switch (styleValue) {
-    case 'group-minimal':
-      groupStyle = {
-        padding: '0',
-        margin: '5px 0',
-        border: 'none',
-        backgroundColor: 'transparent'
-      };
-      break;
-    case 'group-bordered':
-      groupStyle = {
-        padding: '10px',
-        margin: '10px 0',
-        border: '1px solid #d9d9d9',
-        borderRadius: '6px',
-        backgroundColor: '#ffffff'
-      };
-      break;
-    case 'group-elevated':
-      groupStyle = {
-        padding: '12px',
-        margin: '12px 0',
-        border: 'none',
-        borderRadius: '6px',
-        backgroundColor: '#ffffff',
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
-      };
-      break;
-    case 'group-spaced':
-      groupStyle = {
-        padding: '8px',
-        margin: '15px 0',
-        border: 'none',
-        backgroundColor: 'transparent'
-      };
-      break;
-    default:
-      // 默认组样式
-      groupStyle = {
-        padding: '8px',
-        margin: '10px 0',
-        border: 'none',
-        borderRadius: '4px',
-        backgroundColor: '#ffffff'
-      };
-      break;
-  }
+  // 使用从配置文件导入的默认值
+  const groupStyle = cardGroupStyleDefaults[styleValue] || cardGroupStyleDefaults['group-default'];
 
   // 应用组样式到所有组
   const updatedCardGroups = [...props.cardGroups];
