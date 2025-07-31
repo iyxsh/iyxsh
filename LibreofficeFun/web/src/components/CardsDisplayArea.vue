@@ -179,6 +179,31 @@ const getCardTextStyle = (card) => {
     return {};
   }
 
+  const style = {};
+  console.log('card.textStyle', card.textStyle);
+  // 如果卡片有特定的容器样式，优先使用
+  if (card && card.textStyle) {
+    // 如果有已处理的CSS样式，优先使用
+    if (card.textStyle._css) {
+      return Object.assign({}, card.textStyle._css);
+    } else {
+      return Object.assign({}, card.textStyle);
+    }
+  }
+
+  // 如果有全局单卡片样式设置，作为默认值使用
+  if (globalTextStyles.value) {
+    // 如果有已处理的CSS样式，优先使用
+    if (globalTextStyles.value._css) {
+      Object.assign(style, globalTextStyles.value._css);
+    } else {
+      Object.assign(style, globalTextStyles.value);
+    }
+  }
+  console.log('style', style);
+  return style;
+/*
+console.log('card.textStyle',card.textStyle);
   // 获取卡片文本样式
   const textStyle = card.textStyle || {};
 
@@ -217,7 +242,7 @@ const getCardTextStyle = (card) => {
           // 添加will-change属性优化变换性能
           css.willChange = 'transform';
         }
-
+console.log('styleManagerToCSS', css);
         return css;
       }
     } catch (error) {
@@ -336,8 +361,9 @@ const getCardTextStyle = (card) => {
   style.wordSpacing = textStyle.wordSpacing !== undefined ?
     `${textStyle.wordSpacing}px` : (defaultStyle.wordSpacing ?
       `${defaultStyle.wordSpacing}px` : undefined);
-
+console.log('style', style);
   return style;
+  */
 };
 
 // 获取文本样式默认值

@@ -1,3 +1,65 @@
+<template>
+  <div class="form-grid-container">
+    <!-- 错误提示 -->
+    <div v-if="error" class="error-boundary">
+      <div class="error-boundary__title">发生错误</div>
+      <div class="error-boundary__message">{{ error.message }}</div>
+      <div class="error-boundary__info">{{ errorInfo }}</div>
+      <el-button @click="resetError">重试</el-button>
+    </div>
+
+    <!-- 加载状态 -->
+    <div v-if="loading" class="loading-state">
+      <el-icon class="is-loading">
+        <svg viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg" data-v-72eee16e=""><path d="M512 512m-224 0a224 224 0 1 0 448 0 224 224 0 1 0-448 0Z" fill="#1890ff" data-v-72eee16e=""></path><path d="M957.1 512c0-29.4-4.2-57.8-11.9-84.7-7.7-26.9-18.8-51.9-32.7-74.4-14-22.5-31.5-42.3-51.8-59.1-20.3-16.8-43.2-30.3-68.2-40.1-25-9.8-51.8-15.9-80-17.9-28.2-2-57.2.3-85.9-7.1-28.7-6.8-56.2-17.9-81.6-32.9-25.4-15-48.4-33.7-68.5-55.8-20.1-22.1-36.9-47.4-50.1-75.2-13.2-27.9-22.8-58.2-28.5-90.5-5.7 32.3-8.5 66.1-8.5 100.8 0 29.4 4.2 57.8 11.9 84.7 7.7 26.9 18.8 51.9 32.7 74.4 14 22.5 31.5 42.3 51.8 59.1 20.3 16.8 43.2 30.3 68.2 40.1 25 9.8 51.8 15.9 80 17.9 28.2 2 57.2-.3 85.9-7.1 28.7-6.8 56.2-17.9 81.6-32.9 25.4-15 48.4-33.7 68.5-55.8 20.1-22.1 36.9-47.4 50.1-75.2 13.2-27.9 22.8-58.2 28.5-90.5 5.8-32.3 8.6-66.1 8.6-100.8z m-89.6 0c0 25.6-3.6 50.4-10.5 74-6.9 23.5-16.3 45.5-27.8 65.4-11.5 19.9-25.3 37.4-40.9 52.1-15.6 14.7-33.2 26.1-52.2 33.8-19 7.7-39.4 11.9-60.5 12.4-21.1.5-42.3-2.8-62.7-9.9-20.4-7.1-39.7-17.9-57.5-32-17.8-14.1-33.8-31.7-47.6-52.4-13.8-20.7-25.2-44.5-33.8-70.9-8.7-26.4-14.7-55.2-17.7-85.6-3-30.4-3-62.4 0-95.2 3-32.8 9-64.4 17.7-93.6 8.7-29.2 20.7-55.9 35.6-79.6 14.9-23.7 32.6-43.8 52.6-59.8 20-16 42.2-27.7 66.1-34.8 23.9-7.1 49.4-10.5 75.9-10.1 26.5.4 52.6 5 77.3 13.5 24.7 8.5 47.7 21.2 68.5 37.7 20.8 16.5 39.1 37.1 54.4 61.2 15.3 24.1 27.5 52 36.2 83 8.7 31 13.8 64.7 15 100.4 1.3 35.7-.9 72.8-6.4 110.4z" fill="#1890ff" data-v-72eee16e=""></path></svg>
+      </el-icon>
+      <span>加载中...</span>
+    </div>
+
+    <!-- 表单网格内容 -->
+    <div v-if="!loading && !error && !showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
+      <!-- 表单卡片列表 -->
+      <div class="form-cards">
+        <SingleFormShow
+          v-for="(form, index) in forms"
+          :key="form.id"
+          :form="form"
+          :editable="editable"
+          :card-style-on="cardStyleOn"
+          :position="form.position || { x: 20, y: 20 }"
+          :size="form.size || { width: 200, height: 100 }"
+          @edit="handleEditForm"
+          @delete="handleDeleteForm"
+          @dblclick="handleEditForm"
+          @update-position="updateFormPosition"
+          @update-size="updateFormSize"
+          @mousedown="handleFormMouseDown(form)"
+        />
+      </div>
+    </div>
+
+    <!-- 添加表单编辑器 -->
+    <div v-if="showAddFormEditor" class="form-editor-overlay">
+      <div class="form-editor-wrapper">
+        <FormEditor :form="addFormData" @save="saveAddForm" @cancel="cancelAddForm" @error="handleFormEditorError" :key="addFormDataKey" />
+      </div>
+    </div>
+
+    <!-- 表单编辑器 -->
+    <div class="form-editor-overlay" v-if="showFormEditor">
+      <div class="form-editor-wrapper">
+        <FormEditor 
+          :form="selectedForm" 
+          :isEdit="true" 
+          @save="handleFormSave" 
+          @cancel="hideFormEditor"
+          @error="handleFormEditorError" 
+          :key="selectedForm?.id || 'editor'" 
+        />
+      </div>
+    </div>
+  </div>
+</template>
 <script setup>
 // =====================================================
 // = 1. 导入依赖
@@ -368,6 +430,14 @@ const handleUpdateForm = (updatedForm) => {
       throw new Error('表单数据无效');
     }
     
+    // 检查表单是否真的发生了变化
+    const existingForm = props.modelValue.find(f => f.id === updatedForm.id);
+    if (JSON.stringify(existingForm) === JSON.stringify(updatedForm)) {
+      // 表单没有变化，无需更新
+      console.log('[FormGrid] 表单未发生变化，跳过更新');
+      return;
+    }
+    
     // 创建更新后的表单数组
     const updatedForms = props.modelValue.map(form => 
       form.id === updatedForm.id 
@@ -682,16 +752,27 @@ onMounted(() => {
       
       // 使用props.modelValue直接进行验证
       const validated = validateForms(newVal);
-      forms.value.splice(0, forms.value.length, ...validated);
       
-      // 更新位置信息
-      const newPositions = validated.map(form => ({
-        id: form.id,
-        ...form.position,
-        width: form.size?.width || 200,
-        height: form.size?.height || 100
-      }));
-      positions.value = newPositions;
+      // 只有当数据真正发生变化时才更新
+      const isDifferent = validated.length !== forms.value.length || 
+        validated.some((form, index) => {
+          const currentForm = forms.value[index];
+          return JSON.stringify(form) !== JSON.stringify(currentForm);
+        });
+      
+      if (isDifferent) {
+        forms.value.splice(0, forms.value.length, ...validated);
+        
+        // 更新位置信息
+        const newPositions = validated.map(form => ({
+          id: form.id,
+          ...form.position,
+          width: form.size?.width || 200,
+          height: form.size?.height || 100
+        }));
+        
+        positions.value = newPositions;
+      }
       
       nextTick(() => {
         initializeGridLayout();
@@ -733,69 +814,6 @@ const gridContainerStyle = computed(() => {
 });
 
 </script>
-
-<template>
-  <div class="form-grid-container">
-    <!-- 错误提示 -->
-    <div v-if="error" class="error-boundary">
-      <div class="error-boundary__title">发生错误</div>
-      <div class="error-boundary__message">{{ error.message }}</div>
-      <div class="error-boundary__info">{{ errorInfo }}</div>
-      <el-button @click="resetError">重试</el-button>
-    </div>
-
-    <!-- 加载状态 -->
-    <div v-if="loading" class="loading-state">
-      <el-icon class="is-loading">
-        <svg viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg" data-v-72eee16e=""><path d="M512 512m-224 0a224 224 0 1 0 448 0 224 224 0 1 0-448 0Z" fill="#1890ff" data-v-72eee16e=""></path><path d="M957.1 512c0-29.4-4.2-57.8-11.9-84.7-7.7-26.9-18.8-51.9-32.7-74.4-14-22.5-31.5-42.3-51.8-59.1-20.3-16.8-43.2-30.3-68.2-40.1-25-9.8-51.8-15.9-80-17.9-28.2-2-57.2.3-85.9-7.1-28.7-6.8-56.2-17.9-81.6-32.9-25.4-15-48.4-33.7-68.5-55.8-20.1-22.1-36.9-47.4-50.1-75.2-13.2-27.9-22.8-58.2-28.5-90.5-5.7 32.3-8.5 66.1-8.5 100.8 0 29.4 4.2 57.8 11.9 84.7 7.7 26.9 18.8 51.9 32.7 74.4 14 22.5 31.5 42.3 51.8 59.1 20.3 16.8 43.2 30.3 68.2 40.1 25 9.8 51.8 15.9 80 17.9 28.2 2 57.2-.3 85.9-7.1 28.7-6.8 56.2-17.9 81.6-32.9 25.4-15 48.4-33.7 68.5-55.8 20.1-22.1 36.9-47.4 50.1-75.2 13.2-27.9 22.8-58.2 28.5-90.5 5.8-32.3 8.6-66.1 8.6-100.8z m-89.6 0c0 25.6-3.6 50.4-10.5 74-6.9 23.5-16.3 45.5-27.8 65.4-11.5 19.9-25.3 37.4-40.9 52.1-15.6 14.7-33.2 26.1-52.2 33.8-19 7.7-39.4 11.9-60.5 12.4-21.1.5-42.3-2.8-62.7-9.9-20.4-7.1-39.7-17.9-57.5-32-17.8-14.1-33.8-31.7-47.6-52.4-13.8-20.7-25.2-44.5-33.8-70.9-8.7-26.4-14.7-55.2-17.7-85.6-3-30.4-3-62.4 0-95.2 3-32.8 9-64.4 17.7-93.6 8.7-29.2 20.7-55.9 35.6-79.6 14.9-23.7 32.6-43.8 52.6-59.8 20-16 42.2-27.7 66.1-34.8 23.9-7.1 49.4-10.5 75.9-10.1 26.5.4 52.6 5 77.3 13.5 24.7 8.5 47.7 21.2 68.5 37.7 20.8 16.5 39.1 37.1 54.4 61.2 15.3 24.1 27.5 52 36.2 83 8.7 31 13.8 64.7 15 100.4 1.3 35.7-.9 72.8-6.4 110.4z" fill="#1890ff" data-v-72eee16e=""></path></svg>
-      </el-icon>
-      <span>加载中...</span>
-    </div>
-
-    <!-- 表单网格内容 -->
-    <div v-if="!loading && !error && !showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
-      <!-- 表单卡片列表 -->
-      <div class="form-cards">
-        <SingleFormShow
-          v-for="(form, index) in forms"
-          :key="form.id"
-          :form="form"
-          :editable="editable"
-          :card-style-on="cardStyleOn"
-          :position="form.position || { x: 20, y: 20 }"
-          :size="form.size || { width: 200, height: 100 }"
-          @edit="handleEditForm"
-          @delete="handleDeleteForm"
-          @dblclick="handleEditForm"
-          @update-position="updateFormPosition"
-          @update-size="updateFormSize"
-          @mousedown="handleFormMouseDown(form)"
-        />
-      </div>
-    </div>
-
-    <!-- 添加表单编辑器 -->
-    <div v-if="showAddFormEditor" class="form-editor-overlay">
-      <div class="form-editor-wrapper">
-        <FormEditor :form="addFormData" @save="saveAddForm" @cancel="cancelAddForm" @error="handleFormEditorError" :key="addFormDataKey" />
-      </div>
-    </div>
-
-    <!-- 表单编辑器 -->
-    <div class="form-editor-overlay" v-if="showFormEditor">
-      <div class="form-editor-wrapper">
-        <FormEditor 
-          :form="selectedForm" 
-          :isEdit="true" 
-          @save="handleFormSave" 
-          @cancel="hideFormEditor"
-          @error="handleFormEditorError" 
-          :key="selectedForm?.id || 'editor'" 
-        />
-      </div>
-    </div>
-  </div>
-</template>
 
 <style scoped>
 /* =====================================================

@@ -127,12 +127,11 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+// 使用v-model替代props
+const modelValue = defineModel({ type: Object, default: () => ({}) })
+
 // 定义props
 const props = defineProps({
-  modelValue: {
-    type: Object,
-    default: () => ({})
-  },
   predefineColors: {
     type: Array,
     default: () => [
@@ -143,7 +142,7 @@ const props = defineProps({
 })
 
 // 定义emits
-const emit = defineEmits(['update:modelValue', 'change', 'apply'])
+const emit = defineEmits(['change', 'apply'])
 
 // 数据
 const localStyle = reactive({}) // 全部默认值
@@ -769,29 +768,41 @@ const getStyleIcon = (key) => {
 
 // 初始化数据
 const initializeLocalStyle = () => {
-  // 初始化所有样式属性
-  const allStyleKeys = Object.values(allStylesDefinition.value).flat().map(item => item.key)
-
-  // 设置默认值
-  allStyleKeys.forEach(key => {
-    //全部默认值
-    localStyle[key] = getDefaultValue(key)
-  })
-
-  // 初始化文本相关默认值
-  Object.assign(localTextStyle, getTextStyleDefaults())
-
-  // 初始化容器相关默认值
-  Object.assign(localContainerStyle, getContainerStyleDefaults())
-
-  // 合并传入的样式
-  if (props.modelValue) {
-    Object.assign(localStyle, props.modelValue)
-
+  // 如果传入了样式，则使用传入的样式进行初始化
+  if (modelValue.value && Object.keys(modelValue.value).length > 0) {
+    // 首先设置所有默认值
+    const allStyleKeys = Object.values(allStylesDefinition.value).flat().map(item => item.key)
+    allStyleKeys.forEach(key => {
+      localStyle[key] = getDefaultValue(key)
+    })
+    console.log('modelValue: ', modelValue.value)
+    
+    // 使用CSSto函数转换CSS属性到localStyle键名
+    const convertedModelValue = CSSto(modelValue.value)
+    
+    // 然后合并传入的样式
+    Object.assign(localStyle, convertedModelValue)
+    console.log('localStyle: ', localStyle)
     // 处理自定义字体族
     initCustomFontFamily(localStyle.fontFamily)
+  } else {
+    // 如果没有传入样式，使用当前的初始化方式
+    // 初始化所有样式属性
+    const allStyleKeys = Object.values(allStylesDefinition.value).flat().map(item => item.key)
+    
+    // 设置默认值
+    allStyleKeys.forEach(key => {
+      //全部默认值
+      localStyle[key] = getDefaultValue(key)
+    })
+    
+    // 初始化文本相关默认值
+    Object.assign(localTextStyle, getTextStyleDefaults())
+    
+    // 初始化容器相关默认值
+    Object.assign(localContainerStyle, getContainerStyleDefaults())
   }
-
+  
   // 初始化可见样式集合（默认显示常用设置）
   allStylesDefinition.value.basic.forEach(item => {
     //visibleStyles.value.add(item.key)
@@ -811,23 +822,17 @@ const isPredefinedFontFamily = (fontFamily) => {
 
 // 获取默认值
 onMounted(() => {
-  // 初始化全部默认值（合并文本和容器样式默认值）
-  const textStyleDefaults = getTextStyleDefaults()
-  const containerStyleDefaults = getContainerStyleDefaults()
-  Object.assign(localStyle, textStyleDefaults, containerStyleDefaults)
+  // 调用初始化方法，确保初始化逻辑的一致性
+  initializeLocalStyle()
 
-  // 初始化文本相关默认值
-  Object.assign(localTextStyle, textStyleDefaults)
+  // 初始化文本相关默认值（如果尚未初始化）
+  if (Object.keys(localTextStyle).length === 0) {
+    Object.assign(localTextStyle, getTextStyleDefaults())
+  }
 
-  // 初始化容器相关默认值
-  Object.assign(localContainerStyle, containerStyleDefaults)
-
-  // 合并传入的样式
-  if (props.modelValue) {
-    Object.assign(localStyle, props.modelValue)
-
-    // 处理自定义字体族
-    initCustomFontFamily(localStyle.fontFamily)
+  // 初始化容器相关默认值（如果尚未初始化）
+  if (Object.keys(localContainerStyle).length === 0) {
+    Object.assign(localContainerStyle, getContainerStyleDefaults())
   }
 
   // 初始化可见样式集合（默认显示常用设置）
@@ -932,7 +937,7 @@ onMounted(() => {
 })
 
 // 监听modelValue变化
-watch(() => props.modelValue, (newVal) => {
+watch(() => modelValue.value, (newVal) => {
   if (newVal) {
     Object.assign(localStyle, newVal)
   }
@@ -981,7 +986,7 @@ const toCSS = () => {
   if (visibleStyles.value.has('backgroundColor') && localStyle.backgroundColor) css['background-color'] = localStyle.backgroundColor
   if (visibleStyles.value.has('opacity') && localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
 
-  // 处理旋转和缩放
+  // 处理旋转和缩放 (textRotation和scale对应CSS的transform属性)
   if (visibleStyles.value.has('textRotation') || visibleStyles.value.has('scale')) {
     const rotation = localStyle.textRotation || 0;
     const scale = localStyle.scale || 1;
@@ -1092,6 +1097,136 @@ const toCSS = () => {
   if (visibleStyles.value.has('writingMode') && localStyle.writingMode && localStyle.writingMode !== 'horizontal-tb') css['writing-mode'] = localStyle.writingMode
 
   return css
+}
+
+// 从CSS对象转换为localStyle对象
+const CSSto = (cssObj) => {
+  const localStyleObj = {}
+  
+  // CSS属性名到localStyle键名的映射
+  const cssToStyleKeyMap = {
+    'font-size': 'fontSize',
+    'font-family': 'fontFamily',
+    'font-weight': 'fontWeight',
+    'font-style': 'fontStyle',
+    'text-align': 'textAlign',
+    'line-height': 'lineHeight',
+    'background-color': 'backgroundColor',
+    'border-width': 'borderWidth',
+    'border-style': 'borderStyle',
+    'border-color': 'borderColor',
+    'border-radius': 'borderRadius',
+    'max-width': 'maxWidth',
+    'max-height': 'maxHeight',
+    'min-width': 'minWidth',
+    'min-height': 'minHeight',
+    'box-shadow': 'boxShadow',
+    'text-decoration': 'textDecoration',
+    'text-transform': 'textTransform',
+    'letter-spacing': 'letterSpacing',
+    'word-spacing': 'wordSpacing',
+    'font-variant': 'fontVariant',
+    'vertical-align': 'verticalAlign',
+    'z-index': 'zIndex',
+    'grid-template-columns': 'gridTemplateColumns',
+    'grid-template-rows': 'gridTemplateRows',
+    'grid-column-gap': 'gridColumnGap',
+    'grid-row-gap': 'gridRowGap',
+    'place-content': 'placeContent',
+    'background-image': 'backgroundImage',
+    'background-repeat': 'backgroundRepeat',
+    'background-size': 'backgroundSize',
+    'background-position': 'backgroundPosition',
+    'background-attachment': 'backgroundAttachment',
+    'text-indent': 'textIndent',
+    'text-shadow': 'textShadow',
+    'text-overflow': 'textOverflow',
+    'word-break': 'wordBreak',
+    'word-wrap': 'wordWrap',
+    'white-space': 'whiteSpace',
+    'list-style-type': 'listStyleType',
+    'list-style-position': 'listStylePosition',
+    'list-style-image': 'listStyleImage',
+    'user-select': 'userSelect',
+    'box-sizing': 'boxSizing',
+    'writing-mode': 'writingMode'
+  }
+  
+  // 处理特殊属性
+  for (const [cssKey, cssValue] of Object.entries(cssObj)) {
+    // 获取对应的localStyle键名
+    const localStyleKey = cssToStyleKeyMap[cssKey] || cssKey
+    
+    // 特殊处理font-size（去除px单位）
+    if (cssKey === 'font-size' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理letter-spacing和word-spacing（去除px单位）
+    if ((cssKey === 'letter-spacing' || cssKey === 'word-spacing') && 
+        typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理border-radius（去除px单位）
+    if (cssKey === 'border-radius' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理grid-column-gap和grid-row-gap（去除px单位）
+    if ((cssKey === 'grid-column-gap' || cssKey === 'grid-row-gap') && 
+        typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理text-indent（去除px单位）
+    if (cssKey === 'text-indent' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理padding和margin（去除px单位）
+    if ((cssKey === 'padding' || cssKey === 'margin') && 
+        typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理border-width（去除px单位）
+    if (cssKey === 'border-width' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
+      localStyleObj[localStyleKey] = parseFloat(cssValue)
+      continue
+    }
+    
+    // 特殊处理transform属性（提取旋转角度和缩放比例）
+    if (cssKey === 'transform') {
+      // 解析类似 rotate(30deg) scale(1.2) 的transform值
+      const transformValue = cssValue
+      const rotationMatch = transformValue.match(/rotate\((\d+)deg\)/)
+      const scaleMatch = transformValue.match(/scale\((\d+(?:\.\d+)?)\)/)
+      
+      if (rotationMatch) {
+        localStyleObj['textRotation'] = parseInt(rotationMatch[1], 10)
+      }
+      
+      if (scaleMatch) {
+        localStyleObj['scale'] = parseFloat(scaleMatch[1])
+      }
+      
+      // 保留原始transform值
+      localStyleObj[localStyleKey] = cssValue
+      continue
+    }
+    
+    // 一般情况直接赋值
+    localStyleObj[localStyleKey] = cssValue
+  }
+  
+  return localStyleObj
 }
 
 // 处理字体族变化
@@ -1250,7 +1385,7 @@ const getTextStyleDefaults = () => {
     }
   })
 
-  // 额外的文本相关属性
+  // 颍外的文本相关属性
   const additionalTextKeys = [
     'textDecoration', 'textTransform', 'letterSpacing', 'wordSpacing',
     'fontVariant', 'verticalAlign', 'textIndent', 'textShadow',
@@ -1306,6 +1441,7 @@ const getContainerStyleDefaults = () => {
 // 暴露方法
 defineExpose({
   toCSS,
+  CSSto,
   localStyle,
   localTextStyle,
   localContainerStyle

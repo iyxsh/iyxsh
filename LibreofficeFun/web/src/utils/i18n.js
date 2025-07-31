@@ -66,6 +66,7 @@ export function createI18n(locale = getInitialLocale()) {
       'pageManager.form.right': '右',
       'pageManager.form.confirm': '确认',
       'pageManager.form.reset': '重置',
+      'pageManager.pageCreated': '页面创建成功',
       
       // 工具栏相关
       'toolbar.addPage': '添加页面',
@@ -111,6 +112,7 @@ export function createI18n(locale = getInitialLocale()) {
       'pageManager.form.right': 'Right',
       'pageManager.form.confirm': 'Confirm',
       'pageManager.form.reset': 'Reset',
+      'pageManager.pageCreated': 'Page created successfully',
       
       // 工具栏相关
       'toolbar.addPage': 'Add Page',

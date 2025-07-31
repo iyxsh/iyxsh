@@ -32,7 +32,9 @@
             :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
             :pageSize="pages[currentPageIdx]?.pageSize" 
             ref="cardConverterRef"
-            :key="`${currentPageType}-${currentPageIdx}`" />
+            :key="`${currentPageType}-${currentPageIdx}`"
+            @edit-card="handleEditCard"
+            @edit-row-style="handleEditRowStyle" />
         </template>
       </el-main>
       <!-- 可拖动侧边栏 -->
@@ -208,7 +210,11 @@ const ensureTranslationsExist = () => {
     'pageManager.pageSize',
     'pageManager.formPage',
     'pageManager.cardPage',
-    'pageManager.confirmCloseDuringCreation'
+    'pageManager.confirmCloseDuringCreation',
+    'pageManager.noPages',
+    'pageManager.unlockPageFirst',
+    'pageManager.cannotAddForm',
+    'pageManager.pageCreated'
   ]
 }
 import { useEventBus } from '../utils/eventBus'
@@ -378,10 +384,17 @@ function handleFormUpdate(updatedForms) {
       return;
     }
 
-    // 直接更新当前页面的表单数组，避免使用splice等可能引起问题的方法
+    // 检查表单是否真的发生了变化
     const currentPage = pages.value[currentPageIdx.value];
+    const existingForms = currentPage.forms || [];
     
-    // 创建新的页面对象以确保响应式更新
+    // 使用JSON.stringify进行深度比较
+    if (JSON.stringify(existingForms) === JSON.stringify(updatedForms)) {
+      console.log('[PageManager] 表单未发生变化，跳过更新');
+      return;
+    }
+
+    // 直接更新当前页面的表单数组，避免使用splice等可能引起问题的方法
     const updatedPage = {
       ...currentPage,
       forms: Array.isArray(updatedForms) ? [...updatedForms] : []
@@ -1130,6 +1143,35 @@ function convertFormsToCards() {
     ElMessage.error('转换过程出错: ' + (error.message || '未知错误'))
   }
 }
+
+// 处理编辑卡片事件
+const handleEditCard = (editData) => {
+  console.log('[PageManager] 接收到编辑卡片事件:', editData);
+  if (cardConverterRef.value) {
+    // 调用FloatingToolbar组件中的editCard方法
+    if (cardConverterRef.value.$refs && cardConverterRef.value.$refs.floatingToolbarRef) {
+      cardConverterRef.value.$refs.floatingToolbarRef.editCard(
+        editData.groupIndex, 
+        editData.rowIndex, 
+        editData.cardIndex
+      );
+    }
+  }
+};
+
+// 处理编辑行样式事件
+const handleEditRowStyle = (editData) => {
+  console.log('[PageManager] 接收到编辑行样式事件:', editData);
+  if (cardConverterRef.value) {
+    // 调用FloatingToolbar组件中的editRowStyle方法
+    if (cardConverterRef.value.$refs && cardConverterRef.value.$refs.floatingToolbarRef) {
+      cardConverterRef.value.$refs.floatingToolbarRef.editRowStyle(
+        editData.groupIndex, 
+        editData.rowIndex
+      );
+    }
+  }
+};
 
 // 调试按钮点击
 const debugButton = (buttonName) => {

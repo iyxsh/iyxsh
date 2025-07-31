@@ -259,6 +259,7 @@ const emit = defineEmits([
   'edit-card',
   'edit-row-style',
   'save-row-style-edit',
+  'save-card-edit', // 添加缺失的事件声明
   // 添加缺失的事件声明
   'open-global-style-panel',
   'open-card-style-panel',
@@ -326,6 +327,8 @@ const openGlobalStylePanel = () => {
   // 确保在对话框打开后正确设置样式
   nextTick(() => {
     if (globalStyleManager.value) {
+      // 确保样式管理器有正确的初始值
+      Object.assign(globalStyleManager.value.localStyle, currentGlobalStyle);
       globalStyleManager.value.$forceUpdate();
     }
   });
@@ -341,6 +344,8 @@ const openCardGroupStylePanel = () => {
   // 确保在对话框打开后正确设置样式
   nextTick(() => {
     if (cardGroupStyleManager.value) {
+      // 确保样式管理器有正确的初始值
+      Object.assign(cardGroupStyleManager.value.localStyle, currentCardGroupStyle);
       cardGroupStyleManager.value.$forceUpdate();
     }
   });
@@ -356,6 +361,8 @@ const openCardRowStylePanel = () => {
   // 确保在对话框打开后正确设置样式
   nextTick(() => {
     if (cardRowStyleManager.value) {
+      // 确保样式管理器有正确的初始值
+      Object.assign(cardRowStyleManager.value.localStyle, currentCardRowStyle);
       cardRowStyleManager.value.$forceUpdate();
     }
   });
@@ -371,6 +378,8 @@ const openCardStylePanel = () => {
   // 确保在对话框打开后正确设置样式
   nextTick(() => {
     if (cardStyleManager.value) {
+      // 确保样式管理器有正确的初始值
+      Object.assign(cardStyleManager.value.localStyle, currentCardStyle);
       cardStyleManager.value.$forceUpdate();
     }
   });
@@ -391,7 +400,7 @@ const cardStyleManager = ref(null);
 // 对话框关闭处理
 const onGlobalStyleDialogClose = () => {
   // 向父组件发出事件
-  globalTextStyles.value = {};
+
 };
 
 // 卡片组样式对话框关闭处理
@@ -412,18 +421,47 @@ const onCardStyleDialogClose = () => {
 // 更新全局文本样式
 const updateGlobalTextStyle = (style) => {
   // 实现更新全局文本样式的逻辑
+  globalTextStyles.value = { ...style };
 };
 
 // 应用全局文本样式
 const applyGlobalTextStyle = (style) => {
-  // 实现应用全局文本样式的逻辑
+  // 实现应用全局文本样式逻辑
+  globalTextStyles.value = { ...style };
 };
 
 // 保存全局样式编辑
 const saveGlobalStyleEdit = () => {
   // 实现保存全局样式编辑的逻辑
   globalStyleDialogVisible.value = false;
-};
+  if (!props.cardGroups) return;
+  console.log(`保存编辑的全局样式: globalTextStyles =`, globalTextStyles.value);
+  
+  // 使用StyleManager的toCSS方法获取实际CSS样式
+  const actualStyles = globalStyleManager.value ? globalStyleManager.value.toCSS() : globalTextStyles.value;
+  console.log(`实际CSS样式: actualStyles =`, actualStyles);
+  
+  // 更新所有卡片的文本样式
+  const updatedCardGroups = [...props.cardGroups];
+  updatedCardGroups.forEach(cardGroup => {
+    if (!cardGroup.rows || cardGroup.rows.length === 0) {
+      return;
+    }
+    cardGroup.rows.forEach(cardRow => {
+      if (cardRow.cards && cardRow.cards.length > 0) {
+        cardRow.cards.forEach(card => {
+          // 合并全局样式和卡片原有样式
+          card.textStyle = Object.assign({}, card.textStyle || {}, actualStyles);
+        });
+      }
+    });
+  });
+  
+  // 向父组件发送事件通知样式已更新
+  emit('update:cardGroups', updatedCardGroups);
+  emit('save-global-style-edit', actualStyles);
+  emit('save-data-to-server'); // 触发保存到服务器的事件
+}
 
 // 更新卡片组样式
 const updateCardGroupStyle = (style) => {
@@ -481,7 +519,7 @@ const saveCardRowStyleEdit = () => {
   if (!props.cardGroups) return;
   console.log(`保存编辑的卡片行样式: cardRowStyles =`, cardRowStyles.value);
   
-  // 使用StyleManager的toCS方法获取实际CSS样式
+  // 使用StyleManager的toCSS方法获取实际CSS样式
   const actualStyles = cardRowStyleManager.value ? cardRowStyleManager.value.toCSS() : cardRowStyles.value;
   console.log(`实际CSS样式: actualStyles =`, actualStyles);
   
@@ -496,6 +534,13 @@ const saveCardRowStyleEdit = () => {
       // 修改: 确保样式正确应用，使用Object.assign保证样式对象正确合并
       // 修改为更明确的样式赋值方式，确保样式能正确应用
       cardRow.style = Object.assign({}, cardRow.style || {}, actualStyles, { _css: actualStyles });
+      
+      // 同时更新行内所有卡片的文本样式
+      if (cardRow.cards && cardRow.cards.length > 0) {
+        cardRow.cards.forEach(card => {
+          card.textStyle = Object.assign({}, card.textStyle || {}, actualStyles);
+        });
+      }
     });
   });
   
@@ -725,7 +770,28 @@ const editCard = (groupIndex, rowIndex, cardIndex) => {
 
 // 保存卡片编辑
 const saveCardEdit = () => {
-  const { groupIndex, rowIndex, cardIndex, text, textStyle } = editingCard;
+  const { groupIndex, rowIndex, cardIndex, text } = editingCard;
+  let { textStyle } = editingCard; // 使用 let 声明，允许重新分配
+  
+  // 使用StyleManager的toCSS方法获取实际CSS样式
+  if (textStyleManager.value && typeof textStyleManager.value.toCSS === 'function') {
+    try {
+      // 保存原始localStyle
+      const originalLocalStyle = { ...textStyleManager.value.localStyle };
+      
+      // 将textStyle应用到StyleManager上
+      Object.assign(textStyleManager.value.localStyle, textStyle);
+      
+      // 获取转换后的CSS（仅包含可见样式）
+      textStyle = textStyleManager.value.toCSS();
+      
+      // 恢复原始样式
+      Object.assign(textStyleManager.value.localStyle, originalLocalStyle);
+    } catch (error) {
+      console.error('Error processing card text style with StyleManager:', error);
+    }
+  }
+  
   if (groupIndex >= 0 && rowIndex >= 0 && cardIndex >= 0 &&
     props.cardGroups[groupIndex]?.rows[rowIndex]?.cards[cardIndex]) {
     // 更新卡片文本
@@ -745,6 +811,7 @@ const saveCardEdit = () => {
 
     // 向父组件发出事件
     emit('save-card-edit', { groupIndex, rowIndex, cardIndex, text, textStyle });
+    emit('save-data-to-server'); // 触发保存到服务器的事件
   }
 };
 
@@ -794,7 +861,28 @@ const applyRowTextStyle = (style) => {
 
 // 保存行样式编辑
 const saveRowStyleEdit = () => {
-  const { groupIndex, rowIndex, textStyle } = editingRowStyle;
+  const { groupIndex, rowIndex } = editingRowStyle;
+
+  let { textStyle } = editingCard; // 使用 let 声明，允许重新分配
+  
+  // 使用StyleManager的toCSS方法获取实际CSS样式
+  if (textStyleManager.value && typeof textStyleManager.value.toCSS === 'function') {
+    try {
+      // 保存原始localStyle
+      const originalLocalStyle = { ...textStyleManager.value.localStyle };
+      
+      // 将textStyle应用到StyleManager上
+      Object.assign(textStyleManager.value.localStyle, textStyle);
+      
+      // 获取转换后的CSS（仅包含可见样式）
+      textStyle = textStyleManager.value.toCSS();
+      
+      // 恢复原始样式
+      Object.assign(textStyleManager.value.localStyle, originalLocalStyle);
+    } catch (error) {
+      console.error('Error processing card text style with StyleManager:', error);
+    }
+  }
 
   if (groupIndex >= 0 && rowIndex >= 0 && props.cardGroups[groupIndex]?.rows[rowIndex]) {
     const row = props.cardGroups[groupIndex].rows[rowIndex];
@@ -851,6 +939,11 @@ const toggleTextStylePanel = () => {
         styleCopy.fontWeight = 'normal';
       } else if (styleCopy.fontWeight === '700') {
         styleCopy.fontWeight = 'bold';
+      }
+
+      // 处理fontSize，确保它是数字形式而不是CSS字符串（如'21px'）
+      if (styleCopy.fontSize && typeof styleCopy.fontSize === 'string' && styleCopy.fontSize.endsWith('px')) {
+        styleCopy.fontSize = parseInt(styleCopy.fontSize, 10);
       }
 
       // 处理行高，确保它是合理值
@@ -993,7 +1086,9 @@ defineExpose({
   globalStyleManager,
   cardGroupStyleManager,
   cardRowStyleManager,
-  cardStyleManager
+  cardStyleManager,
+  editCard,     // 暴露编辑卡片方法
+  editRowStyle  // 暴露编辑行样式方法
 });
 </script>
 

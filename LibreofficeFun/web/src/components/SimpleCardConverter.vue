@@ -1,12 +1,25 @@
 <template>
   <div class="simple-card-converter" :style="containerStyle">
     <!-- 浮动工具条 -->
-    <FloatingToolbar v-model:cardGroups="cardGroups" v-model:cardGroupStyles="cardGroupStyles"
-      v-model:cardRowStyles="cardRowStyles" v-model:cardStyles="cardStyles" v-model:globalTextStyles="globalTextStyles"
-      :defaultStyleManagerRef="defaultStyleManagerRef" @save-data-to-server="saveCardDataToServer" />
-    <CardsDisplayArea v-model:cardGroups="cardGroups" v-model:cardGroupStyles="cardGroupStyles"
-      v-model:cardRowStyles="cardRowStyles" v-model:cardStyles="cardStyles" v-model:globalTextStyles="globalTextStyles"
-      :defaultStyleManagerRef="defaultStyleManagerRef" :page-size="{ width: 800, height: 600 }" />
+    <FloatingToolbar 
+      ref="floatingToolbarRef"
+      v-model:cardGroups="cardGroups" 
+      v-model:cardGroupStyles="cardGroupStyles"
+      v-model:cardRowStyles="cardRowStyles" 
+      v-model:cardStyles="cardStyles" 
+      v-model:globalTextStyles="globalTextStyles"
+      :defaultStyleManagerRef="defaultStyleManagerRef" 
+      @save-data-to-server="saveCardDataToServer" />
+    <CardsDisplayArea 
+      v-model:cardGroups="cardGroups" 
+      v-model:cardGroupStyles="cardGroupStyles"
+      v-model:cardRowStyles="cardRowStyles" 
+      v-model:cardStyles="cardStyles" 
+      v-model:globalTextStyles="globalTextStyles"
+      :defaultStyleManagerRef="defaultStyleManagerRef" 
+      :page-size="{ width: 800, height: 600 }" 
+      @edit-card="componentEmit('edit-card', $event)"
+      @edit-row-style="componentEmit('edit-row-style', $event)" />
   </div>
 </template>
 <script setup>
@@ -20,7 +33,7 @@ import FloatingToolbar from './FloatingToolbar.vue'; // 导入FloatingToolbar组
 import ApiServiceManager from './ApiServiceManager.vue';
 
 // 创建事件总线实例
-const { on, off, emit } = useEventBus();
+const { on, off, emit: eventBusEmit } = useEventBus();
 
 // 添加组件加载调试信息
 console.log('SimpleCardConverter component initializing');
@@ -28,24 +41,9 @@ console.log('SimpleCardConverter component initializing');
 // 添加页面尺寸相关数据
 const pageSize = ref({ width: 800, height: 600 }); // 默认页面尺寸，像素单位
 
-// 控制全局样式面板显示
-const showGlobalStylePanel = ref(false)
-
-// 控制全局样式对话框显示
-const globalStyleDialogVisible = ref(false)
-
-
-// 卡片组样式对话框显示控制
-const cardGroupStyleDialogVisible = ref(false)
-
-// 卡片行样式对话框显示控制
-const cardRowStyleDialogVisible = ref(false)
-
-// 单个卡片样式对话框显示控制
-const cardStyleDialogVisible = ref(false)
+const floatingToolbarRef = ref(null); // 添加浮动工具栏引用定义
 
 const defaultStyleManagerRef = ref({});
-
 
 // 单个卡片样式编辑功能相关
 const editingCardStyle = reactive({
@@ -73,14 +71,20 @@ const props = defineProps({
 // 使用导入的CardGroups类型重新定义cardGroups
 
 // 使用 defineModel 替代 ref，以保持响应式集成和 TypeScript 支持
-const cardGroups = defineModel<CardGroups>('cardGroups', { required: true, type: Array, default: () => [] });
-const cardGroupStyles = defineModel<CardGroupStyles>('cardGroupStyles', { required: true, type: Object, default: () => ({}) });
-const cardRowStyles = defineModel<CardRowStyles>('cardRowStyles', { required: true, type: Object, default: () => ({}) });
-const cardStyles = defineModel<CardStyles>('cardStyles', { required: true,type: Object, default: () => ({}) });
-const globalTextStyles = defineModel<GlobalTextStyles>('globalTextStyles', { required: true,type: Object, default: () => ({}) });
+const cardGroups = defineModel('cardGroups', { required: true, type: Array, default: () => [] });
+const cardGroupStyles = defineModel('cardGroupStyles', { required: true, type: Object, default: () => ({}) });
+const cardRowStyles = defineModel('cardRowStyles', { required: true, type: Object, default: () => ({}) });
+const cardStyles = defineModel('cardStyles', { required: true, type: Object, default: () => ({}) });
+const globalTextStyles = defineModel('globalTextStyles', { required: true, type: Object, default: () => ({}) });
 
 // 创建API服务管理器引用
 const apiServiceManager = ref(null);
+
+// 定义组件需要触发的事件
+const componentEmit = defineEmits([
+  'edit-card',
+  'edit-row-style'
+]);
 
 // 在组件挂载时注册事件
 onMounted(() => {
@@ -226,9 +230,10 @@ function formatBytes(bytes) {
 const setPageSize = (size) => {
   if (size) {
     // 通知其他组件页面尺寸已更改
-    emit('page-size-changed', size)
+    eventBusEmit('page-size-changed', size)
   }
 }
+
 // 更新卡片样式
 const updateStyle = () => {
   // 这个函数被调用时会触发重新渲染
@@ -238,6 +243,7 @@ const updateStyle = () => {
     // ElMessage.success('样式已更新')
   })
 }
+
 // 添加 handlePageSizeChange 方法
 const handlePageSizeChange = (size) => {
   if (size && size.width && size.height) {
@@ -376,7 +382,8 @@ defineExpose({
   convertFormsToCards,
   setPageSize,
   saveCardDataToServer,
-  loadCardDataFromServer
+  loadCardDataFromServer,
+  floatingToolbarRef // 暴露浮动工具栏引用
 })
 
 // 监听页面尺寸变化

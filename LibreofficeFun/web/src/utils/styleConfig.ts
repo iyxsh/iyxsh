@@ -1,11 +1,4 @@
 // v-model参数接口定义
-export interface CardGroups {
-  id?: string;
-  title?: string;
-  rows: CardRow[];
-  style?: Record<string, any>;
-}[]
-
 export interface CardRow {
   type: string;
   cards: Card[];
@@ -18,6 +11,14 @@ export interface Card {
   textStyle?: Record<string, any>;
   style?: Record<string, any>;
 }
+
+// 修复：正确导出CardGroups类型
+export type CardGroups = {
+  id?: string;
+  title?: string;
+  rows: CardRow[];
+  style?: Record<string, any>;
+}[]
 
 // 修复：确保正确导出这些类型
 export interface CardGroupStyles {
