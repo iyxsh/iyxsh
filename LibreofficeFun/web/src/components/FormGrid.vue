@@ -19,7 +19,6 @@
     <!-- 表单网格内容 -->
     <div v-if="!loading && !error && !showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
       <!-- 表单卡片列表 -->
-      <div class="form-cards">
         <SingleFormShow
           v-for="(form, index) in forms"
           :key="form.id"
@@ -35,7 +34,6 @@
           @update-size="updateFormSize"
           @mousedown="handleFormMouseDown(form)"
         />
-      </div>
     </div>
 
     <!-- 添加表单编辑器 -->
@@ -753,26 +751,18 @@ onMounted(() => {
       // 使用props.modelValue直接进行验证
       const validated = validateForms(newVal);
       
-      // 只有当数据真正发生变化时才更新
-      const isDifferent = validated.length !== forms.value.length || 
-        validated.some((form, index) => {
-          const currentForm = forms.value[index];
-          return JSON.stringify(form) !== JSON.stringify(currentForm);
-        });
+      // 总是更新表单数据，确保新添加的表单能正确显示
+      forms.value.splice(0, forms.value.length, ...validated);
       
-      if (isDifferent) {
-        forms.value.splice(0, forms.value.length, ...validated);
-        
-        // 更新位置信息
-        const newPositions = validated.map(form => ({
-          id: form.id,
-          ...form.position,
-          width: form.size?.width || 200,
-          height: form.size?.height || 100
-        }));
-        
-        positions.value = newPositions;
-      }
+      // 更新位置信息
+      const newPositions = validated.map(form => ({
+        id: form.id,
+        ...form.position,
+        width: form.size?.width || 200,
+        height: form.size?.height || 100
+      }));
+      
+      positions.value = newPositions;
       
       nextTick(() => {
         initializeGridLayout();
@@ -780,8 +770,8 @@ onMounted(() => {
         // 只有在内部状态变化时才触发该事件
       });
     }, { deep: true, immediate: true });
-
-    // 优化加载状态处理
+    
+        // 优化加载状态处理
     nextTick(() => {
       // 当表单数据就绪时立即更新加载状态
       if (props.modelValue && props.modelValue.length > 0) {
@@ -793,24 +783,57 @@ onMounted(() => {
         }, 100)
       }
     });
+
+    // 使用 watch 监听 el-main 容器尺寸变化
+    const elMainRef = ref(null);
+    const getElMain = () => {
+      elMainRef.value = document.querySelector('.main-container .el-main');
+    };
+
+    getElMain(); // 初始获取
+
+    watch(
+      () => (elMainRef.value ? [elMainRef.value.offsetWidth, elMainRef.value.offsetHeight] : null),
+      () => {
+        console.log('[FormGrid] 检测到 el-main 容器尺寸变化');
+        // 触发更新以重新计算 gridContainerStyle
+        nextTick(() => {
+          // 强制更新样式
+          if (props.pageSize && cardStyleService.updateCardStyles) {
+            cardStyleService.updateCardStyles(forms.value, positions.value);
+          }
+        });
+      },
+      { deep: true }
+    );
   } catch (error) {
     handleError(error, '组件挂载失败');
   }
 });
 
+
 // 计算网格容器样式
 const gridContainerStyle = computed(() => {
+  // 获取el-main元素的实时尺寸作为依赖，确保当页面尺寸变化时重新计算
+  const mainElement = document.querySelector('.main-container .el-main');
+  
   if (props.pageSize) {
     const { width, height, unit } = props.pageSize;
     return {
       width: `${width}${unit}`,
-      minHeight: `${height}${unit}`,
-      border: '1px solid #eee',
+      height: `${height}${unit}`,
       position: 'relative',
       overflow: 'auto'
     };
   }
-  return {};
+  
+  // 如果没有pageSize，返回一个默认样式以确保容器可见
+  return {
+    position: 'relative',
+    minHeight: '400px',
+    width: '100%',
+    overflow: 'auto'
+  };
 });
 
 </script>
@@ -823,15 +846,18 @@ const gridContainerStyle = computed(() => {
   position: relative;
   width: 100%;
   height: 100%;
+  flex: 1; /* 占据可用空间 */
+  display: flex;
+  flex-direction: column;
 }
 
 .form-grid {
   position: relative;
-  min-height: 100%;
+  flex: 1; /* 占据剩余空间 */
+  min-height: 400px; /* 确保容器始终可见 */
   padding: var(--spacing-base);
   /* 添加对页面尺寸的支持 */
-  box-sizing: border-box;
-  margin: 0 auto;
+  overflow: auto; /* 允许滚动 */
 }
 
 .form-editor-overlay {

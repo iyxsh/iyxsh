@@ -35,6 +35,13 @@
             <span class="button-text">清除页面</span>
           </el-button>
         </el-tooltip>
+        
+        <el-tooltip content="清除所有页面" placement="bottom" :disabled="!isEditable">
+          <el-button @click="clearAllPages" :disabled="!isEditable" type="danger" plain>
+            <el-icon><Delete /></el-icon>
+            <span class="button-text">清除全部</span>
+          </el-button>
+        </el-tooltip>
 
         <el-tooltip content="添加新页面" placement="bottom" :disabled="!isEditable">
           <el-button @click="addPage" :disabled="!isEditable" type="success" plain>
@@ -60,7 +67,7 @@
             <el-option
               v-for="(page, index) in pages"
               :key="index"
-              :label="`页面 ${index + 1}`"
+              :label="page.name || `页面 ${index + 1}`"
               :value="index"
             />
           </el-select>
@@ -92,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
 import { DocumentAdd, Grid, Delete, Upload, Download, Position, Rank, Plus, Minus } from '@element-plus/icons-vue'
@@ -128,6 +135,23 @@ const { on, off } = useEventBus()
 
 // 本地状态
 const selectedPage = ref(props.currentPage)
+
+// 监听props.currentPage变化
+watch(() => props.currentPage, (newVal) => {
+  console.log('[Toolbar] currentPage prop changed:', newVal);
+  if (newVal !== undefined && newVal !== null) {
+    selectedPage.value = newVal;
+  }
+}, { immediate: true });
+
+// 监听props.pages变化
+watch(() => props.pages, (newPages) => {
+  console.log('[Toolbar] pages prop changed:', newPages?.length);
+  // 如果当前选中的页面超出范围，则重置为0
+  if (newPages && selectedPage.value >= newPages.length) {
+    selectedPage.value = Math.max(0, newPages.length - 1);
+  }
+}, { deep: true });
 
 // 拖拽相关状态
 const isDragging = ref(false)
@@ -166,14 +190,19 @@ const handleError = (error, context = '未知上下文') => {
 // 处理页面切换
 const changePage = (pageIndex) => {
   try {
-    if (pageIndex < 0 || pageIndex >= props.pages.length) {
-      throw new Error(`无效的页面索引: ${pageIndex}`);
+    console.log('[Toolbar] 页面切换事件触发:', pageIndex);
+    
+    // 确保pageIndex是数字类型
+    const pageNum = Number(pageIndex);
+    
+    if (isNaN(pageNum) || pageNum < 0 || (props.pages && pageNum >= props.pages.length)) {
+      throw new Error(`无效的页面索引: ${pageNum}`);
     }
     
-    selectedPage.value = pageIndex
-    emit('change-page', pageIndex)
+    selectedPage.value = pageNum;
+    emit('change-page', pageNum);
   } catch (error) {
-    handleError(error, '页面切换失败')
+    handleError(error, '页面切换失败');
   }
 }
 
@@ -213,6 +242,38 @@ const clearCurrentPageForms = () => {
     })
   } catch (error) {
     handleError(error, '清除表单失败')
+  }
+}
+
+// 清空所有页面
+const clearAllPages = () => {
+  try {
+    if (!isEditable.value) {
+      showUnlockMessage()
+      return
+    }
+    
+    ElMessageBox.confirm(
+      '确定要清除所有页面吗？此操作无法撤销。',
+      '清除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    ).then(() => {
+      // 调用传入的clearAllPages函数
+      if (props.clearAllPages && typeof props.clearAllPages === 'function') {
+        props.clearAllPages()
+      } else {
+        console.warn('[Toolbar] clearAllPages 方法未定义或不是函数')
+        ElMessage.warning('清空所有页面功能不可用')
+      }
+    }).catch(() => {
+      // 用户取消操作
+    })
+  } catch (error) {
+    handleError(error, '清空所有页面失败')
   }
 }
 
@@ -368,41 +429,57 @@ const startDrag = (event) => {
   dragOffset.x = event.clientX - position.x
   dragOffset.y = event.clientY - position.y
   
-  console.log('计算拖动偏移量', { dragOffset, clientPos: { x: event.clientX, y: event.clientY }, position })
+  // 添加拖动开始样式
+  toolbarContainer.value.classList.add('toolbar-dragging')
   
   document.addEventListener('mousemove', handleDrag)
   document.addEventListener('mouseup', stopDrag)
+  document.addEventListener('mouseleave', stopDrag) // 添加mouseleave事件
+  document.addEventListener('selectstart', preventSelection) // 防止文本选择
+  document.addEventListener('contextmenu', preventSelection) // 防止右键菜单
   
-  // 防止选择文本
+  // 防止选择文本和拖动过程中的默认行为
   event.preventDefault()
 }
 
-const handleDrag = (event) => {
+// 添加防抖函数
+function debounce(func, delay) {
+  let timeout
+  return (...args) => {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => {
+      func.apply(this, args)
+    }, delay)
+  }
+}
+
+const handleDrag = debounce((event) => {
   if (!isDragging.value) return
   
-  position.x = event.clientX - dragOffset.x
-  position.y = event.clientY - dragOffset.y
+  // 使用transform代替left/top提升性能
+  const newX = event.clientX - dragOffset.x
+  const newY = event.clientY - dragOffset.y
   
-  // 确保工具栏不超出屏幕边界
+  // 快速边界检测
   const { clientWidth, clientHeight } = document.documentElement
   const toolbar = toolbarContainer.value
   
   if (toolbar) {
     const { width, height } = toolbar.getBoundingClientRect()
-    position.x = Math.max(0, Math.min(position.x, clientWidth - width))
-    position.y = Math.max(0, Math.min(position.y, clientHeight - height))
+    
+    // 使用位运算代替Math.max/Math.min提升性能
+    const x = (newX > clientWidth - width ? clientWidth - width : newX) | 0
+    const y = (newY > clientHeight - height ? clientHeight - height : newY) | 0
+    
+    position.x = x < 0 ? 0 : x
+    position.y = y < 0 ? 0 : y
   }
-}
+}, 16) // 限制在16ms内只执行一次（约60fps）
 
-const stopDrag = () => {
-  isDragging.value = false
-  document.removeEventListener('mousemove', handleDrag)
-  document.removeEventListener('mouseup', stopDrag)
-  
-  // 保存位置到本地存储
-  localStorage.setItem('toolbar-position', JSON.stringify(position))
+// 防止文本选择
+function preventSelection(e) {
+  e.preventDefault()
 }
-
 // 工具栏停靠/浮动切换
 const toggleDock = () => {
   isDocked.value = !isDocked.value
@@ -421,6 +498,28 @@ const toggleDock = () => {
       }
     })
   }
+}
+
+// 停止拖动
+const stopDrag = () => {
+  if (!isDragging.value) return
+  
+  isDragging.value = false
+  
+  // 移除拖动样式
+  if (toolbarContainer.value) {
+    toolbarContainer.value.classList.remove('toolbar-dragging')
+  }
+  
+  // 移除事件监听器
+  document.removeEventListener('mousemove', handleDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('mouseleave', stopDrag)
+  document.removeEventListener('selectstart', preventSelection)
+  document.removeEventListener('contextmenu', preventSelection)
+  
+  // 保存位置到本地存储
+  localStorage.setItem('toolbar-position', JSON.stringify(position))
 }
 
 // 最小化/展开工具栏
@@ -482,320 +581,191 @@ onMounted(() => {
     isMinimized: isMinimized.value
   });
   
-  // 监听窗口大小变化，确保工具栏位置有效
+  // 添加窗口大小变化监听器
   window.addEventListener('resize', handleWindowResize)
   cleanupTasks.push(() => window.removeEventListener('resize', handleWindowResize))
+  
+  // 添加键盘事件监听器
+  document.addEventListener('keydown', handleKeyDown)
+  cleanupTasks.push(() => document.removeEventListener('keydown', handleKeyDown))
 })
 
 // 处理窗口大小变化
 const handleWindowResize = () => {
-  if (!isDocked.value && toolbarContainer.value) {
-    const { width, height } = toolbarContainer.value.getBoundingClientRect()
-    const { clientWidth, clientHeight } = document.documentElement
-    
-    position.x = Math.max(0, Math.min(position.x, clientWidth - width))
-    position.y = Math.max(0, Math.min(position.y, clientHeight - height))
-  }
+  // 使用requestAnimationFrame优化性能
+  requestAnimationFrame(() => {
+    if (!isDocked.value && toolbarContainer.value) {
+      const { width, height } = toolbarContainer.value.getBoundingClientRect()
+      const { clientWidth, clientHeight } = document.documentElement
+      
+      // 快速边界检测
+      const x = position.x > clientWidth - width ? clientWidth - width : position.x
+      const y = position.y > clientHeight - height ? clientHeight - height : position.y
+      
+      position.x = x < 0 ? 0 : x
+      position.y = y < 0 ? 0 : y
+    }
+  })
 }
+
+  // 处理键盘事件
+  const handleKeyDown = (event) => {
+    // Ctrl+D 切换停靠状态
+    if (event.ctrlKey && event.key === 'd') {
+      event.preventDefault()
+      toggleDock()
+    }
+    
+    // Ctrl+M 切换最小化状态
+    if (event.ctrlKey && event.key === 'm') {
+      event.preventDefault()
+      toggleMinimize()
+    }
+  }
 
 // 在组件卸载前执行清理
 onBeforeUnmount(() => {
   // 执行资源清理
   cleanupResources()
   
-  // 移除拖动相关的事件监听
+  // 移除事件监听器
   document.removeEventListener('mousemove', handleDrag)
   document.removeEventListener('mouseup', stopDrag)
-
+  document.removeEventListener('mouseleave', stopDrag)
+  document.removeEventListener('selectstart', preventSelection)
+  document.removeEventListener('contextmenu', preventSelection)
+  window.removeEventListener('resize', handleWindowResize)
+  document.removeEventListener('keydown', handleKeyDown)
+  
   console.log('Toolbar component about to be unmounted');
+})
+
+// 添加调试信息
+defineExpose({
+  position,
+  isDragging,
+  isDocked,
+  isMinimized
 })
 </script>
 
 <style scoped>
-/* 工具栏容器样式 */
 .toolbar-container {
-  width: 100%;
-  background-color: #ffffff;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.95);
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-  padding: 8px;
-  margin-bottom: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-/* 浮动工具栏 */
-.toolbar-floating {
-  position: fixed !important;
-  z-index: 2000 !important;
-  border-radius: 10px !important;
-  min-width: 300px;
-  max-width: 90vw;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   backdrop-filter: blur(10px);
-  background-color: rgba(255, 255, 255, 0.95);
-  animation: fadein 0.3s;
-  margin: 0 !important; /* 覆盖默认margin */
-  box-sizing: border-box;
-  width: auto !important;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  user-select: none;
+  margin-bottom: 15px;
+  min-height: 48px;
 }
 
-/* 拖动时样式 */
-.toolbar-dragging {
-  opacity: 0.9;
-  cursor: grabbing;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
-  transform: scale(1.01);
-  border: 1px dashed #409EFF;
+.toolbar-container.toolbar-dragging {
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.15);
+  transform: scale(1.02);
 }
 
-/* 最小化工具栏 */
-.toolbar-minimized {
+.toolbar-container.toolbar-docked {
+  position: static !important;
+  margin: 0;
+  border-radius: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  backdrop-filter: none;
+}
+
+.toolbar-container.toolbar-minimized {
+  width: auto;
   padding: 4px;
-  max-width: 200px;
 }
 
-/* 拖动手柄 */
 .toolbar-drag-handle {
-  cursor: grab;
-  height: 20px;
+  cursor: move;
+  padding: 4px 8px;
+  margin-right: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  background-color: rgba(0, 0, 0, 0.03);
-  padding-bottom: 4px;
-  border-bottom: 1px dashed #dcdfe6;
-  user-select: none; /* 防止文本选择 */
-  touch-action: none; /* 防止触摸操作 */
-  z-index: 10; /* 确保在其他元素上层 */
 }
 
 .toolbar-drag-handle:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-.toolbar-drag-handle .el-icon {
-  color: #909399;
-  font-size: 16px;
-}
-
-/* 工具栏操作按钮 */
 .toolbar-actions {
-  display: flex;
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  gap: 5px;
-}
-
-.toolbar-action-button {
-  padding: 2px !important;
-  height: 24px !important;
-  width: 24px !important;
-}
-
-/* 主工具栏内容 */
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.toolbar-section {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-/* 按钮样式 */
-.toolbar .el-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-}
-
-.toolbar .el-button .button-text {
-  margin-left: 2px;
-  white-space: nowrap;
-}
-
-.toolbar .el-icon {
-  font-size: 16px;
-}
-
-.toolbar .el-select {
-  width: 140px;
-}
-
-/* 屏幕阅读器友好样式 */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
-/* 动画 */
-@keyframes fadein {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 15px;
-  }
-
-  .toolbar-section {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .toolbar-right {
-    justify-content: flex-end;
-  }
-
-  .button-text {
-    display: none;
-  }
-  
-  .toolbar .el-button {
-    padding: 8px;
-    min-width: unset;
-  }
-  
-  .toolbar .el-select {
-    width: 120px;
-  }
-  
-  .toolbar-container:not(.toolbar-docked):not(.toolbar-minimized) {
-    width: 90vw;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-}
-
-.toolbar-drag-handle:hover {
-  color: #409EFF;
-}
-
-/* 停靠时不显示拖动手柄 */
-.toolbar-docked .toolbar-drag-handle {
-  display: none;
-}
-
-/* 工具栏操作按钮 */
-.toolbar-actions {
-  position: absolute;
-  top: 5px;
-  right: 5px;
   display: flex;
   gap: 4px;
+  margin-right: 8px;
+  align-items: center;
 }
 
 .toolbar-action-button {
-  width: 24px !important;
-  height: 24px !important;
-  padding: 0 !important;
-  min-height: 24px !important;
-  border: none !important;
-}
-
-.toolbar-action-button .el-icon {
-  font-size: 12px !important;
+  padding: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .toolbar-action-button:hover {
-  background-color: #f2f6fc !important;
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
-/* 工具栏主内容 */
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  margin: 0 auto;
-  transition: all 0.3s ease;
-  gap: 10px;
+  width: 100%;
+  gap: 12px;
 }
 
 .toolbar-section {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
-.toolbar .el-button {
+.toolbar-left {
+  flex: 1;
+}
+
+.toolbar-right {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  padding: 6px 12px;
-  justify-content: center;
-  border-radius: 6px;
-  height: 32px;
+  gap: 12px;
 }
 
-.toolbar .el-icon {
-  font-size: 14px;
+.button-text {
+  margin-left: 4px;
 }
 
-.toolbar .el-select {
-  width: 120px;
-}
-
-.toolbar .el-switch {
-  margin-right: 8px;
-}
-
-.toolbar-section.toolbar-right {
-  justify-content: flex-end;
-}
-
-/* 按钮组样式优化 */
-.el-button-group {
-  display: flex;
-  align-items: center;
-}
-
-/* 动画效果 */
-@keyframes fadein {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* 响应式布局 */
 @media (max-width: 768px) {
   .toolbar {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
   }
-
+  
   .toolbar-section {
-    width: 100%;
+    justify-content: center;
+    margin: 4px 0;
+  }
+  
+  .toolbar-right {
     justify-content: center;
   }
-
-  .toolbar-section.toolbar-right {
-    justify-content: center;
-  }
-
+  
   .button-text {
     display: none;
   }

@@ -1,6 +1,6 @@
 <template>
   <div class="page-manager">
-    <h1>页面管理器引文</h1>
+    <h1>页面管理器</h1>
 
     <!-- 导航区域 -->
     <div class="navigation">
@@ -9,115 +9,70 @@
 
     <!-- 页面管理功能 -->
     <el-container class="main-container">
-      <Toolbar :onAddPage="onAddPage" :clearAllPages="clearAllPages" :rotatePage="rotateCurrentPage"
-        :showRotateButton="pages.length > 0" />
+      <Toolbar 
+        :onAddPage="onAddPage" 
+        :clearAllPages="clearAllPages" 
+        :rotatePage="rotateCurrentPage"
+        :showRotateButton="pages.length > 0" 
+        @change-page="handleToolbarChangePage"
+        :pages="pages"
+        :currentPage="currentPageIdx"
+        :cardStyleOn="cardStyleOn"
+        :editable="editPageIdx === currentPageIdx"
+        />
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
-          <FormGrid v-if="pages[currentPageIdx] && Array.isArray(pages[currentPageIdx].forms)"
-            v-model="pages[currentPageIdx].forms"
-            :editable="editPageIdx === currentPageIdx" 
-            :cardStyleOn="cardStyleOn"
-            :pageSize="pages[currentPageIdx]?.pageSize" 
-            @update:modelValue="handleFormUpdate"
-            ref="formGridRef" />
-          <FloatingBar v-if="pages[currentPageIdx]"
-            :clearCurrentPageForms="clearCurrentPageForms" :editable="editPageIdx === currentPageIdx"
-            :onToggleCardStyle="onToggleCardStyle" @add-form="onAddForm" />
+          <FormGrid v-if="pages[currentPageIdx]" v-model="pages[currentPageIdx].forms" 
+            :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
+            :pageSize="pages[currentPageIdx]?.pageSize" @update:modelValue="handleFormUpdate" 
+            @containerResize="handleContainerResize" ref="formGridRef" 
+            :key="`formgrid-${currentPageIdx}`" />
         </template>
 
         <!-- 卡片转换页面 -->
         <template v-else-if="currentPageType === 'cards'">
-          <SimpleCardConverter 
-            :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
-            :pageSize="pages[currentPageIdx]?.pageSize" 
-            ref="cardConverterRef"
-            :key="`${currentPageType}-${currentPageIdx}`"
-            @edit-card="handleEditCard"
+          <SimpleCardConverter :forms="pages[currentPageIdx] ? pages[currentPageIdx].forms : []"
+            :pageSize="pages[currentPageIdx]?.pageSize" ref="cardConverterRef"
+            :key="`${currentPageType}-${currentPageIdx}`" @edit-card="handleEditCard"
             @edit-row-style="handleEditRowStyle" />
         </template>
+        
+        <!-- 浮动工具条 -->
+        <FloatingBar 
+          v-if="pages.length > 0"
+          :clearCurrentPageForms="clearCurrentPageForms"
+          :editable="editPageIdx === currentPageIdx"
+          :onToggleCardStyle="onToggleCardStyle"
+          @add-form="onAddForm"
+          :pages="pages"
+          :current-page-idx="currentPageIdx"
+          :edit-page-idx="editPageIdx"
+          @select-page="onSelectPage"
+          @edit-page-name="editPageName"
+          :edit-idx-map="editIdxMap"
+          :edit-name="editName"
+          @update:edit-name="val => editName = val"
+          @save-page-name="savePageName"
+          @delete-page="deletePage"
+          @toggle-edit-page="toggleEditPage"
+          :current-page-type="currentPageType"
+          @change-page-type="handlePageTypeChange"
+          @add-page="onAddPage"
+        />
       </el-main>
-      <!-- 可拖动侧边栏 -->
-      <div class="resizable-aside-container" :style="{ width: asideWidth + 'px' }">
-        <div 
-          class="resize-handle" 
-          @mousedown="startResize"
-          :class="{ 'active': isResizing }"
-        ></div>
-        <el-aside class="resizable-aside" :width="asideWidth + 'px'">
-          <div class="aside-header">
-            <h3>页面管理</h3>
-            <el-button 
-              class="toggle-aside-btn" 
-              link 
-              @click="toggleAside"
-            >
-              <el-icon>
-                <component :is="asideCollapsed ? 'ArrowLeft' : 'ArrowRight'" />
-              </el-icon>
-            </el-button>
-          </div>
-          
-          <div v-show="!asideCollapsed" class="aside-content">
-            <el-menu :default-active="String(currentPageIdx)" @select="onSelectPage">
-              <el-menu-item v-for="(page, idx) in pages" :key="page.id" :index="String(idx)" class="page-menu-item">
-                <span v-if="!editIdxMap[idx]" @dblclick="editPageName(idx)">
-                  {{ page.name || i18nTrans('pageManager.newPage') }}
-                  <el-icon class="edit-icon" @click.stop="editPageName(idx)">
-                    <Edit />
-                  </el-icon>
-                </span>
-                <el-input v-else v-model="editName" size="small" @blur="savePageName(idx)" @keyup.enter="savePageName(idx)"
-                  class="page-name-input" autofocus />
-                <div class="page-actions">
-                  <el-popconfirm :title="i18nTrans('pageManager.confirmDelete')" @confirm="deletePage(idx)"
-                    confirm-button-text="删除" cancel-button-text="取消">
-                    <template #reference>
-                      <el-icon class="delete-icon">
-                        <Delete />
-                      </el-icon>
-                    </template>
-                  </el-popconfirm>
-                  <el-icon class="lock-icon" @click.stop="toggleEditPage(idx)">
-                    <Lock v-if="editPageIdx !== idx" />
-                    <svg v-else width="1em" height="1em" viewBox="0 0 1024 1024" fill="currentColor">
-                      <path
-                        d="M512 128c-106 0-192 86-192 192v96h-32c-17.7 0-32 14.3-32 32v384c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V448c0-17.7-14.3-32-32-32h-32v-96c0-106-86-192-192-192zm-128 192c0-70.7 57.3-128 128-128s128 57.3 128 128v96H384v-96zm352 128v-80h80v80h-80zm-392-64v80c0 35.3 28.7 64 64 64h80c35.3 0 64-28.7 64-64v-80c0-35.3-28.7-64-64-64zm64-64h80v80h-80v-80zm408-320H240c-88.2 0-160 71.8-160 160v416c0 88.2 71.8 160 160 160h544c88.2 0 160-71.8 160-160V304c0-88.2-71.8-160-160-160zm96 576c0 52.9-43.1 96-96 96H240c-52.9 0-96-43.1-96-96V304c0-52.9 43.1-96 96-96h544c52.9 0 96 43.1 96 96v416z" />
-                      <path
-                        d="M756 872H268c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10h488c5.5 0 10-4.5 10-10v-46c0-5.5-4.5-10-10-10zM258 114h508c5.5 0 10-4.5 10-10V58c0-5.5-4.5-10-10-10H258c-5.5 0-10 4.5-10 10v46c0 5.5 4.5 10 10 10z" />
-                      <animateTransform attributeName="transform" type="rotate" from="0 512 512" to="360 512 512" dur="1s"
-                        begin="mouseover" fill="freeze" />
-                    </svg>
-                  </el-icon>
-                </div>
-              </el-menu-item>
-            </el-menu>
-
-            <!-- 页面类型选择 -->
-            <div class="page-type-selector">
-              <el-radio-group v-model="currentPageType" size="small" @change="handlePageTypeChange">
-                <el-radio-button value="form">{{ i18nTrans('pageManager.formPage') }}</el-radio-button>
-                <el-radio-button value="cards">{{ i18nTrans('pageManager.cardPage') }}</el-radio-button>
-              </el-radio-group>
-            </div>
-          </div>
-        </el-aside>
-      </div>
     </el-container>
 
     <!-- 纸张尺寸选择对话框 -->
-    <el-dialog 
-      v-model="showPageSizeDialog" 
-      :title="i18nTrans('pageManager.selectPageSize')" 
-      width="650px"
-      :before-close="handleDialogClose"
-    >
+    <el-dialog v-model="showPageSizeDialog" :title="i18nTrans('pageManager.selectPageSize')" width="650px"
+      :before-close="handleDialogClose">
       <div class="page-size-selector">
         <el-form label-position="top">
           <el-row :gutter="20">
             <el-col :span="8">
               <el-form-item :label="i18nTrans('pageManager.pageName')">
-                <el-input v-model="newPageName" :placeholder="i18nTrans('pageManager.enterPageName')" autofocus></el-input>
+                <el-input v-model="newPageName" :placeholder="i18nTrans('pageManager.enterPageName')"
+                  autofocus></el-input>
               </el-form-item>
             </el-col>
             <el-col :span="16">
@@ -131,17 +86,10 @@
               <div class="category-title">{{ category }}系列</div>
               <div class="papers-group">
                 <div v-for="paper in papers" :key="paper.name" class="paper-option-compact">
-                  <el-radio 
-                    :value="paper.name" 
-                    class="paper-radio" 
-                    v-model="selectedPageSize"
-                    @change="selectPaper(paper)"
-                  >
-                    <div 
-                      class="paper-preview-compact" 
-                      :style="getPaperPreviewStyle(paper)"
-                      :class="{ 'selected': selectedPageSize === paper.name }"
-                    >
+                  <el-radio :value="paper.name" class="paper-radio" v-model="selectedPageSize"
+                    @change="selectPaper(paper)">
+                    <div class="paper-preview-compact" :style="getPaperPreviewStyle(paper)"
+                      :class="{ 'selected': selectedPageSize === paper.name }">
                       <span class="paper-name">{{ paper.name }}</span>
                       <span class="paper-dimensions">
                         {{ paper.width }}×{{ paper.height }} {{ paper.unit }}
@@ -156,20 +104,12 @@
       </div>
       <template #footer>
         <span class="dialog-footer">
-          <el-button 
-            @click="debugButton('cancel')"
-            class="toolbar-button cancel-button"
-          >
+          <el-button @click="debugButton('cancel')" class="toolbar-button cancel-button">
             <el-icon name="DocumentRemove"></el-icon>
             <span class="button-text">{{ i18nTrans('pageManager.cancel') }}</span>
           </el-button>
-          <el-button 
-            type="primary" 
-            @click="debugButton('create')"
-            :loading="isCreatingPage" 
-            :disabled="!selectedPageSize"
-            class="toolbar-button create-button"
-          >
+          <el-button type="primary" @click="debugButton('create')" :loading="isCreatingPage"
+            :disabled="!selectedPageSize" class="toolbar-button create-button">
             <el-icon name="DocumentAdd"></el-icon>
             <span class="button-text">{{ i18nTrans('pageManager.create') }}</span>
           </el-button>
@@ -180,7 +120,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, computed, nextTick } from 'vue'
+import { ref, reactive, watch, onMounted, computed, nextTick, onUnmounted } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
@@ -190,7 +130,7 @@ import SimpleCardConverter from '../components/SimpleCardConverter.vue'
 import { Edit, Delete, Lock, DocumentRemove, DocumentAdd } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
-import { getLocale, setLocale, t as i18nTrans} from '../utils/i18n'
+import { getLocale, setLocale, t as i18nTrans } from '../utils/i18n'
 import { onBeforeMount } from 'vue'
 // 确保所有用到的翻译键都存在
 const ensureTranslationsExist = () => {
@@ -241,14 +181,14 @@ const startWidth = ref(0) // 调整大小起始宽度
 onBeforeMount(() => {
   try {
     console.log('[PageManager] 页面即将挂载，当前页面数量:', pages.value.length);
-    
+
     // 确保当前页面索引有效
     if (pages.value.length > 0) {
       currentPageIdx.value = Math.min(currentPageIdx.value, pages.value.length - 1);
     } else {
       currentPageIdx.value = 0;
     }
-    
+
     console.log('[PageManager] 初始化当前页面索引:', currentPageIdx.value);
   } catch (error) {
     console.error('[PageManager] 初始化页面数据时出错:', error);
@@ -276,7 +216,7 @@ watch(
 // 监听当前页面索引变化，确保页面尺寸正确更新
 watch(currentPageIdx, (newIndex, oldIndex) => {
   console.log(`[PageManager] 页面索引从 ${oldIndex} 变更为 ${newIndex}`);
-  
+
   // 确保页面数据存在
   if (newIndex >= 0 && newIndex < pages.value.length) {
     const currentPage = pages.value[newIndex];
@@ -287,7 +227,7 @@ watch(currentPageIdx, (newIndex, oldIndex) => {
       formsCount: currentPage.forms?.length || 0
     });
   }
-  
+
   // 强制更新以确保组件接收到最新的页面数据
   nextTick(() => {
     // 触发响应式更新
@@ -321,7 +261,7 @@ const getPaperPreviewStyle = (paper) => {
   const maxWidth = 80
   const maxHeight = 60
   const ratio = Math.min(maxWidth / paper.width, maxHeight / paper.height)
-  
+
   // 计算实际显示尺寸
   const displayWidth = Math.max(40, paper.width * ratio)  // 最小宽度40px
   const displayHeight = Math.max(30, paper.height * ratio) // 最小高度30px
@@ -360,16 +300,16 @@ const groupedPaperSizes = computed(() => {
 // 添加当前页面尺寸计算属性
 const pageSize = computed(() => {
   if (pages.value.length > 0 && pages.value[currentPageIdx.value]) {
-    return pages.value[currentPageIdx.value].pageSize || { 
-      width: 210, 
-      height: 297, 
-      unit: 'mm' 
+    return pages.value[currentPageIdx.value].pageSize || {
+      width: 210,
+      height: 297,
+      unit: 'mm'
     };
   }
-  return { 
-    width: 210, 
-    height: 297, 
-    unit: 'mm' 
+  return {
+    width: 210,
+    height: 297,
+    unit: 'mm'
   };
 });
 
@@ -387,37 +327,47 @@ function handleFormUpdate(updatedForms) {
     // 检查表单是否真的发生了变化
     const currentPage = pages.value[currentPageIdx.value];
     const existingForms = currentPage.forms || [];
-    
+
     // 使用JSON.stringify进行深度比较
     if (JSON.stringify(existingForms) === JSON.stringify(updatedForms)) {
       console.log('[PageManager] 表单未发生变化，跳过更新');
       return;
     }
 
-    // 直接更新当前页面的表单数组，避免使用splice等可能引起问题的方法
+    // 创建更新后的页面对象
     const updatedPage = {
       ...currentPage,
       forms: Array.isArray(updatedForms) ? [...updatedForms] : []
     };
-    
-    // 替换整个页面对象以触发响应式更新
+
+    // 创建新的pages数组以确保响应式更新
     const newPages = [...pages.value];
     newPages[currentPageIdx.value] = updatedPage;
+    
+    // 使用Vue的响应式系统进行更新
     pages.value = newPages;
 
     // 保存到本地存储
     localStorage.setItem('form-pages', JSON.stringify(pages.value));
+    
+    // 验证存储的数据
     const storedPages = JSON.parse(localStorage.getItem('form-pages'));
     console.log('[PageManager] 本地存储更新验证:', storedPages);
-    
-    console.log('[PageManager] 表单更新成功，当前页面表单数量:', 
+
+    console.log('[PageManager] 表单更新成功，当前页面表单数量:',
       pages.value[currentPageIdx.value]?.forms?.length || 0);
-    
+
     // 额外验证存储的数据
     if (storedPages && storedPages[currentPageIdx.value]) {
-      console.log('[PageManager] 存储中当前页面表单数量:', 
+      console.log('[PageManager] 存储中当前页面表单数量:',
         storedPages[currentPageIdx.value]?.forms?.length || 0);
     }
+    
+    // 触发nextTick确保DOM更新
+    nextTick(() => {
+      console.log('[PageManager] 页面数据更新完成，当前表单数量:', 
+        pages.value[currentPageIdx.value]?.forms?.length || 0);
+    });
   } catch (error) {
     console.error('[PageManager] 更新表单时出错:', error);
     ElMessage.error('更新表单失败');
@@ -429,30 +379,30 @@ function handleFormUpdate(updatedForms) {
 function checkAndFixFormDisplay() {
   try {
     console.log('[PageManager] 检查表单显示状态');
-    
+
     // 确保当前页面存在
     if (!pages.value[currentPageIdx.value]) {
       console.warn('[PageManager] 当前页面不存在，无法检查表单');
       return;
     }
-    
+
     // 获取当前页面表单数量
     const formCount = pages.value[currentPageIdx.value].forms?.length || 0;
     console.log(`[PageManager] 当前页面有 ${formCount} 个表单`);
-    
+
     // 如果有表单但FormGrid未显示，尝试强制更新
     if (formCount > 0 && formGridRef.value) {
       console.log('[PageManager] 尝试强制更新表单显示');
-      
+
       // 触发响应式更新
       nextTick(() => {
         // 强制更新页面数组引用，触发响应式
         pages.value = [...pages.value];
-        
+
         // 确保本地存储同步
         localStorage.setItem('form-pages', JSON.stringify(pages.value));
         console.log('[PageManager] 本地存储更新验证:', JSON.parse(localStorage.getItem('form-pages')));
-        
+
         console.log('[PageManager] 表单显示修复完成');
       });
     }
@@ -460,46 +410,6 @@ function checkAndFixFormDisplay() {
     console.error('[PageManager] 检查表单显示时出错:', error);
   }
 }
-
-// 在组件挂载时检查引用
-onMounted(() => {
-  console.log('PageManager 组件已挂载');
-  console.log('FormGrid 引用:', formGridRef.value ? '存在' : '不存在');
-  console.log('SimpleCardConverter 引用:', cardConverterRef.value ? '存在' : '不存在');
-
-  // 添加空值检查
-  if (formGridRef.value) {
-    console.log('FormGrid 组件状态:', {
-      isMounted: formGridRef.value.$el ? '已挂载' : '未挂载',
-      isVisible: formGridRef.value.$el?.offsetParent !== null
-    });
-    
-    errorLogService.addErrorLog(
-      new Error(),
-      `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
-      'info'
-    );
-  }
-
-  if (cardConverterRef.value) {
-    console.log('SimpleCardConverter 组件状态:', {
-      isMounted: cardConverterRef.value.$el ? '已挂载' : '未挂载',
-      isVisible: cardConverterRef.value.$el?.offsetParent !== null
-    });
-    
-    errorLogService.addErrorLog(
-      new Error(),
-      `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
-      'info'
-    );
-  }
-  
-  errorLogService.addErrorLog(
-    new Error(),
-    `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
-    'info'
-  );
-});
 
 // 在组件挂载时注册全局事件
 onMounted(() => {
@@ -521,6 +431,12 @@ onMounted(() => {
     }, 500);
   });
   
+  // 添加窗口大小变化监听器，用于更新el-main尺寸
+  window.addEventListener('resize', handleWindowResize);
+  
+  // 添加mainResize事件监听器
+  window.addEventListener('mainResize', handleMainResize);
+  
   // 添加空值检查
   console.log('PageManager 组件已挂载');
   console.log('FormGrid 引用:', formGridRef.value ? '存在' : '不存在');
@@ -532,7 +448,7 @@ onMounted(() => {
       isMounted: formGridRef.value.$el ? '已挂载' : '未挂载',
       isVisible: formGridRef.value.$el?.offsetParent !== null
     });
-    
+
     errorLogService.addErrorLog(
       new Error(),
       `FormGrid 组件状态: ${formGridRef.value.$el ? '已挂载' : '未挂载'}`,
@@ -545,20 +461,113 @@ onMounted(() => {
       isMounted: cardConverterRef.value.$el ? '已挂载' : '未挂载',
       isVisible: cardConverterRef.value.$el?.offsetParent !== null
     });
-    
+
     errorLogService.addErrorLog(
       new Error(),
       `SimpleCardConverter 组件状态: ${cardConverterRef.value.$el ? '已挂载' : '未挂载'}`,
       'info'
     );
   }
-  
+
   errorLogService.addErrorLog(
     new Error(),
     `PageManager 组件完整挂载状态: FormGrid ${formGridRef.value ? '存在' : '不存在'}, SimpleCardConverter ${cardConverterRef.value ? '存在' : '不存在'}`,
     'info'
   );
 });
+
+// 组件卸载时移除事件监听器
+onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('mainResize', handleMainResize);
+});
+
+// 处理窗口大小变化事件
+const handleWindowResize = debounce(() => {
+  console.log('[PageManager] 窗口大小发生变化');
+  
+  // 更新当前页面的pageSize以匹配el-main的新尺寸
+  updateCurrentPagePageSize();
+}, 300);
+
+// 处理mainResize事件
+const handleMainResize = debounce((event) => {
+  console.log('[PageManager] 接收到mainResize事件');
+  
+  // 更新当前页面的pageSize以匹配el-main的新尺寸
+  updateCurrentPagePageSize();
+}, 300);
+
+// 处理FormGrid容器尺寸变化事件
+const handleContainerResize = debounce((size) => {
+  console.log('[PageManager] FormGrid容器尺寸发生变化:', size);
+  
+  // 更新当前页面的pageSize以匹配容器的新尺寸
+  updateCurrentPagePageSize();
+}, 300);
+
+// 更新当前页面的pageSize
+const updateCurrentPagePageSize = () => {
+  try {
+    // 确保有页面存在
+    if (pages.value.length === 0 || currentPageIdx.value < 0 || currentPageIdx.value >= pages.value.length) {
+      return;
+    }
+    
+    // 获取el-main元素的尺寸
+    let mainWidth = 210; // 默认宽度 210mm
+    let mainHeight = 297; // 默认高度 297mm
+    
+    // 尝试获取实际的el-main尺寸
+    const mainElement = document.querySelector('.main-container .el-main');
+    if (mainElement) {
+      // 获取元素的像素尺寸
+      const rect = mainElement.getBoundingClientRect();
+      const widthPx = rect.width;
+      const heightPx = rect.height;
+      
+      // 将像素转换为毫米 (假设 1mm = 3.779527559055px)
+      mainWidth = Math.round(widthPx / 3.779527559055);
+      mainHeight = Math.round(heightPx / 3.779527559055);
+      
+      console.log('[PageManager] el-main新尺寸 (px):', widthPx, 'x', heightPx);
+      console.log('[PageManager] 转换为毫米:', mainWidth, 'x', mainHeight);
+    }
+    
+    // 更新当前页面的pageSize
+    const currentPage = pages.value[currentPageIdx.value];
+    if (currentPage && currentPage.pageSize) {
+      // 检查尺寸是否发生变化
+      if (currentPage.pageSize.width !== mainWidth || currentPage.pageSize.height !== mainHeight) {
+        console.log('[PageManager] 页面尺寸发生变化，更新pageSize');
+        
+        // 创建更新后的页面对象
+        const updatedPage = {
+          ...currentPage,
+          pageSize: {
+            name: '设备页',
+            width: mainWidth,
+            height: mainHeight,
+            unit: 'mm'
+          }
+        };
+        
+        // 更新页面
+        const newPages = [...pages.value];
+        newPages[currentPageIdx.value] = updatedPage;
+        pages.value = newPages;
+        
+        // 保存到本地存储
+        localStorage.setItem('form-pages', JSON.stringify(pages.value));
+        
+        console.log('[PageManager] 页面尺寸更新完成');
+      }
+    }
+  } catch (error) {
+    console.error('[PageManager] 更新页面尺寸时出错:', error);
+    errorLogService.addErrorLog(error, '更新页面尺寸失败', 'error');
+  }
+};
 
 // 优化的 onAddForm 方法
 const onAddForm = () => {
@@ -568,7 +577,7 @@ const onAddForm = () => {
       ElMessage.warning(i18nTrans('pageManager.noPages', {}, '请先创建页面'))
       return
     }
-    
+
     // 检查页面是否可编辑
     if (editPageIdx.value !== currentPageIdx.value) {
       // 如果页面不可编辑，提示用户需要先解锁页面
@@ -582,7 +591,7 @@ const onAddForm = () => {
         if (!formGridRef.value) {
           throw new Error('表单网格组件未找到')
         }
-        
+
         if (typeof formGridRef.value.handleAddForm !== 'function') {
           throw new Error('表单网格组件方法未找到')
         }
@@ -631,7 +640,7 @@ const handleDialogClose = (done) => {
 const selectPaper = (paper) => {
   selectedPageSize.value = paper.name
   selectedPaper.value = paper
-  
+
   console.log('[PageManager] 纸张选择:', {
     paperName: paper.name,
     paperWidth: paper.width,
@@ -643,7 +652,7 @@ const selectPaper = (paper) => {
 const selectPaperAndClick = (paper) => {
   selectedPageSize.value = paper.name
   selectedPaper.value = paper
-  
+
   console.log('[PageManager] 纸张选择并点击:', {
     paperName: paper.name,
     paperWidth: paper.width,
@@ -658,18 +667,18 @@ const createNewPage = () => {
     pageSize: selectedPageSize.value,
     pageType: currentPageType.value
   });
-  
+
   if (!selectedPageSize.value) {
     const warningMessage = '未选择纸张尺寸';
     console.warn('[PageManager] 创建页面警告:', warningMessage);
     ElMessage.warning(warningMessage);
-    
+
     errorLogService.addErrorLog(
       new Error(warningMessage),
       '创建页面失败 - 未选择纸张尺寸',
       'warning'
     );
-    
+
     return
   }
 
@@ -679,29 +688,54 @@ const createNewPage = () => {
     // 创建页面
     const newPageNameValue = newPageName.value || i18nTrans('pageManager.newPage')
     console.log('[PageManager] 创建页面，名称:', newPageNameValue, '尺寸:', selectedPageSize.value);
-    
+
     // 获取所选纸张尺寸对象
-    const pageSizeObj = paperSizes.find(p => p.name === selectedPageSize.value)
-    
-    // 添加详细的输入验证
+    let pageSizeObj = paperSizes.find(p => p.name === selectedPageSize.value)
+
+    // 如果未选择纸张尺寸，使用el-main的尺寸作为默认值
     if (!pageSizeObj) {
-      const errorMessage = `未找到纸张尺寸对象: ${selectedPageSize.value}`;
-      console.error('[PageManager] 创建页面错误:', errorMessage);
-      ElMessage.error('无法创建页面：纸张尺寸无效')
-      
-      errorLogService.addErrorLog(
-        new Error(errorMessage),
-        `创建页面失败 - 未找到纸张尺寸: ${selectedPageSize.value}`,
-        'error'
-      );
-      
-      isCreatingPage.value = false
-      return
+      console.warn('[PageManager] 未选择纸张尺寸，使用el-main尺寸作为默认值');
+
+      // 获取el-main元素的尺寸
+      let mainWidth = 210; // 默认宽度 210mm
+      let mainHeight = 297; // 默认高度 297mm
+
+      // 尝试获取实际的el-main尺寸
+      const mainElement = document.querySelector('.main-container .el-main');
+      if (mainElement) {
+        // 获取元素的像素尺寸
+        const rect = mainElement.getBoundingClientRect();
+        const widthPx = rect.width;
+        const heightPx = rect.height;
+
+        // 将像素转换为毫米 (假设 1mm = 3.779527559055px)
+        mainWidth = Math.round(widthPx / 3.779527559055);
+        mainHeight = Math.round(heightPx / 3.779527559055);
+
+        console.log('[PageManager] el-main尺寸 (px):', widthPx, 'x', heightPx);
+        console.log('[PageManager] 转换为毫米:', mainWidth, 'x', mainHeight);
+        // 创建基于el-main尺寸的自定义纸张尺寸对象
+        pageSizeObj = {
+          name: '设备页',
+          width: widthPx,
+          height: heightPx,
+          unit: 'px'
+        };
+      }
+      else {
+        // 创建基于el-main尺寸的自定义纸张尺寸对象
+        pageSizeObj = {
+          name: '设备页',
+          width: mainWidth,
+          height: mainHeight,
+          unit: 'mm'
+        };
+      }
     }
-    
+
     // 保存当前页面数量作为新页面索引
     const newPageIdx = pages.value.length;
-    
+
     // 修改addPage调用方式，确保页面数据结构完整
     const newPage = {
       id: Date.now() + Math.random(),
@@ -715,21 +749,143 @@ const createNewPage = () => {
       },
       orientation: 'portrait'
     }
-    
+
     // 使用 usePages 提供的 addPage 方法
     addPage(newPage);
-    
+
     // 更新当前页面索引
     currentPageIdx.value = newPageIdx;
-    
+
     console.log('[PageManager] 当前页面索引更新为:', currentPageIdx.value, '页面总数:', pages.value.length)
-    
+
     // 添加表单数据验证日志
     nextTick(() => {
-      console.log('[PageManager] 新建页面表单数据:', 
+      console.log('[PageManager] 新建页面表单数据:',
         JSON.parse(JSON.stringify(pages.value[currentPageIdx.value]?.forms || [])))
     })
-    
+
+    // 关闭对话框
+    showPageSizeDialog.value = false
+    // 重置输入
+    newPageName.value = i18nTrans('pageManager.newPage')
+    selectedPageSize.value = 'A4' // 重置为默认值
+
+    // 添加空值检查
+    if (currentPageType.value === 'cards' && cardConverterRef.value && pageSizeObj && pages.value[newPageIdx]) {
+      console.log('[PageManager] 设置卡片页面尺寸:', {
+        ...pageSizeObj,
+        orientation: pages.value[newPageIdx].orientation
+      });
+
+      cardConverterRef.value.setPageSize({
+        ...pageSizeObj,
+        orientation: pages.value[newPageIdx].orientation
+      })
+    }
+
+    // 记录成功创建日志
+    console.log('[PageManager] 页面创建成功:', {
+      pageName: newPageNameValue,
+      pageId: pages.value[newPageIdx].id,
+      formsCount: pages.value[newPageIdx].forms?.length || 0
+    });
+
+    // 页面创建成功提示
+    ElMessage.success(i18nTrans('pageManager.pageCreated', {}, '页面创建成功'));
+
+  } catch (error) {
+    console.error('[PageManager] 创建页面异常:', error);
+    ElMessage.error(i18nTrans('pageManager.pageCreationFailed'));
+
+    errorLogService.addErrorLog(
+      error,
+      '创建页面失败 - 异常错误',
+      'error'
+    );
+  } finally {
+    isCreatingPage.value = false;
+  }
+}
+
+// 创建页面并使用默认尺寸
+function createNewPageWithDefaults() {
+  console.log('[PageManager] 开始创建新页面，使用默认尺寸');
+
+  isCreatingPage.value = true
+
+  try {
+    // 创建页面
+    const newPageNameValue = newPageName.value || i18nTrans('pageManager.newPage')
+    console.log('[PageManager] 创建页面，名称:', newPageNameValue, '尺寸:', '设备页');
+
+    // 获取el-main元素的尺寸作为默认值
+    let mainWidth = 210; // 默认宽度 210mm
+    let mainHeight = 297; // 默认高度 297mm
+
+    let pageSizeObj;
+    // 尝试获取实际的el-main尺寸
+    const mainElement = document.querySelector('.main-container .el-main');
+    if (mainElement) {
+      // 获取元素的像素尺寸
+      const rect = mainElement.getBoundingClientRect();
+      const widthPx = rect.width;
+      const heightPx = rect.height;
+
+      // 将像素转换为毫米 (假设 1mm = 3.779527559055px)
+      mainWidth = Math.round(widthPx / 3.779527559055);
+      mainHeight = Math.round(heightPx / 3.779527559055);
+
+      console.log('[PageManager] el-main尺寸 (px):', widthPx, 'x', heightPx);
+      console.log('[PageManager] 转换为毫米:', mainWidth, 'x', mainHeight);
+      // 创建基于el-main尺寸的自定义纸张尺寸对象
+        pageSizeObj = {
+        name: '设备页',
+        width: widthPx,
+        height: heightPx,
+        unit: 'px'
+      };
+    }
+    else {
+      // 创建基于el-main尺寸的自定义纸张尺寸对象
+      pageSizeObj = {
+        name: '设备页',
+        width: mainWidth,
+        height: mainHeight,
+        unit: 'mm'
+      };
+    }
+
+    // 保存当前页面数量作为新页面索引
+    const newPageIdx = pages.value.length;
+
+    // 修改addPage调用方式，确保页面数据结构完整
+    const newPage = {
+      id: Date.now() + Math.random(),
+      name: newPageNameValue,
+      forms: [], // 确保初始化为空数组
+      pageSize: {
+        name: pageSizeObj.name,
+        width: pageSizeObj.width,
+        height: pageSizeObj.height,
+        unit: pageSizeObj.unit
+      },
+      orientation: 'portrait'
+    }
+
+    // 使用 usePages 提供的 addPage 方法
+    addPage(newPage);
+
+    // 更新当前页面索引
+    currentPageIdx.value = newPageIdx;
+
+    console.log('[PageManager] 当前页面索引更新为:', currentPageIdx.value, '页面总数:', pages.value.length)
+
+    // 添加表单数据验证日志
+    nextTick(() => {
+      console.log('[PageManager] 新建页面表单数据:',
+        JSON.parse(JSON.stringify(pages.value[currentPageIdx.value]?.forms || [])))
+    })
+
     // 关闭对话框
     showPageSizeDialog.value = false
     // 重置输入
@@ -741,27 +897,27 @@ const createNewPage = () => {
         ...pageSizeObj,
         orientation: pages.value[newPageIdx].orientation
       });
-      
+
       cardConverterRef.value.setPageSize({
         ...pageSizeObj,
         orientation: pages.value[newPageIdx].orientation
       })
     }
-    
+
     // 记录成功创建日志
     console.log('[PageManager] 页面创建成功:', {
       pageName: newPageNameValue,
       pageId: pages.value[newPageIdx].id,
       formsCount: pages.value[newPageIdx].forms?.length || 0
     });
-    
+
     // 页面创建成功提示
     ElMessage.success(i18nTrans('pageManager.pageCreated', {}, '页面创建成功'));
-    
+
   } catch (error) {
     console.error('[PageManager] 创建页面异常:', error);
     ElMessage.error(i18nTrans('pageManager.pageCreationFailed'));
-    
+
     errorLogService.addErrorLog(
       error,
       '创建页面失败 - 异常错误',
@@ -781,50 +937,60 @@ function onToggleCardStyle() {
 function onSelectPage(idx) {
   const numIdx = Number(idx)
   console.log('[PageManager] 开始选择页面，索引:', numIdx);
-  
+
   if (numIdx < 0 || numIdx >= pages.value.length) {
     const warningMessage = `无效的页面索引: ${numIdx}`;
     console.warn('[PageManager] 选择页面警告:', warningMessage);
     ElMessage.warning(warningMessage);
-    
+
     errorLogService.addErrorLog(
       new Error(warningMessage),
       `页面选择失败 - 无效索引: ${numIdx}`,
       'warning'
     );
-    
+
     return;
   }
 
   try {
     currentPageIdx.value = numIdx
-    
+
     // 如果当前页面被选中并且是编辑状态，保持编辑状态
     // 否则维持原有的锁定状态
     if (editPageIdx.value === currentPageIdx.value) {
       editPageIdx.value = numIdx
     }
-    
+
     console.log('[PageManager] 页面选择成功:', {
       pageIndex: numIdx,
       pageName: pages.value[numIdx]?.name
     });
-    
-    errorLogService.addErrorLog(
-      null,
-      `页面选择成功: ${pages.value[numIdx]?.name} (${numIdx})`,
-      'info'
-    );
+
+    // 只记录信息性日志，不使用errorLogService
+    console.info(`[PageManager] 页面选择成功: ${pages.value[numIdx]?.name} (${numIdx})`);
   } catch (error) {
     console.error('[PageManager] 选择页面时发生错误:', error);
     ElMessage.error('页面选择失败');
-    
+
     errorLogService.addErrorLog(
       error,
       `页面选择失败: ${numIdx}`,
       'error'
     );
   }
+}
+
+// 处理Toolbar的页面切换事件
+function handleToolbarChangePage(pageIndex) {
+  console.log('[PageManager] 接收到Toolbar的页面切换事件:', pageIndex);
+  
+  // 添加参数验证
+  if (typeof pageIndex !== 'number' || pageIndex < 0 || pageIndex >= pages.value.length) {
+    console.warn('[PageManager] 接收到无效的页面索引:', pageIndex);
+    return;
+  }
+  
+  onSelectPage(pageIndex);
 }
 
 // 编辑页面名称
@@ -844,21 +1010,21 @@ function savePageName(idx) {
 // 删除页面
 function deletePage(idx) {
   console.log('[PageManager] 开始删除页面，索引:', idx);
-  
+
   if (idx < 0 || idx >= pages.value.length) {
     const warningMessage = `无效的页面索引: ${idx}`;
     console.warn('[PageManager] 删除页面警告:', warningMessage);
     ElMessage.warning(warningMessage);
-    
+
     errorLogService.addErrorLog(
       new Error(warningMessage),
       `页面删除失败 - 无效索引: ${idx}`,
       'warning'
     );
-    
+
     return;
   }
-  
+
   // 显示确认对话框
   ElMessageBox.confirm(
     i18nTrans('pageManager.confirmDeletePage'),
@@ -874,14 +1040,14 @@ function deletePage(idx) {
         pageIndex: idx,
         pageName: pages.value[idx]?.name
       });
-      
+
       removePage(idx)
-      
+
       if (currentPageIdx.value >= pages.value.length) {
         currentPageIdx.value = Math.max(0, pages.value.length - 1)
       }
       if (editPageIdx.value === idx) editPageIdx.value = -1
-      
+
       // 删除前获取页面名称
       const pageName = pages.value[idx]?.name || i18nTrans('pageManager.newPage');
       const successMessage = `页面"${pageName}"删除成功`;
@@ -889,9 +1055,9 @@ function deletePage(idx) {
         pageIndex: idx,
         pageName
       });
-      
+
       ElMessage.success(successMessage);
-      
+
       errorLogService.addErrorLog(
         new Error(successMessage),
         `页面删除成功: ${pageName} (${idx})`,
@@ -901,7 +1067,7 @@ function deletePage(idx) {
       console.error('[PageManager] 删除页面时发生错误:', error);
       const errorMessage = '页面删除失败';
       ElMessage.error(errorMessage);
-      
+
       errorLogService.addErrorLog(
         error,
         `页面删除失败: ${idx}`,
@@ -912,7 +1078,7 @@ function deletePage(idx) {
     console.log('[PageManager] 页面删除操作取消:', idx);
     const cancelMessage = '已取消删除';
     ElMessage.info(cancelMessage);
-    
+
     errorLogService.addErrorLog(
       new Error(cancelMessage),
       `页面删除取消: ${idx}`,
@@ -936,20 +1102,20 @@ function rotatePage(idx) {
 
   // 判断是否为当前页面
   const isCurrentPage = idx === currentPageIdx.value
-  
+
   try {
     // 交换页面尺寸的宽高
     rotatePageOrientation(idx)
-    
+
     // 如果不是当前页面，只进行数据更新不做视觉效果
     if (!isCurrentPage) {
       ElMessage.success(`页面"${page.name || i18nTrans('pageManager.newPage')}"已旋转`)
       return
     }
-    
+
     // 获取新的方向状态
     const isLandscape = page.orientation === 'landscape'
-    
+
     // 更新页面渲染 - 使用响应式方式处理旋转
     nextTick(() => {
       // 根据页面类型更新视图
@@ -970,7 +1136,7 @@ function rotatePage(idx) {
           ...page.pageSize,
           orientation: page.orientation
         })
-        
+
         // 同样使用类控制而非直接操作样式
         const cardsContainerEl = cardConverterRef.value.$el?.querySelector('.cards-container')
         if (cardsContainerEl) {
@@ -981,7 +1147,7 @@ function rotatePage(idx) {
           }
         }
       }
-      
+
       // 显示旋转提示
       ElMessage.success(`页面"${page.name || i18nTrans('pageManager.newPage')}"已旋转为${isLandscape ? '横向' : '纵向'}模式`)
     })
@@ -1005,8 +1171,22 @@ function rotateCurrentPage() {
 
 // 添加页面
 function onAddPage() {
-  // 显示纸张选择对话框
-  showPageSizeDialog.value = true
+  // 显示选择对话框，让用户选择是否使用纸张尺寸选择
+  ElMessageBox.confirm(
+    '是否要选择纸张尺寸？选择"否"将使用默认尺寸。',
+    '添加页面',
+    {
+      distinguishCancelAndClose: true,
+      confirmButtonText: '选择纸张尺寸',
+      cancelButtonText: '使用默认尺寸'
+    }
+  ).then(() => {
+    // 用户选择使用纸张尺寸选择对话框
+    showPageSizeDialog.value = true
+  }).catch(() => {
+    // 用户选择使用默认尺寸
+    createNewPageWithDefaults()
+  })
 }
 
 // 清除所有页面
@@ -1027,7 +1207,7 @@ function clearCurrentPageForms() {
 function handlePageTypeChange(newType) {
   console.log('[PageManager] 页面类型变更:', newType);
   currentPageType.value = newType
-  
+
   // 如果切换到卡片页面，自动转换当前页面的表单
   if (newType === 'cards') {
     nextTick(() => {
@@ -1044,7 +1224,7 @@ function convertFormsToCardsAuto() {
       console.log('[PageManager] 当前页面不存在，无法自动转换');
       return;
     }
-    
+
     if (!currentPage.forms || !Array.isArray(currentPage.forms)) {
       console.log('[PageManager] 当前页面表单数据格式不正确，无法自动转换');
       return;
@@ -1057,8 +1237,8 @@ function convertFormsToCardsAuto() {
 
     // 添加有效性过滤
     const validForms = currentPage.forms.filter(form =>
-      (form.title && form.title.trim()) || 
-      (form.value && form.value.trim()) || 
+      (form.title && form.title.trim()) ||
+      (form.value && form.value.trim()) ||
       (form.remark && form.remark.trim()) ||
       (form.media && form.media.trim())
     );
@@ -1100,7 +1280,7 @@ function convertFormsToCards() {
       ElMessage.warning('当前页面不存在')
       return
     }
-    
+
     if (!currentPage.forms || !Array.isArray(currentPage.forms)) {
       ElMessage.warning('当前页面表单数据格式不正确')
       return
@@ -1113,8 +1293,8 @@ function convertFormsToCards() {
 
     // 添加有效性过滤
     const validForms = currentPage.forms.filter(form =>
-      (form.title && form.title.trim()) || 
-      (form.value && form.value.trim()) || 
+      (form.title && form.title.trim()) ||
+      (form.value && form.value.trim()) ||
       (form.remark && form.remark.trim()) ||
       (form.media && form.media.trim())
     )
@@ -1151,8 +1331,8 @@ const handleEditCard = (editData) => {
     // 调用FloatingToolbar组件中的editCard方法
     if (cardConverterRef.value.$refs && cardConverterRef.value.$refs.floatingToolbarRef) {
       cardConverterRef.value.$refs.floatingToolbarRef.editCard(
-        editData.groupIndex, 
-        editData.rowIndex, 
+        editData.groupIndex,
+        editData.rowIndex,
         editData.cardIndex
       );
     }
@@ -1166,7 +1346,7 @@ const handleEditRowStyle = (editData) => {
     // 调用FloatingToolbar组件中的editRowStyle方法
     if (cardConverterRef.value.$refs && cardConverterRef.value.$refs.floatingToolbarRef) {
       cardConverterRef.value.$refs.floatingToolbarRef.editRowStyle(
-        editData.groupIndex, 
+        editData.groupIndex,
         editData.rowIndex
       );
     }
@@ -1186,49 +1366,16 @@ const debugButton = (buttonName) => {
   }
 };
 
-// 切换侧边栏显示/隐藏
-const toggleAside = () => {
-  asideCollapsed.value = !asideCollapsed.value
-  // 如果折叠，宽度设为较小值；否则恢复原来的宽度
-  asideWidth.value = asideCollapsed.value ? 40 : 220
-}
 
-// 开始调整侧边栏大小
-const startResize = (e) => {
-  isResizing.value = true
-  resizeStartX.value = e.clientX
-  startWidth.value = asideWidth.value
-  
-  // 添加事件监听器
-  document.addEventListener('mousemove', resize)
-  document.addEventListener('mouseup', stopResize)
-  
-  e.preventDefault()
-}
-
-// 调整侧边栏大小
-const resize = (e) => {
-  if (!isResizing.value) return
-  
-  const deltaX = e.clientX - resizeStartX.value
-  const newWidth = startWidth.value - deltaX
-  
-  // 限制最小和最大宽度
-  asideWidth.value = Math.max(100, Math.min(500, newWidth))
-}
-
-// 停止调整侧边栏大小
-const stopResize = () => {
-  isResizing.value = false
-  document.removeEventListener('mousemove', resize)
-  document.removeEventListener('mouseup', stopResize)
-}
 
 </script>
 
 <style scoped>
 .page-manager {
-  padding: 20px;
+  padding: 0px;
+  height: calc(100vh); /* 考虑顶部导航和其他元素的高度 */
+  display: flex;
+  flex-direction: column;
 }
 
 .page-manager h1 {
@@ -1255,9 +1402,11 @@ const stopResize = () => {
 
 .main-container {
   margin-top: 20px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
+  border: none;
   overflow: hidden;
+  flex: 1; /* 占据剩余空间 */
+  display: flex;
+  flex-direction: column;
 }
 
 .page-menu-item {
@@ -1277,19 +1426,6 @@ const stopResize = () => {
   align-items: center;
 }
 
-.edit-icon,
-.delete-icon,
-.lock-icon,
-.rotate-icon {
-  cursor: pointer;
-  margin-left: 4px;
-  font-size: 16px;
-}
-
-.delete-icon {
-  color: #f56c6c;
-}
-
 .page-type-selector {
   margin-top: 20px;
   padding: 0 10px;
@@ -1298,58 +1434,6 @@ const stopResize = () => {
 }
 
 /* 可拖动侧边栏样式 */
-.resizable-aside-container {
-  position: relative;
-  height: 100%;
-  transition: width 0.3s ease;
-}
-
-.resizable-aside {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.resize-handle {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 5px;
-  height: 100%;
-  background-color: #dcdfe6;
-  cursor: col-resize;
-  z-index: 100;
-  transition: background-color 0.3s;
-}
-
-.resize-handle:hover,
-.resize-handle.active {
-  background-color: #42b883;
-}
-
-.aside-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 15px;
-  background-color: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.aside-header h3 {
-  margin: 0;
-  font-size: 16px;
-  color: #606266;
-}
-
-.aside-content {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.toggle-aside-btn {
-  padding: 5px;
-}
 
 /* 纸张尺寸选择对话框样式 */
 .page-size-selector {
@@ -1532,13 +1616,21 @@ const stopResize = () => {
   transform-origin: center center;
   transition: transform 0.3s ease;
   margin: 80px auto !important;
-  max-width: calc(100% - 160px) !important; /* 确保旋转后不超出视图 */
+  max-width: calc(100% - 160px) !important;
+  /* 确保旋转后不超出视图 */
 }
 
 .landscape-mode .form-card-mini,
 .landscape-mode .chinese-char-card,
 .landscape-mode .card-item {
   transition: all 0.3s ease;
+}
+
+.el-main {
+  padding: 0;
+  border: none;
+  flex: 1; /* 占据剩余空间 */
+  overflow: auto; /* 允许滚动 */
 }
 
 /* 响应式设计优化 */
@@ -1554,7 +1646,7 @@ const stopResize = () => {
   .paper-preview-compact {
     padding: 6px 4px;
   }
-  
+
   /* 移动设备上的旋转处理 */
   .landscape-mode {
     transform: rotate(90deg) scale(0.85);
