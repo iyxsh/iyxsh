@@ -1,6 +1,7 @@
 <template>
   <div 
     class="single-form-card-wrapper"
+    :class="{ 'preview-mode': previewMode }"
     :style="cardStyle"
     @mousedown="handleMouseDown"
     @dblclick="handleDblClick"
@@ -41,18 +42,72 @@
           class="form-media"
           :style="mediaStyle"
         >
-          <img 
-            v-if="form.mediaType === 'image'" 
-            :src="form.media" 
-            :alt="form.title || 'Form media'"
-            class="media-image"
-          >
-          <video 
-            v-else-if="form.mediaType === 'video'" 
-            :src="form.media" 
-            controls
-            class="media-video"
-          ></video>
+          <!-- 处理MediaUploader传递的对象 -->
+          <template v-if="form.media && typeof form.media === 'object' && form.media.url">
+            <!-- 图片预览 - MediaUploader对象 -->
+            <img
+              v-if="(form.mediaType === 'image' || !form.mediaType)"
+              :src="form.media.url"
+              :alt="form.title || 'Form media'"
+              class="media-image"
+              @error="handleMediaError"
+              @load="handleMediaLoad"
+            >
+            <!-- 视频预览 - MediaUploader对象 -->
+            <video
+              v-else
+              :src="form.media.url"
+              controls
+              class="media-video"
+              @error="handleMediaError"
+              @loadeddata="handleVideoLoad"
+            ></video>
+          </template>
+          <!-- 处理字符串URL -->
+          <template v-else-if="typeof (form.media || form.mediaPreviewUrl) === 'string' && (form.media || form.mediaPreviewUrl)">
+            <!-- 图片预览 - 字符串URL -->
+            <img 
+              v-if="(form.mediaType === 'image' || !form.mediaType)"
+              :src="form.media || form.mediaPreviewUrl"
+              :alt="form.title || 'Form media'"
+              class="media-image"
+              @error="handleMediaError"
+              @load="handleMediaLoad"
+            >
+            <!-- 视频预览 - 字符串URL -->
+            <video 
+              v-else
+              :src="form.media || form.mediaPreviewUrl"
+              controls
+              class="media-video"
+              @error="handleMediaError"
+              @loadeddata="handleVideoLoad"
+            ></video>
+          </template>
+          <!-- 处理base64数据 -->
+          <template v-else-if="typeof form.media === 'string' && form.media.startsWith('data:')">
+            <!-- 图片预览 - base64数据 -->
+            <img
+              v-if="(form.mediaType === 'image' || !form.mediaType) && form.media.startsWith('data:image/')"
+              :src="form.media"
+              :alt="form.title || 'Form media'"
+              class="media-image"
+              @error="handleMediaError"
+              @load="handleMediaLoad"
+            >
+            <!-- 视频预览 - base64数据 -->
+            <video
+              v-else-if="form.mediaType === 'video' && form.media.startsWith('data:video/')"
+              :src="form.media"
+              controls
+              class="media-video"
+              @error="handleMediaError"
+              @loadeddata="handleVideoLoad"
+            ></video>
+          </template>
+          <div v-else-if="form.media || form.mediaPreviewUrl" class="media-unavailable">
+            <p>无法预览媒体内容</p>
+          </div>
         </div>
       </div>
 
@@ -87,13 +142,54 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
-
-// 修改后的计算属性
-const cardBodyStyle = computed(() => {
-  
-  return {};
-})
 import { MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+
+// 添加Blob工具类
+class BlobUtils {
+  /**
+   * 将Blob转换为可显示的URL
+   * @param {Blob} blob 
+   * @returns {string} 
+   */
+  static createObjectURL(blob) {
+    return URL.createObjectURL(blob)
+  }
+
+  /**
+   * 解析Blob URL获取文件扩展名
+   * @param {string} url 
+   * @returns {string|null}
+   */
+  static getExtensionFromBlobURL(url) {
+    if (!url || !url.startsWith('blob:')) return null
+    
+    try {
+      // Blob URLs don't contain file extensions in the standard format
+      // We can't determine the extension from the URL itself
+      // Return null to indicate we can't determine the extension
+      return null
+    } catch (e) {
+      console.warn('无法解析Blob URL:', url, e)
+      return null
+    }
+  }
+
+  /**
+   * 根据Blob类型确定媒体类型
+   * @param {string} url 
+   * @param {string} [fallbackType] 
+   * @returns {'image'|'video'|null}
+   */
+  static determineMediaTypeFromBlob(url, fallbackType) {
+    if (!url || !url.startsWith('blob:')) return fallbackType || 'image'
+    
+    // For blob URLs, we cannot determine the media type from the URL itself
+    // Return the fallback type or default to 'image'
+    return fallbackType || 'image'
+  }
+}
+
 // 定义props并添加类型注释
 const props = defineProps({
   /** @type {Form} */
@@ -116,11 +212,23 @@ const props = defineProps({
   size: {
     type: Object,
     default: () => ({ width: 200, height: 100 })
+  },
+  // 预览模式标识
+  previewMode: {
+    type: Boolean,
+    default: false
   }
 })
 
 // 定义emits
-const emit = defineEmits(['edit', 'delete', 'update-position', 'update-size', 'dblclick', 'mousedown'])
+const emit = defineEmits([
+  'edit', 
+  'delete', 
+  'dblclick',
+  'mousedown',
+  'update-position',
+  'update-size'
+])
 
 // 响应式数据
 const isResizing = ref(false)
@@ -131,9 +239,8 @@ const startWidth = ref(0)
 const startHeight = ref(0)
 const startLeft = ref(0)
 const startTop = ref(0)
-const formRef = ref(null)
 
-// 计算卡片样式
+// 计算样式
 const cardStyle = computed(() => {
   const baseStyle = {
     position: 'absolute',
@@ -141,60 +248,78 @@ const cardStyle = computed(() => {
     top: `${props.position.y}px`,
     width: `${props.size.width}px`,
     height: `${props.size.height}px`,
-    zIndex: props.form?.zIndex || 1
+    zIndex: props.form.zIndex || 1
   }
-  
-  // 如果启用卡片样式，则应用表单样式
-  if (props.cardStyleOn && props.form?.style) {
-    // 直接使用表单的style属性
-    const style = props.form.style;
-    
-    // 构建body样式对象
-    const bodyStyle = {...baseStyle};
-    
-    // 处理各种样式属性
-    if (style.padding !== undefined) {
-      bodyStyle.padding = typeof style.padding === 'number' ? `${style.padding}px` : style.padding;
-    }
-    
-    if (style.backgroundColor) {
-      bodyStyle.backgroundColor = style.backgroundColor;
-    }
-    
-    if (style.color) {
-      bodyStyle.color = style.color;
-    }
-    
-    if (style.fontSize !== undefined) {
-      bodyStyle.fontSize = typeof style.fontSize === 'number' ? `${style.fontSize}px` : style.fontSize;
-    }
-    
-    if (style.borderWidth !== undefined) {
-      bodyStyle.borderWidth = typeof style.borderWidth === 'number' ? `${style.borderWidth}px` : style.borderWidth;
-    }
-    
-    if (style.borderStyle) {
-      bodyStyle.borderStyle = style.borderStyle;
-    }
-    
-    if (style.borderColor) {
-      bodyStyle.borderColor = style.borderColor;
-    }
-    
-    if (style.borderRadius !== undefined) {
-      bodyStyle.borderRadius = typeof style.borderRadius === 'number' ? `${style.borderRadius}px` : style.borderRadius;
-    }
-    
-    if (style.hasShadow) {
-      bodyStyle.boxShadow = '0 2px 12px 0 rgba(0, 0, 0, 0.1)';
-    } else if (style.hasShadow === false) {
-      bodyStyle.boxShadow = 'none';
-    }
-    
-    return bodyStyle;
-  }
+
   return baseStyle
 })
+
+// 判断媒体是否为图片
+const isImageMedia = computed(() => {
+  // 优先使用media字段，如果没有则使用mediaPreviewUrl字段
+  const mediaUrl = props.form?.media || props.form?.mediaPreviewUrl;
+  if (!mediaUrl) return true;
+  
+  // 优先使用表单中的mediaType字段
+  if (props.form.mediaType) {
+    return props.form.mediaType === 'image';
+  }
+  
+  // 处理Blob URL
+  if (typeof mediaUrl === 'string' && mediaUrl.startsWith('blob:')) {
+    // 使用BlobUtils类进行媒体类型判断
+    return BlobUtils.determineMediaTypeFromBlob(mediaUrl) === 'image';
+  }
+  
+  // 处理base64数据URL
+  if (typeof mediaUrl === 'string' && mediaUrl.startsWith('data:image/')) {
+    return true;
+  }
+  if (typeof mediaUrl === 'string' && mediaUrl.startsWith('data:video/')) {
+    return false;
+  }
+  
+  // 通过文件扩展名判断
+  const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+  const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
+  
+  if (typeof mediaUrl === 'string') {
+    if (imageExtensions.test(mediaUrl)) {
+      return true;
+    }
+    if (videoExtensions.test(mediaUrl)) {
+      return false;
+    }
+  }
+  // 默认返回true（当作图片处理）
+  return true;
+})
+
+// 检查对象是否为File类型
+const isFileObject = (obj) => {
+  return obj instanceof File || (obj && obj.constructor && obj.constructor.name === 'File')
+};
+
+/**
+ * 创建媒体预览URL
+ * @param {File|Blob|string} media - 媒体文件或URL
+ * @returns {string|null}
+ */
+const createMediaPreviewUrl = (media) => {
+  if (!media) return null
+  
+  // 如果是File或Blob对象，创建预览URL
+  if (media instanceof Blob) {
+    return URL.createObjectURL(media)
+  }
+  
+  // 如果是字符串类型的URL直接返回
+  if (typeof media === 'string') {
+    return media
+  }
+  
+  return null
+}
 
 // 元素样式计算 - 使用表单的elementStyles并通过StyleManager处理
 const titleStyle = computed(() => {
@@ -238,6 +363,7 @@ const mediaStyle = computed(() => {
     color: style.color || '',
     fontSize: style.fontSize ? `${style.fontSize}px` : '',
     fontWeight: style.fontWeight || 'normal'
+    // 添加其他媒体样式
   }
 })
 
@@ -258,8 +384,37 @@ const shouldShowRemark = computed(() => {
 
 // 是否显示媒体
 const shouldShowMedia = computed(() => {
-  return props.form?.showMedia !== false && props.form?.media
-})
+  // 如果showMedia字段不存在，默认为true（向后兼容）
+  const showMedia = props.form?.showMedia !== undefined ? props.form?.showMedia : true
+  
+  // 检查是否有media或mediaPreviewUrl
+  let hasMedia = false;
+  
+  // 检查media字段
+  if (props.form?.media) {
+    if (typeof props.form.media === 'string' && props.form.media.trim() !== '') {
+      hasMedia = true;
+    } else if (typeof props.form.media === 'object') {
+      // 处理MediaUploader传递的对象或File对象
+      if (props.form.media instanceof File) {
+        hasMedia = props.form.media.size > 0;
+      } else if (props.form.media.url && typeof props.form.media.url === 'string') {
+        // MediaUploader传递的对象
+        hasMedia = props.form.media.url.trim() !== '';
+      } else {
+        // 其他对象类型
+        hasMedia = true;
+      }
+    }
+  }
+  
+  // 如果media字段没有有效内容，检查mediaPreviewUrl字段
+  if (!hasMedia && props.form?.mediaPreviewUrl) {
+    hasMedia = typeof props.form.mediaPreviewUrl === 'string' && props.form.mediaPreviewUrl.trim() !== '';
+  }
+  
+  return showMedia !== false && hasMedia
+});
 
 // 处理命令
 const handleCommand = (command) => {
@@ -300,7 +455,7 @@ const handleMouseDown = (event) => {
   emit('mousedown', props.form)
 }
 
-// 处理拖拽过程
+// 处理拖拽
 const handleDrag = (event) => {
   if (!isDragging.value) return
   
@@ -328,8 +483,6 @@ const startResize = (event) => {
   startY.value = event.clientY
   startWidth.value = props.size.width
   startHeight.value = props.size.height
-  startLeft.value = props.position.x
-  startTop.value = props.position.y
   
   document.addEventListener('mousemove', handleResize)
   document.addEventListener('mouseup', stopResize)
@@ -344,11 +497,14 @@ const handleResize = (event) => {
   
   const newWidth = Math.max(100, startWidth.value + deltaX)
   const newHeight = Math.max(50, startHeight.value + deltaY)
-  const newX = startLeft.value
-  const newY = startTop.value
   
-  emit('update-size', props.form.id, newWidth, newHeight)
-  emit('update-position', props.form.id, newX, newY)
+  emit('update-size', {
+    formId: props.form.id,
+    size: {
+      width: newWidth,
+      height: newHeight
+    }
+  })
 }
 
 // 停止调整大小
@@ -365,11 +521,76 @@ const editForm = () => {
 
 // 删除表单
 const deleteForm = () => {
-  emit('delete', props.form.id)
+  emit('delete', props.form)
 }
 
-// 组件卸载前清理事件监听器
+// 处理媒体加载完成
+const handleMediaLoad = (event) => {
+  console.log('SingleFormShow: Image loaded successfully', event);
+}
+
+// 处理视频加载完成
+const handleVideoLoad = (event) => {
+  console.log('SingleFormShow: Video loaded successfully', event);
+}
+
+// 处理媒体错误
+const handleMediaError = (event) => {
+  console.error('SingleFormShow: Media load error', event)
+  
+  let errorMessage = '媒体加载失败'
+  
+  // 处理不同类型的媒体错误
+  if (event && event.target && event.target.error) {
+    const error = event.target.error
+    
+    switch(error.code) {
+      case MediaError.MEDIA_ERR_ABORTED:
+        errorMessage = '用户取消了媒体加载'
+        break
+      case MediaError.MEDIA_ERR_NETWORK:
+        errorMessage = '网络错误导致媒体加载失败'
+        break
+      case MediaError.MEDIA_ERR_DECODE:
+        errorMessage = '媒体解码失败（文件可能已损坏）'
+        break
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = '不支持的媒体格式'
+        break
+      default:
+        errorMessage = `未知媒体错误 [${error.code}]`
+        break
+    }
+    
+    // 添加更多调试信息
+    console.error('SingleFormShow: Error details:', {
+      code: error.code,
+      message: error.message,
+      src: event.target.src
+    })
+  } else if (event && event.message) {
+    // 处理其他类型的错误事件
+    console.error('SingleFormShow: Error message:', event.message)
+    errorMessage = `媒体加载错误: ${event.message}`
+  } else if (event && event.target && event.target.src) {
+    // 处理一般加载错误
+    const src = event.target.src
+    if (src.startsWith('blob:')) {
+      errorMessage = '本地媒体文件加载失败'
+    } else {
+      errorMessage = `媒体加载失败 [URL: ${src}]`
+    }
+  }
+  
+  // 只在编辑模式下显示错误消息
+  if (props.editable) {
+    ElMessage.error(errorMessage)
+  }
+}
+
+// 组件卸载前
 onBeforeUnmount(() => {
+  // 清理事件监听器
   document.removeEventListener('mousemove', handleDrag)
   document.removeEventListener('mouseup', stopDrag)
   document.removeEventListener('mousemove', handleResize)
@@ -380,7 +601,16 @@ onBeforeUnmount(() => {
 <style scoped>
 .single-form-card-wrapper {
   cursor: move;
-  transition: box-shadow 0.3s ease;
+  transition: box-shadow 0.3s ease, opacity 0.3s ease;
+}
+
+/* 预览模式下不使用绝对定位 */
+.single-form-card-wrapper.preview-mode {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  width: 100% !important;
+  height: auto !important;
 }
 
 .single-form-card-wrapper:hover {
