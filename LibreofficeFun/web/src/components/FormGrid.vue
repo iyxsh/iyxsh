@@ -11,7 +11,7 @@
     <!-- 加载状态 -->
     <div v-if="loading" class="loading-state">
       <el-icon class="is-loading">
-        <svg viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg" data-v-72eee16e=""><path d="M512 512m-224 0a224 224 0 1 0 448 0 224 224 0 1 0-448 0Z" fill="#1890ff" data-v-72eee16e=""></path><path d="M957.1 512c0-29.4-4.2-57.8-11.9-84.7-7.7-26.9-18.8-51.9-32.7-74.4-14-22.5-31.5-42.3-51.8-59.1-20.3-16.8-43.2-30.3-68.2-40.1-25-9.8-51.8-15.9-80-17.9-28.2-2-57.2.3-85.9-7.1-28.7-6.8-56.2-17.9-81.6-32.9-25.4-15-48.4-33.7-68.5-55.8-20.1-22.1-36.9-47.4-50.1-75.2-13.2-27.9-22.8-58.2-28.5-90.5-5.7 32.3-8.5 66.1-8.5 100.8 0 29.4 4.2 57.8 11.9 84.7 7.7 26.9 18.8 51.9 32.7 74.4 14 22.5 31.5 42.3 51.8 59.1 20.3 16.8 43.2 30.3 68.2 40.1 25 9.8 51.8 15.9 80 17.9 28.2 2 57.2-.3 85.9-7.1 28.7-6.8 56.2-17.9 81.6-32.9 25.4-15 48.4-33.7 68.5-55.8 20.1-22.1 36.9-47.4 50.1-75.2 13.2-27.9 22.8-58.2 28.5-90.5 5.8-32.3 8.6-66.1 8.6-100.8z m-89.6 0c0 25.6-3.6 50.4-10.5 74-6.9 23.5-16.3 45.5-27.8 65.4-11.5 19.9-25.3 37.4-40.9 52.1-15.6 14.7-33.2 26.1-52.2 33.8-19 7.7-39.4 11.9-60.5 12.4-21.1.5-42.3-2.8-62.7-9.9-20.4-7.1-39.7-17.9-57.5-32-17.8-14.1-33.8-31.7-47.6-52.4-13.8-20.7-25.2-44.5-33.8-70.9-8.7-26.4-14.7-55.2-17.7-85.6-3-30.4-3-62.4 0-95.2 3-32.8 9-64.4 17.7-93.6 8.7-29.2 20.7-55.9 35.6-79.6 14.9-23.7 32.6-43.8 52.6-59.8 20-16 42.2-27.7 66.1-34.8 23.9-7.1 49.4-10.5 75.9-10.1 26.5.4 52.6 5 77.3 13.5 24.7 8.5 47.7 21.2 68.5 37.7 20.8 16.5 39.1 37.1 54.4 61.2 15.3 24.1 27.5 52 36.2 83 8.7 31 13.8 64.7 15 100.4 1.3 35.7-.9 72.8-6.4 110.4z" fill="#1890ff" data-v-72eee16e=""></path></svg>
+        <svg viewBox="0 0 1024 1024" fill="currentColor" xmlns="http://www.w3.org/2000/svg" data-v-72eee16e=""><path d="M512 512m-224 0a224 224 0 1 0 448 0 224 224 0 1 0-448 0Z" fill="#1890ff" data-v-72eee16e=""></path><path d="M957.1 512c0-29.4-4.2-57.8-11.9-84.7-7.7-26.9-18.8-51.9-32.7-74.4-14-22.5-31.5-42.3-51.8-59.1-20.3-16.8-43.2-30.3-68.2-40.1-25-9.8-51.8-15.9-80-17.9-28.2-2-57.2-.3-85.9-7.1-28.7-6.8-56.2-17.9-81.6-32.9-25.4-15-48.4-33.7-68.5-55.8-20.1-22.1-36.9-47.4-50.1-75.2-13.2-27.9-22.8-58.2-28.5-90.5-5.7 32.3-8.5 66.1-8.5 100.8 0 29.4 4.2 57.8 11.9 84.7 7.7 26.9 18.8 51.9 32.7 74.4 14 22.5 31.5 42.3 51.8 59.1 20.3 16.8 43.2 30.3 68.2 40.1 25 9.8 51.8 15.9 80 17.9 28.2 2 57.2-.3 85.9-7.1 28.7-6.8 56.2-17.9 81.6-32.9 25.4-15 48.4-33.7 68.5-55.8 20.1-22.1 36.9-47.4 50.1-75.2 13.2-27.9 22.8-58.2 28.5-90.5 5.8-32.3 8.6-66.1 8.6-100.8z m-89.6 0c0 25.6-3.6 50.4-10.5 74-6.9 23.5-16.3 45.5-27.8 65.4-11.5 19.9-25.3 37.4-40.9 52.1-15.6 14.7-33.2 26.1-52.2 33.8-19 7.7-39.4 11.9-60.5 12.4-21.1.5-42.3-2.8-62.7-9.9-20.4-7.1-39.7-17.9-57.5-32-17.8-14.1-33.8-31.7-47.6-52.4-13.8-20.7-25.2-44.5-33.8-70.9-8.7-26.4-14.7-55.2-17.7-85.6-3-30.4-3-62.4 0-95.2 3-32.8 9-64.4 17.7-93.6 8.7-29.2 20.7-55.9 35.6-79.6 14.9-23.7 32.6-43.8 52.6-59.8 20-16 42.2-27.7 66.1-34.8 23.9-7.1 49.4-10.5 75.9-10.1 26.5.4 52.6 5 77.3 13.5 24.7 8.5 47.7 21.2 68.5 37.7 20.8 16.5 39.1 37.1 54.4 61.2 15.3 24.1 27.5 52 36.2 83 8.7 31 13.8 64.7 15 100.4 1.3 35.7-.9 72.8-6.4 110.4z" fill="#1890ff" data-v-72eee16e=""></path></svg>
       </el-icon>
       <span>加载中...</span>
     </div>
@@ -30,7 +30,7 @@
           @edit="handleEditForm"
           @delete="handleDeleteForm"
           @dblclick="handleEditForm"
-          @update-position="updateFormPosition"
+          @update-position="handleUpdatePosition"
           @update-size="updateFormSize"
           @mousedown="handleFormMouseDown(form)"
         />
@@ -62,19 +62,11 @@
 // =====================================================
 // = 1. 导入依赖
 // =====================================================
-import { ref, reactive, computed, onMounted, onBeforeMount, onBeforeUnmount, watch, nextTick, toRaw, shallowRef } from 'vue'
-import FormCard from './FormCard.vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useEventBus } from '../utils/eventBus'
 import SingleFormShow from './SingleFormShow.vue'
 import FormEditor from './FormEditor.vue'
-// 导入完整的 cardStyleService
-import * as cardStyleService from '@/services/cardStyleService'
-import { calculateCardStyle, getDefaultCardStyles, getCardAutoStyle, initializeCardStyleService } from '@/services/cardStyleService'
-// 导入 dragDropService
-import * as dragDropService from '@/services/dragDropService'
-import { validateForm, validateAllForms } from '@/services/formValidationService'
-import { ElMessage, ElMessageBox } from 'element-plus'
-
-// 新增错误日志服务
 import errorLogService from '@/services/errorLogService'
 
 // =====================================================
@@ -108,8 +100,18 @@ const containerRef = ref(null)
 const contentRefs = ref({})
 // 定义 positions
 const positions = ref([])
-// 定义 forms
+
+// 表单相关数据
+/** @type {import('vue').Ref<Form[]>} */
 const forms = ref([])
+
+// 添加表单数据
+/** @type {import('vue').Ref<Form|null>} */
+const addFormData = ref(null)
+
+// 选中的表单
+/** @type {import('vue').Ref<Form|null>} */
+const selectedForm = ref(null)
 
 // 错误状态
 const error = ref(null)
@@ -119,14 +121,10 @@ const errorInfo = ref('')
 const loading = ref(true)
 // 显示添加表单对话框
 const showAddDialog = ref(false)
-// 添加表单的数据
-const addFormData = ref(null)
 // 添加表单数据的key，用于强制刷新FormEditor组件
 const addFormDataKey = ref(0)
 // 是否显示表单编辑器
 const showFormEditor = ref(false)
-// 当前选中的表单
-const selectedForm = ref(null)
 // 是否显示添加表单的编辑器
 const showAddFormEditor = ref(false)
 
@@ -145,6 +143,17 @@ const validateForms = (forms) => {
     }
     
     return forms.map((form, index) => {
+      // 检查表单是否已经有所有必需的属性
+      const hasAllRequiredFields = form.id && 
+                                   form.position && 
+                                   form.size && 
+                                   typeof form.zIndex !== 'undefined';
+      
+      // 如果表单已经具备所有必需字段，则直接返回，避免创建新对象
+      if (hasAllRequiredFields) {
+        return form;
+      }
+      
       // 确保表单有唯一ID，但如果已存在则不重新生成
       const formId = form.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       
@@ -157,13 +166,21 @@ const validateForms = (forms) => {
       // 确保表单有zIndex，如果没有则根据索引设置
       const zIndex = form.zIndex !== undefined ? form.zIndex : index + 1;
       
-      return {
-        ...form,
-        id: formId,
-        position,
-        size,
-        zIndex
-      };
+      // 只有在确实需要修改时才创建新对象
+      if (form.id !== formId || 
+          form.position !== position || 
+          form.size !== size || 
+          form.zIndex !== zIndex) {
+        return {
+          ...form,
+          id: formId,
+          position,
+          size,
+          zIndex
+        };
+      }
+      
+      return form;
     });
   } catch (e) {
     handleError(e, '表单数据校验失败');
@@ -245,31 +262,19 @@ const handleAddForm = () => {
       showValue: true,
       showRemark: true,
       showMedia: true,
-      style: getDefaultCardStyles(),
+      style: {},
       elementStyles: {
         title: {
-          enabled: false,
-          color: '#333333',
-          fontSize: 16,
-          fontWeight: 'bold'
+          enabled: false
         },
         value: {
-          enabled: false,
-          color: '#333333',
-          fontSize: 16,
-          fontWeight: 'normal'
+          enabled: false
         },
         remark: {
-          enabled: false,
-          color: '#666666',
-          fontSize: 14,
-          fontWeight: 'normal'
+          enabled: false
         },
         media: {
-          enabled: false,
-          color: '#333333',
-          fontSize: 14,
-          fontWeight: 'normal'
+          enabled: false
         }
       },
       position: { 
@@ -310,6 +315,76 @@ const saveAddForm = (formData) => {
       createdAt: formData.createdAt || new Date().toISOString()
     };
     
+    // 确保表单的基本字段存在
+    if (!newForm.title) newForm.title = '';
+    if (!newForm.value) newForm.value = '';
+    if (!newForm.remark) newForm.remark = '';
+    if (!newForm.media) newForm.media = '';
+    if (!newForm.mediaType) newForm.mediaType = 'image';
+    
+    // 确保样式字段存在
+    if (!newForm.style || typeof newForm.style !== 'object') {
+      newForm.style = {
+        backgroundColor: '#ffffff',
+        color: '#333333',
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: '#e4e7ed',
+        borderRadius: 4,
+        fontSize: 14,
+        padding: 12,
+        hasShadow: true
+      };
+    }
+    
+    // 确保元素样式字段存在
+    if (!newForm.elementStyles || typeof newForm.elementStyles !== 'object') {
+      newForm.elementStyles = {
+        title: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 16,
+          fontWeight: 'bold'
+        },
+        value: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 16,
+          fontWeight: 'normal'
+        },
+        remark: {
+          enabled: false,
+          color: '#666666',
+          fontSize: 14,
+          fontWeight: 'normal'
+        },
+        media: {
+          enabled: false,
+          color: '#333333',
+          fontSize: 14,
+          fontWeight: 'normal'
+        }
+      };
+    }
+    
+    // 确保显示设置字段存在
+    if (typeof newForm.showTitle !== 'boolean') newForm.showTitle = true;
+    if (typeof newForm.showValue !== 'boolean') newForm.showValue = true;
+    if (typeof newForm.showRemark !== 'boolean') newForm.showRemark = true;
+    if (typeof newForm.showMedia !== 'boolean') newForm.showMedia = true;
+    
+    // 确保位置和尺寸字段存在
+    if (!newForm.position || typeof newForm.position !== 'object') {
+      newForm.position = { 
+        x: 20 + (currentForms.length * 20), 
+        y: 20 + (currentForms.length * 20) 
+      };
+    }
+    
+    if (!newForm.size || typeof newForm.size !== 'object') {
+      newForm.size = { width: 200, height: 100 };
+    }
+    
     // 创建新的表单数组，确保不修改原数组
     const updatedForms = [...currentForms, newForm];
     console.log('[FormGrid] 更新后表单数量:', updatedForms.length);
@@ -346,19 +421,17 @@ const saveAddForm = (formData) => {
       
       // 更新全局位置信息
       positions.value = newPositions;
-      
-      // 强制更新卡片样式和位置
-      if (initializeCardStyleService) {
-        initializeCardStyleService(props.pageSize);
-      }
-      
-      if (cardStyleService.updateCardStyles) {
-        cardStyleService.updateCardStyles(updatedForms, newPositions);
-      }
     });
   } catch (error) {
     console.error('[FormGrid] 保存表单失败:', error);
     handleError(error, '保存表单失败');
+    
+    // 确保即使出错也隐藏表单编辑器并重置状态
+    nextTick(() => {
+      showAddFormEditor.value = false;
+      addFormDataKey.value = Date.now() + Math.random();
+      addFormData.value = null;
+    });
   }
 }
 
@@ -545,10 +618,6 @@ const updateFormPosition = ({ formId, position }) => {
     positions.value = newPositions;
     
     // 如果需要，更新卡片样式
-    if (cardStyleService.updateCardStyles) {
-      cardStyleService.updateCardStyles(updatedForms, newPositions);
-    }
-    
   } catch (error) {
     console.error('[FormGrid] 更新表单位置失败:', error);
     handleError(error, '更新表单位置失败');
@@ -630,6 +699,64 @@ const handleFormMouseDown = (clickedForm) => {
   }
 };
 
+// 处理表单位置更新事件
+const handleUpdatePosition = (formId, x, y) => {
+  try {
+    console.log(`[FormGrid] 更新表单位置: ${formId}`, { x, y });
+    
+    // 验证参数
+    if (!formId || typeof x === 'undefined' || typeof y === 'undefined') {
+      throw new Error('无效的位置数据或表单ID');
+    }
+    
+    // 确保props.modelValue存在且为数组
+    if (!props.modelValue || !Array.isArray(props.modelValue)) {
+      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
+      throw new Error('表单数据无效');
+    }
+    
+    // 创建更新后的表单数组
+    const updatedForms = props.modelValue.map(form => {
+      if (form.id === formId) {
+        // 确保创建新的位置对象以避免引用问题
+        return {
+          ...form,
+          position: { 
+            x: Math.round(x), 
+            y: Math.round(y) 
+          }
+        };
+      }
+      return form;
+    });
+    
+    // 触发更新事件
+    emit('update:modelValue', updatedForms);
+    
+    // 记录调试信息
+    const updatedForm = updatedForms.find(f => f.id === formId);
+    console.log(`[FormGrid] 表单位置更新成功: ${formId}`, {
+      oldPosition: props.modelValue.find(f => f.id === formId)?.position,
+      newPosition: updatedForm?.position
+    });
+    
+    // 更新全局位置信息用于样式计算
+    const newPositions = updatedForms.map(form => ({
+      id: form.id,
+      ...form.position,
+      width: form.size?.width || 200,
+      height: form.size?.height || 100
+    }));
+    
+    positions.value = newPositions;
+    
+    // 如果需要，更新卡片样式
+  } catch (error) {
+    console.error('[FormGrid] 更新表单位置失败:', error);
+    handleError(error, '更新表单位置失败');
+  }
+};
+
 // 表单保存处理函数
 const handleFormSave = (updatedForm) => {
   try {
@@ -697,43 +824,14 @@ const hideFormEditor = () => {
 defineExpose({
   handleAddForm,
   saveAddForm,
-  cancelAddForm
+  cancelAddForm,
+  handleEditForm
 })
 
 // 在组件挂载时初始化
 onMounted(() => {
   try {
     // 初始化卡片样式服务
-    if (cardStyleService.setContainer) {
-      cardStyleService.setContainer(containerRef.value)
-    }
-
-    if (cardStyleService.setContentRefs) {
-      cardStyleService.setContentRefs(contentRefs.value)
-    }
-
-    if (cardStyleService.setPositions) {
-      cardStyleService.setPositions(positions.value)
-    }
-
-    // 设置拖拽服务
-    if (dragDropService.setCardStyleService) {
-      dragDropService.setCardStyleService(cardStyleService)
-    }
-
-    // 显式绑定事件处理程序
-    if (dragDropService.setHandleDragStart) {
-      dragDropService.setHandleDragStart(dragDropService.handleDragStart || function() {})
-    }
-    if (dragDropService.setHandleDragEnd) {
-      dragDropService.setHandleDragEnd(dragDropService.handleDragEnd || function() {})
-    }
-    if (dragDropService.setHandleDragOver) {
-      dragDropService.setHandleDragOver(dragDropService.handleDragOver || function() {})
-    }
-    if (dragDropService.setHandleDrop) {
-      dragDropService.setHandleDrop(dragDropService.handleDrop || function() {})
-    }
 
     // 初始化表单数据
     console.log('[FormGrid] 初始化表单数据:', forms.value?.length, '项', 'props数据:', props.modelValue?.length || 0);
@@ -745,11 +843,28 @@ onMounted(() => {
     // 监听表单数据变化 - 使用立即执行和深度监听
     watch(() => props.modelValue, (newVal) => {
       console.log('[FormGrid] 检测到表单数据变化:', newVal);
+      
+      // 检查新值是否与当前值相同，避免不必要的更新
+      const currentForms = forms.value || [];
+      if (newVal && Array.isArray(newVal) && 
+          newVal.length === currentForms.length && 
+          JSON.stringify(newVal) === JSON.stringify(currentForms)) {
+        console.log('[FormGrid] 表单数据无实际变化，跳过更新');
+        return;
+      }
+      
       // 添加深度克隆和空值处理
       // 保持响应式引用，避免重新赋值破坏响应式
       
       // 使用props.modelValue直接进行验证
       const validated = validateForms(newVal);
+      
+      // 检查验证后的数据是否与当前数据相同
+      if (validated.length === currentForms.length && 
+          JSON.stringify(validated) === JSON.stringify(currentForms)) {
+        console.log('[FormGrid] 验证后表单数据无实际变化，跳过更新');
+        return;
+      }
       
       // 总是更新表单数据，确保新添加的表单能正确显示
       forms.value.splice(0, forms.value.length, ...validated);
@@ -762,7 +877,12 @@ onMounted(() => {
         height: form.size?.height || 100
       }));
       
-      positions.value = newPositions;
+      // 只有当位置信息实际发生变化时才更新
+      const currentPositionStr = JSON.stringify(positions.value);
+      const newPositionStr = JSON.stringify(newPositions);
+      if (currentPositionStr !== newPositionStr) {
+        positions.value = newPositions;
+      }
       
       nextTick(() => {
         initializeGridLayout();
@@ -799,9 +919,6 @@ onMounted(() => {
         // 触发更新以重新计算 gridContainerStyle
         nextTick(() => {
           // 强制更新样式
-          if (props.pageSize && cardStyleService.updateCardStyles) {
-            cardStyleService.updateCardStyles(forms.value, positions.value);
-          }
         });
       },
       { deep: true }

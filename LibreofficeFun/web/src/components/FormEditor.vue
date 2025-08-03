@@ -55,35 +55,50 @@
         </el-collapse-item>
       </el-collapse>
 
-      <!-- 样式设置（可折叠） -->
+      <!-- 样式管理器 -->
       <el-collapse v-model="activeCollapse" class="style-settings-panel">
+        <el-collapse-item title="样式设置" name="style">
+          <StyleManager v-model="formState.style" />
+        </el-collapse-item>
+      </el-collapse>
 
-        <!-- 位置和大小设置 -->
-        <el-collapse-item title="位置和大小" name="position">
-          <div class="position-grid">
-            <!-- X坐标 -->
-            <el-form-item label="X坐标">
-              <el-input-number v-model="formState.position.x" :min="0" :max="1000" :step="10" controls-position="right"
-                size="small" style="width: 120px" />
-            </el-form-item>
-
-            <!-- Y坐标 -->
-            <el-form-item label="Y坐标">
-              <el-input-number v-model="formState.position.y" :min="0" :max="1000" :step="10" controls-position="right"
-                size="small" style="width: 120px" />
-            </el-form-item>
-
-            <!-- 宽度 -->
-            <el-form-item label="宽度">
-              <el-input-number v-model="formState.size.width" :min="100" :max="1000" :step="10"
-                controls-position="right" size="small" style="width: 120px" />
-            </el-form-item>
-
-            <!-- 高度 -->
-            <el-form-item label="高度">
-              <el-input-number v-model="formState.size.height" :min="50" :max="1000" :step="10"
-                controls-position="right" size="small" style="width: 120px" />
-            </el-form-item>
+      <!-- 元素样式管理器 -->
+      <el-collapse v-model="activeCollapse" class="element-style-settings-panel">
+        <el-collapse-item title="元素样式设置" name="elementStyle">
+          <div class="element-style-section">
+            <h4>标题样式</h4>
+            <el-switch 
+              v-model="formState.elementStyles.title.enabled" 
+              active-text="启用"
+              inactive-text="禁用" />
+            <StyleManager v-model="formState.elementStyles.title" v-if="formState.elementStyles.title.enabled" />
+          </div>
+          
+          <div class="element-style-section">
+            <h4>内容样式</h4>
+            <el-switch 
+              v-model="formState.elementStyles.value.enabled" 
+              active-text="启用"
+              inactive-text="禁用" />
+            <StyleManager v-model="formState.elementStyles.value" v-if="formState.elementStyles.value.enabled" />
+          </div>
+          
+          <div class="element-style-section">
+            <h4>备注样式</h4>
+            <el-switch 
+              v-model="formState.elementStyles.remark.enabled" 
+              active-text="启用"
+              inactive-text="禁用" />
+            <StyleManager v-model="formState.elementStyles.remark" v-if="formState.elementStyles.remark.enabled" />
+          </div>
+          
+          <div class="element-style-section">
+            <h4>媒体样式</h4>
+            <el-switch 
+              v-model="formState.elementStyles.media.enabled" 
+              active-text="启用"
+              inactive-text="禁用" />
+            <StyleManager v-model="formState.elementStyles.media" v-if="formState.elementStyles.media.enabled" />
           </div>
         </el-collapse-item>
       </el-collapse>
@@ -102,12 +117,6 @@
         <div class="preview-mode-header">
           <h3>表单预览</h3>
           <div class="preview-mode-actions">
-            <el-button @click="openGlobalStylePanel" type="primary" size="small">
-              <el-icon>
-                <Setting />
-              </el-icon>
-              <span>统一样式设置</span>
-            </el-button>
             <el-button @click="closePreview" type="default" size="small">
               <el-icon>
                 <Close />
@@ -116,107 +125,16 @@
             </el-button>
           </div>
         </div>
-        <div class="preview-mode-body" :style="previewStyle">
-          <div class="preview-title preview-element" :style="previewTitleStyle" v-if="formState.showTitle"
-            @click="openElementStylePanel('title')">
-            {{ formState.title || '表单标题' }}
-          </div>
-          <div class="preview-value preview-element" :style="previewValueStyle" v-if="formState.showValue"
-            @click="openElementStylePanel('value')">
-            {{ formState.value || '表单内容将显示在这里' }}
-          </div>
-          <div class="preview-remark preview-element" :style="previewRemarkStyle"
-            v-if="formState.remark && formState.showRemark" @click="openElementStylePanel('remark')">
-            {{ formState.remark }}
-          </div>
-          <div class="preview-media preview-element" v-if="formState.media && formState.showMedia"
-            :style="previewMediaStyle" @click="openElementStylePanel('media')">
-            <img v-if="formState.mediaType === 'image'" :src="formState.media" alt="媒体"
-              style="max-width: 100%; border-radius: 4px;" />
-            <video v-else :src="formState.media" controls style="max-width: 100%; border-radius: 4px;"></video>
-          </div>
-        </div>
-      </div>
-
-      <!-- 元素样式设置面板 -->
-      <div v-if="currentElementStyle" class="element-style-panel-overlay" @click="closeElementStylePanel">
-        <div class="element-style-panel-content" @click.stop>
-          <div class="element-style-panel-header">
-            <h4>{{ getElementDisplayName(currentElementStyle.type) }}样式设置</h4>
-            <el-button @click="closeElementStylePanel" type="default" size="small">
-              <el-icon>
-                <Close />
-              </el-icon>
-              <span>关闭</span>
-            </el-button>
-          </div>
-          <ElementStylePanel :style-config="currentElementStyle.style"
-            @update:style="updateElementStyle(currentElementStyle.type, $event)" />
-          <div class="element-style-panel-actions">
-            <el-button @click="closeElementStylePanel">确定</el-button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 统一样式设置面板 -->
-      <div v-if="isGlobalStylePanelVisible" class="global-style-panel-overlay" @click="closeGlobalStylePanel">
-        <div class="global-style-panel-content" @click.stop>
-          <div class="global-style-panel-header">
-            <h4>统一样式设置</h4>
-            <el-button @click="closeGlobalStylePanel" type="default" size="small">
-              <el-icon>
-                <Close />
-              </el-icon>
-              <span>关闭</span>
-            </el-button>
-          </div>
-
-          <div class="global-style-panel-body">
-            <!-- 背景颜色 -->
-            <el-form-item label="背景颜色">
-              <el-color-picker v-model="formState.style.backgroundColor" show-alpha />
-            </el-form-item>
-
-            <!-- 文字颜色 -->
-            <el-form-item label="文字颜色">
-              <el-color-picker v-model="formState.style.color" show-alpha />
-            </el-form-item>
-
-            <!-- 边框设置 -->
-            <el-form-item label="边框">
-              <el-input-number v-model="formState.style.borderWidth" :min="0" :max="10" :step="1" :precision="0"
-                controls-position="right" size="small" style="width: 120px" />
-              <el-select v-model="formState.style.borderStyle" size="small" style="margin-left: 8px; width: 100px">
-                <el-option label="实线" value="solid"></el-option>
-                <el-option label="虚线" value="dashed"></el-option>
-                <el-option label="点线" value="dotted"></el-option>
-                <el-option label="无" value="none"></el-option>
-              </el-select>
-              <el-color-picker v-model="formState.style.borderColor" size="small" style="margin-left: 8px" />
-            </el-form-item>
-
-            <!-- 圆角 -->
-            <el-form-item label="圆角">
-              <el-input-number v-model="formState.style.borderRadius" :min="0" :max="20" :step="1" :precision="0"
-                controls-position="right" size="small" style="width: 120px" />
-            </el-form-item>
-
-            <!-- 字体大小 -->
-            <el-form-item label="字体大小">
-              <el-input-number v-model="formState.style.fontSize" :min="12" :max="32" :step="1" :precision="0"
-                controls-position="right" size="small" style="width: 120px" />
-            </el-form-item>
-
-            <!-- 阴影 -->
-            <el-form-item label="阴影">
-              <el-switch v-model="formState.style.hasShadow" />
-            </el-form-item>
-          </div>
-
-          <div class="global-style-panel-actions">
-            <el-button @click="applyGlobalStyles">应用</el-button>
-            <el-button @click="closeGlobalStylePanel">确定</el-button>
-          </div>
+        <div class="preview-mode-body">
+          <SimpleCardConverter 
+            :forms="[formState]"
+            :cardGroups="previewCardGroups" 
+            :cardGroupStyles="previewCardGroupStyles"
+            :cardRowStyles="previewCardRowStyles" 
+            :cardStyles="previewCardStyles" 
+            :globalTextStyles="previewGlobalTextStyles"
+            @edit-card="handleEditCard"
+            @edit-row-style="handleEditRowStyle" />
         </div>
       </div>
     </div>
@@ -227,15 +145,16 @@
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Setting } from '@element-plus/icons-vue'
-import ElementStylePanel from './ElementStylePanel.vue'
+import SimpleCardConverter from './SimpleCardConverter.vue'
+import StyleManager from './StyleManager.vue'
 import errorLogService from '../services/errorLogService'
 import { t as i18nTrans } from '../utils/i18n'
 
-// 定义组件属性
+// 定义props
 const props = defineProps({
   form: {
     type: Object,
-    default: null
+    default: () => ({})
   },
   isEdit: {
     type: Boolean,
@@ -253,16 +172,17 @@ const formRef = ref(null)
 const loading = ref(false)
 
 // 激活的折叠面板
-const activeCollapse = ref(['visibility', 'style', 'position'])
+const activeCollapse = ref(['visibility', 'style'])
 
 // 预览模式状态
 const isPreviewMode = ref(false)
 
-// 当前元素样式（用于元素样式设置面板）
-const currentElementStyle = ref(null)
-
-// 统一样式面板状态
-const isGlobalStylePanelVisible = ref(false)
+// 预览相关的SimpleCardConverter数据
+const previewCardGroups = ref([])
+const previewCardGroupStyles = ref({})
+const previewCardRowStyles = ref({})
+const previewCardStyles = ref({})
+const previewGlobalTextStyles = ref({})
 
 // 默认样式
 const defaultStyle = () => ({
@@ -273,10 +193,11 @@ const defaultStyle = () => ({
   borderColor: '#e4e7ed',
   borderRadius: 4,
   fontSize: 14,
-  hasShadow: false
+  padding: 12,
+  hasShadow: true
 })
 
-// 默认元素样式
+// 默认的元素样式设置
 const defaultElementStyle = () => ({
   enabled: false,
   color: '#333333',
@@ -284,55 +205,31 @@ const defaultElementStyle = () => ({
   fontWeight: 'normal'
 })
 
-// 确保元素样式完整性
+// 确保元素样式数据完整性的函数
 const ensureElementStyleIntegrity = (style) => {
-  const result = { ...defaultElementStyle(), ...style }
-
-  // 验证必要字段
-  const requiredFields = Object.keys(defaultElementStyle())
-  requiredFields.forEach(key => {
+  const defaultStyle = defaultElementStyle()
+  const result = { ...style }
+  
+  // 确保所有必要字段都存在
+  Object.keys(defaultStyle).forEach(key => {
     if (!(key in result)) {
       console.warn(`Missing key "${key}" in element style, using default value`)
-      result[key] = defaultElementStyle()[key]
+      result[key] = defaultStyle[key]
     }
   })
-
+  
   return result
 }
 
+
 // 打开统一样式设置面板
-const openGlobalStylePanel = () => {
-  isGlobalStylePanelVisible.value = true
-}
 
 // 关闭统一样式设置面板
-const closeGlobalStylePanel = () => {
-  isGlobalStylePanelVisible.value = false
-}
 
 // 应用统一样式到所有启用的元素样式
-const applyGlobalStyles = () => {
-  // 获取当前的通用样式
-  const { color, fontSize } = formState.style
-
-  // 遍历所有元素样式
-  Object.keys(formState.elementStyles).forEach(elementType => {
-    const elementStyle = formState.elementStyles[elementType]
-
-    // 如果该元素样式已启用，则更新其样式
-    if (elementStyle.enabled) {
-      formState.elementStyles[elementType] = {
-        ...elementStyle,
-        color,
-        fontSize
-      }
-    }
-  })
-
-  ElMessage.success('统一样式已应用到所有启用的元素')
-}
 
 // 表单状态
+/** @type {Form} */
 const formState = reactive({
   id: props.form?.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
   title: props.isEdit ? (props.form?.title || '') : '',
@@ -344,9 +241,9 @@ const formState = reactive({
   showValue: props.isEdit ? (props.form?.showValue !== false) : true,
   showRemark: props.isEdit ? (props.form?.showRemark !== false) : true,
   showMedia: props.isEdit ? (props.form?.showMedia !== false) : true,
-  style: {
-    ...defaultStyle(),
-    ...(props.isEdit && props.form?.style ? props.form.style : {})
+  style: { 
+    ...defaultStyle(), 
+    ...(props.isEdit && props.form?.style ? props.form.style : {}) 
   },
   // 添加元素特定样式设置
   elementStyles: {
@@ -367,13 +264,13 @@ const formState = reactive({
       ...(props.isEdit && props.form?.elementStyles?.media ? props.form.elementStyles.media : {})
     })
   },
-  position: {
-    x: props.isEdit ? (props.form?.position?.x || 20) : 20,
-    y: props.isEdit ? (props.form?.position?.y || 20) : 20
+  position: { 
+    x: props.isEdit ? (props.form?.position?.x || 20) : 20, 
+    y: props.isEdit ? (props.form?.position?.y || 20) : 20 
   },
-  size: {
-    width: props.isEdit ? (props.form?.size?.width || 200) : 200,
-    height: props.isEdit ? (props.form?.size?.height || 100) : 100
+  size: { 
+    width: props.isEdit ? (props.form?.size?.width || 200) : 200, 
+    height: props.isEdit ? (props.form?.size?.height || 100) : 100 
   }
 })
 
@@ -391,8 +288,7 @@ const rules = {
     { max: 100, message: '长度不能超过100个字符', trigger: 'blur' }
   ],
   media: [
-    {
-      validator: (rule, value, callback) => {
+    { validator: (rule, value, callback) => {
         if (formState.showMedia && value) {
           // 简单验证URL格式
           const urlPattern = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/;
@@ -404,112 +300,10 @@ const rules = {
         } else {
           callback();
         }
-      }, trigger: 'blur'
-    }
+      }, trigger: 'blur' }
   ]
 }
 
-// 预览样式计算属性
-const previewStyle = computed(() => {
-  const { backgroundColor, color, borderWidth, borderStyle, borderColor, borderRadius, fontSize, hasShadow } = formState.style
-  return {
-    backgroundColor,
-    color,
-    borderWidth: `${borderWidth}px`,
-    borderStyle,
-    borderColor,
-    borderRadius: `${borderRadius}px`,
-    fontSize: `${fontSize}px`,
-    padding: '20px',
-    boxShadow: hasShadow ? '0 2px 12px 0 rgba(0, 0, 0, 0.1)' : 'none',
-    maxWidth: '600px',
-    margin: '0 auto'
-  }
-})
-
-// 预览标题样式
-const previewTitleStyle = computed(() => {
-  const titleStyle = formState.elementStyles.title
-  if (!titleStyle.enabled) {
-    // 回退到通用样式设置
-    return {
-      color: formState.style.color,
-      fontSize: `${formState.style.fontSize}px`,
-      fontWeight: 'normal', // 默认字体粗细
-      marginBottom: '10px'
-    }
-  }
-
-  return {
-    color: titleStyle.color,
-    fontSize: `${titleStyle.fontSize}px`,
-    fontWeight: titleStyle.fontWeight,
-    marginBottom: '10px'
-  }
-})
-
-// 预览内容样式
-const previewValueStyle = computed(() => {
-  const valueStyle = formState.elementStyles.value
-  if (!valueStyle.enabled) {
-    // 回退到通用样式设置
-    return {
-      color: formState.style.color,
-      fontSize: `${formState.style.fontSize}px`,
-      fontWeight: 'normal', // 默认字体粗细
-      marginBottom: '10px',
-      whiteSpace: 'pre-wrap'
-    }
-  }
-
-  return {
-    color: valueStyle.color,
-    fontSize: `${valueStyle.fontSize}px`,
-    fontWeight: valueStyle.fontWeight,
-    marginBottom: '10px',
-    whiteSpace: 'pre-wrap'
-  }
-})
-
-// 预览备注样式
-const previewRemarkStyle = computed(() => {
-  const remarkStyle = formState.elementStyles.remark
-  if (!remarkStyle.enabled) {
-    // 回退到通用样式设置
-    return {
-      color: formState.style.color,
-      fontSize: `${formState.style.fontSize - 2}px`, // 备注字体稍小
-      fontWeight: 'normal', // 默认字体粗细
-      whiteSpace: 'pre-wrap'
-    }
-  }
-
-  return {
-    color: remarkStyle.color,
-    fontSize: `${remarkStyle.fontSize}px`,
-    fontWeight: remarkStyle.fontWeight,
-    whiteSpace: 'pre-wrap'
-  }
-})
-
-// 预览媒体样式
-const previewMediaStyle = computed(() => {
-  const mediaStyle = formState.elementStyles.media
-  if (!mediaStyle.enabled) {
-    // 回退到通用样式设置
-    return {
-      color: formState.style.color,
-      fontSize: `${formState.style.fontSize}px`,
-      fontWeight: 'normal' // 默认字体粗细
-    }
-  }
-
-  return {
-    color: mediaStyle.color,
-    fontSize: `${mediaStyle.fontSize}px`,
-    fontWeight: mediaStyle.fontWeight
-  }
-})
 
 // 切换预览模式
 const togglePreview = () => {
@@ -519,55 +313,6 @@ const togglePreview = () => {
 // 关闭预览模式
 const closePreview = () => {
   isPreviewMode.value = false
-  currentElementStyle.value = null
-  closeGlobalStylePanel()
-}
-
-// 打开元素样式设置面板
-const openElementStylePanel = (elementType) => {
-  currentElementStyle.value = {
-    type: elementType,
-    style: { ...formState.elementStyles[elementType] } // 创建副本避免直接引用
-  }
-}
-
-// 关闭元素样式设置面板
-const closeElementStylePanel = () => {
-  currentElementStyle.value = null
-}
-
-// 获取元素的显示名称
-const getElementDisplayName = (elementType) => {
-  switch (elementType) {
-    case 'title':
-      return '标题'
-    case 'value':
-      return '内容'
-    case 'remark':
-      return '备注'
-    case 'media':
-      return '媒体'
-    default:
-      return elementType
-  }
-}
-
-// 获取元素的样式配置
-const getElementStyleConfig = (elementType) => {
-  return formState.elementStyles[elementType]
-}
-
-// 更新元素样式
-const updateElementStyle = (elementType, styleConfig) => {
-  // 确保元素样式已启用
-  const updatedStyle = {
-    ...formState.elementStyles[elementType],
-    ...styleConfig,
-    enabled: true // 确保启用该元素的特定样式
-  };
-
-  // 更新表单状态中的元素样式
-  formState.elementStyles[elementType] = updatedStyle;
 }
 
 // 取消编辑
@@ -622,15 +367,16 @@ const submitForm = async () => {
     const formData = JSON.parse(JSON.stringify(formState))
 
     // 确保elementStyles数据结构完整
-    if (formData.elementStyles) {
+    if (formData.elementStyles && typeof formData.elementStyles === 'object') {
       // 验证每个元素样式是否包含必要字段
       const defaultKeys = Object.keys(defaultElementStyle())
-      Object.values(formData.elementStyles).forEach(style => {
-        if (typeof style === 'object') {
-          defaultKeys.forEach(key => {
-            if (!(key in style)) {
-              console.warn(`Missing key "${key}" in element style, using default value`)
-              style[key] = defaultElementStyle()[key]
+      Object.entries(formData.elementStyles).forEach(([key, style]) => {
+        // 确保style存在且为对象
+        if (style && typeof style === 'object') {
+          defaultKeys.forEach(defaultKey => {
+            if (!(defaultKey in style)) {
+              console.warn(`Missing key "${defaultKey}" in element style "${key}", using default value`)
+              style[defaultKey] = defaultElementStyle()[defaultKey]
             }
           })
         }
@@ -648,6 +394,7 @@ const submitForm = async () => {
   } catch (error) {
     handleError(error, '表单验证失败')
   } finally {
+    // 确保在所有情况下loading状态都会被重置
     loading.value = false
   }
 }
@@ -656,6 +403,9 @@ const submitForm = async () => {
 const handleError = (error, context) => {
   try {
     console.error(`[FormEditor] ${context} 发生错误:`, error);
+    
+    // 确保loading状态被重置
+    loading.value = false;
     
     // 如果是表单验证错误，不发送错误事件
     if (context === '表单验证失败') {
@@ -670,6 +420,8 @@ const handleError = (error, context) => {
     ElMessage.error(context);
   } catch (e) {
     console.error('[FormEditor] 处理错误时发生异常:', e);
+    // 即使处理错误时发生异常，也要确保loading状态被重置
+    loading.value = false;
   }
 };
 
@@ -895,9 +647,7 @@ onMounted(async () => {
     padding: 8px;
   }
 
-  .preview-mode-content,
-  .element-style-panel-content,
-  .global-style-panel-content {
+  .preview-mode-content {
     width: 95%;
     padding: 15px;
   }

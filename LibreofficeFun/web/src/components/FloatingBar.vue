@@ -236,6 +236,7 @@ export default {
 
     let isDragging = false
     let dragStartX, dragStartY, initialX, initialY
+    let animationFrameId = null // 添加animationFrameId变量定义
 
     // 点击其他地方收起功能面板
     const handleClickOutside = (event) => {
@@ -263,8 +264,9 @@ export default {
     onBeforeUnmount(() => {
       document.removeEventListener('mousedown', handleClickOutside)
       // 确保清理动画帧
-      if (animationFrameId) {
+      if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
       }
     })
 
@@ -287,21 +289,34 @@ export default {
     }
 
     const drag = (e) => {
-      if (!isDragging) return
+      if (!isDragging) return;
       
-      // 直接更新位置，提高拖动流畅度
-      const dx = e.clientX - dragStartX
-      const dy = e.clientY - dragStartY
+      // 使用requestAnimationFrame优化拖动性能
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
+      }
       
-      barStyle.value.left = `${initialX + dx}px`
-      barStyle.value.top = `${initialY + dy}px`
-    }
+      animationFrameId = requestAnimationFrame(() => {
+        const dx = e.clientX - dragStartX
+        const dy = e.clientY - dragStartY
+        
+        barStyle.value.left = `${initialX + dx}px`
+        barStyle.value.top = `${initialY + dy}px`
+        animationFrameId = null
+      })
+    };
 
     const stopDrag = () => {
       isDragging = false
       document.removeEventListener('mousemove', drag)
       document.removeEventListener('mouseup', stopDrag)
-    }
+      
+      // 清理可能存在的动画帧
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId)
+        animationFrameId = null
+      }
+    };
 
     const handleAddForm = () => {
       emit('add-form')

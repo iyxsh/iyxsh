@@ -3,12 +3,10 @@
     class="single-form-card-wrapper"
     :style="cardStyle"
     @mousedown="handleMouseDown"
-    @dblclick="handleDoubleClick"
+    @dblclick="handleDblClick"
   >
     <el-card 
-      :class="['single-form-card', { 'editable': editable, 'no-style': !cardStyleOn }]"
-      :body-style="cardStyleOn ? getDefaultCardStyles() : {}"
-    >
+      :class="['single-form-card', { 'editable': editable, 'no-style': !cardStyleOn }]">
       <div class="form-content">
         <!-- 标题 -->
         <div 
@@ -88,13 +86,17 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { ElCard, ElDropdown, ElDropdownMenu, ElDropdownItem, ElButton, ElIcon, ElMessage } from 'element-plus'
-import { MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
-import { getDefaultCardStyles } from '@/services/cardStyleService'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 
-// 定义props
+// 修改后的计算属性
+const cardBodyStyle = computed(() => {
+  
+  return {};
+})
+import { MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
+// 定义props并添加类型注释
 const props = defineProps({
+  /** @type {Form} */
   form: {
     type: Object,
     required: true
@@ -118,309 +120,261 @@ const props = defineProps({
 })
 
 // 定义emits
-const emit = defineEmits([
-  'edit', 
-  'delete', 
-  'dblclick',
-  'mousedown',
-  'update-position',
-  'update-size'
-])
+const emit = defineEmits(['edit', 'delete', 'update-position', 'update-size', 'dblclick', 'mousedown'])
 
-// 计算是否应该显示各个部分
-const shouldShowTitle = computed(() => {
-  return props.form.showTitle !== false && props.form.title
-})
-
-const shouldShowValue = computed(() => {
-  return props.form.showValue !== false && props.form.value
-})
-
-const shouldShowRemark = computed(() => {
-  return props.form.showRemark !== false && props.form.remark
-})
-
-const shouldShowMedia = computed(() => {
-  return props.form.showMedia !== false && props.form.media
-})
-
-// 计算标题样式
-const titleStyle = computed(() => {
-  // 如果使用元素特定样式且已启用
-  if (props.form.elementStyles && props.form.elementStyles.title && props.form.elementStyles.title.enabled) {
-    const titleStyle = props.form.elementStyles.title
-    return {
-      fontSize: `${titleStyle.fontSize}px`,
-      color: titleStyle.color,
-      fontWeight: titleStyle.fontWeight || 'normal',
-      marginBottom: '10px'
-    }
-  }
-  
-  // 否则使用通用样式设置
-  if (props.form.style) {
-    return {
-      color: props.form.style.color,
-      fontSize: `${props.form.style.fontSize}px`,
-      fontWeight: 'normal',
-      marginBottom: '10px'
-    }
-  }
-  
-  // 否则使用旧的样式属性
-  return {
-    fontSize: (props.form.titleFontSize || 16) + 'px',
-    color: props.form.titleColor || '#333',
-    fontWeight: 'bold'
-  }
-})
-
-// 计算内容样式
-const valueStyle = computed(() => {
-  // 如果使用元素特定样式且已启用
-  if (props.form.elementStyles && props.form.elementStyles.value && props.form.elementStyles.value.enabled) {
-    const valueStyle = props.form.elementStyles.value
-    return {
-      fontSize: `${valueStyle.fontSize}px`,
-      color: valueStyle.color,
-      fontWeight: valueStyle.fontWeight || 'normal',
-      marginBottom: '10px',
-      whiteSpace: 'pre-wrap'
-    }
-  }
-  
-  // 否则使用通用样式设置
-  if (props.form.style) {
-    return {
-      color: props.form.style.color,
-      fontSize: `${props.form.style.fontSize}px`,
-      fontWeight: 'normal',
-      marginBottom: '10px',
-      whiteSpace: 'pre-wrap'
-    }
-  }
-  
-  // 否则使用旧的样式属性
-  return {
-    fontSize: (props.form.valueFontSize || 16) + 'px',
-    color: props.form.valueColor || '#333'
-  }
-})
-
-// 计算备注样式
-const remarkStyle = computed(() => {
-  // 如果使用元素特定样式且已启用
-  if (props.form.elementStyles && props.form.elementStyles.remark && props.form.elementStyles.remark.enabled) {
-    const remarkStyle = props.form.elementStyles.remark
-    return {
-      fontSize: `${remarkStyle.fontSize}px`,
-      color: remarkStyle.color,
-      fontWeight: remarkStyle.fontWeight || 'normal',
-      whiteSpace: 'pre-wrap'
-    }
-  }
-  
-  // 否则使用通用样式设置
-  if (props.form.style) {
-    return {
-      color: props.form.style.color,
-      fontSize: `${(props.form.style.fontSize || 14) - 2}px`, // 备注字体稍小
-      fontWeight: 'normal',
-      whiteSpace: 'pre-wrap'
-    }
-  }
-  
-  // 否则使用旧的样式属性
-  return {
-    fontSize: (props.form.remarkFontSize || 14) + 'px',
-    color: props.form.remarkColor || '#666'
-  }
-})
-
-// 计算媒体样式
-const mediaStyle = computed(() => {
-  // 如果使用元素特定样式且已启用
-  if (props.form.elementStyles && props.form.elementStyles.media && props.form.elementStyles.media.enabled) {
-    const mediaStyle = props.form.elementStyles.media
-    return {
-      fontSize: `${mediaStyle.fontSize}px`,
-      color: mediaStyle.color,
-      fontWeight: mediaStyle.fontWeight || 'normal'
-    }
-  }
-  
-  // 否则使用通用样式设置
-  if (props.form.style) {
-    return {
-      color: props.form.style.color,
-      fontSize: `${props.form.style.fontSize}px`,
-      fontWeight: 'normal'
-    }
-  }
-  
-  // 否则使用默认样式
-  return {}
-})
+// 响应式数据
+const isResizing = ref(false)
+const isDragging = ref(false)
+const startX = ref(0)
+const startY = ref(0)
+const startWidth = ref(0)
+const startHeight = ref(0)
+const startLeft = ref(0)
+const startTop = ref(0)
+const formRef = ref(null)
 
 // 计算卡片样式
 const cardStyle = computed(() => {
-  return {
+  const baseStyle = {
     position: 'absolute',
     left: `${props.position.x}px`,
     top: `${props.position.y}px`,
     width: `${props.size.width}px`,
     height: `${props.size.height}px`,
-    zIndex: props.form.zIndex || 1
+    zIndex: props.form?.zIndex || 1
+  }
+  
+  // 如果启用卡片样式，则应用表单样式
+  if (props.cardStyleOn && props.form?.style) {
+    // 直接使用表单的style属性
+    const style = props.form.style;
+    
+    // 构建body样式对象
+    const bodyStyle = {...baseStyle};
+    
+    // 处理各种样式属性
+    if (style.padding !== undefined) {
+      bodyStyle.padding = typeof style.padding === 'number' ? `${style.padding}px` : style.padding;
+    }
+    
+    if (style.backgroundColor) {
+      bodyStyle.backgroundColor = style.backgroundColor;
+    }
+    
+    if (style.color) {
+      bodyStyle.color = style.color;
+    }
+    
+    if (style.fontSize !== undefined) {
+      bodyStyle.fontSize = typeof style.fontSize === 'number' ? `${style.fontSize}px` : style.fontSize;
+    }
+    
+    if (style.borderWidth !== undefined) {
+      bodyStyle.borderWidth = typeof style.borderWidth === 'number' ? `${style.borderWidth}px` : style.borderWidth;
+    }
+    
+    if (style.borderStyle) {
+      bodyStyle.borderStyle = style.borderStyle;
+    }
+    
+    if (style.borderColor) {
+      bodyStyle.borderColor = style.borderColor;
+    }
+    
+    if (style.borderRadius !== undefined) {
+      bodyStyle.borderRadius = typeof style.borderRadius === 'number' ? `${style.borderRadius}px` : style.borderRadius;
+    }
+    
+    if (style.hasShadow) {
+      bodyStyle.boxShadow = '0 2px 12px 0 rgba(0, 0, 0, 0.1)';
+    } else if (style.hasShadow === false) {
+      bodyStyle.boxShadow = 'none';
+    }
+    
+    return bodyStyle;
+  }
+  return baseStyle
+})
+
+// 元素样式计算 - 使用表单的elementStyles并通过StyleManager处理
+const titleStyle = computed(() => {
+  if (!props.form?.elementStyles?.title?.enabled) return {}
+  const style = props.form.elementStyles.title
+  // 使用StyleManager方式处理样式
+  return {
+    color: style.color || '',
+    fontSize: style.fontSize ? `${style.fontSize}px` : '',
+    fontWeight: style.fontWeight || 'normal'
   }
 })
 
-// 处理双击事件
-const handleDoubleClick = () => {
-  if (props.editable) {
-    emit('dblclick', props.form)
+const valueStyle = computed(() => {
+  if (!props.form?.elementStyles?.value?.enabled) return {}
+  const style = props.form.elementStyles.value
+  // 使用StyleManager方式处理样式
+  return {
+    color: style.color || '',
+    fontSize: style.fontSize ? `${style.fontSize}px` : '',
+    fontWeight: style.fontWeight || 'normal'
   }
-}
+})
 
-// 处理鼠标按下事件
-const handleMouseDown = (event) => {
-  // 只有在卡片本身（非操作按钮）上按下鼠标才触发
-  if (event.target.classList.contains('action-button') || 
-      event.target.closest('.form-actions') ||
-      event.target.classList.contains('resize-handle')) {
-    return
+const remarkStyle = computed(() => {
+  if (!props.form?.elementStyles?.remark?.enabled) return {}
+  const style = props.form.elementStyles.remark
+  // 使用StyleManager方式处理样式
+  return {
+    color: style.color || '',
+    fontSize: style.fontSize ? `${style.fontSize}px` : '',
+    fontWeight: style.fontWeight || 'normal'
   }
-  
-  // 开始拖拽
-  startDrag(event)
-}
+})
 
-// 处理菜单命令
+const mediaStyle = computed(() => {
+  if (!props.form?.elementStyles?.media?.enabled) return {}
+  const style = props.form.elementStyles.media
+  // 使用StyleManager方式处理样式
+  return {
+    color: style.color || '',
+    fontSize: style.fontSize ? `${style.fontSize}px` : '',
+    fontWeight: style.fontWeight || 'normal'
+  }
+})
+
+// 是否显示标题
+const shouldShowTitle = computed(() => {
+  return props.form?.showTitle !== false && props.form?.title
+})
+
+// 是否显示内容
+const shouldShowValue = computed(() => {
+  return props.form?.showValue !== false && props.form?.value
+})
+
+// 是否显示备注
+const shouldShowRemark = computed(() => {
+  return props.form?.showRemark !== false && props.form?.remark
+})
+
+// 是否显示媒体
+const shouldShowMedia = computed(() => {
+  return props.form?.showMedia !== false && props.form?.media
+})
+
+// 处理命令
 const handleCommand = (command) => {
   switch (command) {
     case 'edit':
-      emit('edit', props.form)
+      editForm()
       break
     case 'delete':
-      emit('delete', props.form)
+      deleteForm()
       break
   }
 }
 
-// 开始拖拽
-const startDrag = (event) => {
-  if (!props.editable) {
-    // 在非编辑状态提示用户
-    ElMessage.info('请先解锁页面再进行拖拽操作');
-    return;
-  }
+// 处理双击事件
+const handleDblClick = (event) => {
+  event.stopPropagation()
+  emit('dblclick', props.form)
+}
+
+// 处理鼠标按下事件（拖拽开始）
+const handleMouseDown = (event) => {
+  event.stopPropagation()
   
-  // 只有在卡片本身（非操作按钮）上按下鼠标才触发拖拽
-  if (event.target.classList.contains('action-button') || 
-      event.target.closest('.form-actions') ||
-      event.target.classList.contains('resize-handle')) {
+  // 如果点击的是调整大小的手柄，则不处理拖拽
+  if (event.target.classList.contains('resize-handle')) {
     return
   }
   
-  event.preventDefault()
-  handleDragStart(event) // 调用内部拖拽处理逻辑
+  isDragging.value = true
+  startX.value = event.clientX
+  startY.value = event.clientY
+  startLeft.value = props.position.x
+  startTop.value = props.position.y
+  
+  document.addEventListener('mousemove', handleDrag)
+  document.addEventListener('mouseup', stopDrag)
+  
+  emit('mousedown', props.form)
+}
+
+// 处理拖拽过程
+const handleDrag = (event) => {
+  if (!isDragging.value) return
+  
+  const deltaX = event.clientX - startX.value
+  const deltaY = event.clientY - startY.value
+  
+  const newX = startLeft.value + deltaX
+  const newY = startTop.value + deltaY
+  
+  emit('update-position', props.form.id, newX, newY)
+}
+
+// 停止拖拽
+const stopDrag = () => {
+  isDragging.value = false
+  document.removeEventListener('mousemove', handleDrag)
+  document.removeEventListener('mouseup', stopDrag)
 }
 
 // 开始调整大小
 const startResize = (event) => {
-  if (!props.editable) {
-    // 在非编辑状态提示用户
-    ElMessage.info('请先解锁页面再进行尺寸调整操作');
-    return;
-  }
+  event.stopPropagation()
+  isResizing.value = true
+  startX.value = event.clientX
+  startY.value = event.clientY
+  startWidth.value = props.size.width
+  startHeight.value = props.size.height
+  startLeft.value = props.position.x
+  startTop.value = props.position.y
   
-  event.preventDefault()
-  event.stopPropagation() // 阻止事件冒泡
-  handleResizeStart(event) // 调用内部调整大小处理逻辑
+  document.addEventListener('mousemove', handleResize)
+  document.addEventListener('mouseup', stopResize)
 }
 
-// 内部拖拽处理逻辑
-const handleDragStart = (event) => {
-  // 确保必要的属性存在
-  if (!props.form || !props.form.id) {
-    console.warn('[SingleFormShow] 表单数据不完整，无法拖拽');
-    return;
-  }
+// 处理调整大小过程
+const handleResize = (event) => {
+  if (!isResizing.value) return
   
-  if (!props.position || typeof props.position.x === 'undefined' || typeof props.position.y === 'undefined') {
-    console.warn('[SingleFormShow] 表单位置信息不完整，无法拖拽');
-    return;
-  }
-
-  const startX = event.clientX
-  const startY = event.clientY
-  const startLeft = props.position.x
-  const startTop = props.position.y
-
-  const handleDragMove = (moveEvent) => {
-    // 防止事件未定义
-    if (!moveEvent) return;
-    
-    const deltaX = moveEvent.clientX - startX
-    const deltaY = moveEvent.clientY - startY
-    const newX = startLeft + deltaX
-    const newY = startTop + deltaY
-    
-    emit('update-position', { 
-      formId: props.form.id, 
-      position: { x: newX, y: newY } 
-    })
-  }
-
-  const handleDragEnd = () => {
-    document.removeEventListener('mousemove', handleDragMove)
-    document.removeEventListener('mouseup', handleDragEnd)
-  }
-
-  document.addEventListener('mousemove', handleDragMove)
-  document.addEventListener('mouseup', handleDragEnd)
+  const deltaX = event.clientX - startX.value
+  const deltaY = event.clientY - startY.value
+  
+  const newWidth = Math.max(100, startWidth.value + deltaX)
+  const newHeight = Math.max(50, startHeight.value + deltaY)
+  const newX = startLeft.value
+  const newY = startTop.value
+  
+  emit('update-size', props.form.id, newWidth, newHeight)
+  emit('update-position', props.form.id, newX, newY)
 }
 
-// 内部调整大小处理逻辑
-const handleResizeStart = (event) => {
-  // 确保必要的属性存在
-  if (!props.form || !props.form.id) {
-    console.warn('[SingleFormShow] 表单数据不完整，无法调整大小');
-    return;
-  }
-  
-  if (!props.size || typeof props.size.width === 'undefined' || typeof props.size.height === 'undefined') {
-    console.warn('[SingleFormShow] 表单尺寸信息不完整，无法调整大小');
-    return;
-  }
-
-  const startX = event.clientX
-  const startY = event.clientY
-  const startWidth = props.size.width
-  const startHeight = props.size.height
-
-  const handleResizeMove = (moveEvent) => {
-    // 防止事件未定义
-    if (!moveEvent) return;
-    
-    const deltaX = moveEvent.clientX - startX
-    const deltaY = moveEvent.clientY - startY
-    const newWidth = Math.max(100, startWidth + deltaX) // 最小宽度100px
-    const newHeight = Math.max(50, startHeight + deltaY) // 最小高度50px
-    
-    emit('update-size', { 
-      formId: props.form.id, 
-      size: { width: newWidth, height: newHeight } 
-    })
-  }
-
-  const handleResizeEnd = () => {
-    document.removeEventListener('mousemove', handleResizeMove)
-    document.removeEventListener('mouseup', handleResizeEnd)
-  }
-
-  document.addEventListener('mousemove', handleResizeMove)
-  document.addEventListener('mouseup', handleResizeEnd)
+// 停止调整大小
+const stopResize = () => {
+  isResizing.value = false
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
 }
+
+// 编辑表单
+const editForm = () => {
+  emit('edit', props.form)
+}
+
+// 删除表单
+const deleteForm = () => {
+  emit('delete', props.form.id)
+}
+
+// 组件卸载前清理事件监听器
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', handleDrag)
+  document.removeEventListener('mouseup', stopDrag)
+  document.removeEventListener('mousemove', handleResize)
+  document.removeEventListener('mouseup', stopResize)
+})
 </script>
 
 <style scoped>
@@ -449,12 +403,6 @@ const handleResizeStart = (event) => {
   flex-direction: column;
   padding: 12px;
   overflow: hidden;
-}
-
-.form-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px;
 }
 
 .form-title,

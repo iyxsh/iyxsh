@@ -127,36 +127,10 @@ import FormGrid from '../components/FormGrid.vue'
 import Toolbar from '../components/Toolbar.vue'
 import FloatingBar from '../components/FloatingBar.vue'
 import SimpleCardConverter from '../components/SimpleCardConverter.vue'
-import { Edit, Delete, Lock, DocumentRemove, DocumentAdd } from '@element-plus/icons-vue'
 import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
 import { getLocale, setLocale, t as i18nTrans } from '../utils/i18n'
 import { onBeforeMount } from 'vue'
-// 确保所有用到的翻译键都存在
-const ensureTranslationsExist = () => {
-  // 确保所有需要的翻译键都已定义
-  const keys = [
-    'pageManager.newPage',
-    'pageManager.confirmDelete',
-    'pageManager.confirmDeletePage',
-    'pageManager.warning',
-    'pageManager.confirm',
-    'pageManager.cancel',
-    'pageManager.create',
-    'pageManager.pageCreationFailed',
-    'pageManager.selectPageSize',
-    'pageManager.pageName',
-    'pageManager.enterPageName',
-    'pageManager.pageSize',
-    'pageManager.formPage',
-    'pageManager.cardPage',
-    'pageManager.confirmCloseDuringCreation',
-    'pageManager.noPages',
-    'pageManager.unlockPageFirst',
-    'pageManager.cannotAddForm',
-    'pageManager.pageCreated'
-  ]
-}
 import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
@@ -170,13 +144,6 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
-
-// 侧边栏相关数据
-const asideWidth = ref(220) // 侧边栏宽度
-const isResizing = ref(false) // 是否正在调整大小
-const asideCollapsed = ref(false) // 侧边栏是否折叠
-const resizeStartX = ref(0) // 调整大小起始位置
-const startWidth = ref(0) // 调整大小起始宽度
 
 onBeforeMount(() => {
   try {
@@ -1269,58 +1236,6 @@ function convertFormsToCardsAuto() {
   } catch (error) {
     console.error('[PageManager] 自动转换表单为卡片时出错:', error);
     ElMessage.error('自动转换失败: ' + (error.message || '未知错误'));
-  }
-}
-
-// 转换表单为卡片
-function convertFormsToCards() {
-  try {
-    const currentPage = pages.value[currentPageIdx.value]
-    if (!currentPage) {
-      ElMessage.warning('当前页面不存在')
-      return
-    }
-
-    if (!currentPage.forms || !Array.isArray(currentPage.forms)) {
-      ElMessage.warning('当前页面表单数据格式不正确')
-      return
-    }
-
-    if (currentPage.forms.length === 0) {
-      ElMessage.warning('当前页面没有表单内容')
-      return
-    }
-
-    // 添加有效性过滤
-    const validForms = currentPage.forms.filter(form =>
-      (form.title && form.title.trim()) ||
-      (form.value && form.value.trim()) ||
-      (form.remark && form.remark.trim()) ||
-      (form.media && form.media.trim())
-    )
-
-    if (validForms.length === 0) {
-      ElMessage.warning('表单内容均为空，无法转换')
-      return
-    }
-
-    nextTick(() => {
-      if (cardConverterRef.value) {
-        try {
-          cardConverterRef.value.convertFormsToCards(currentPage.forms)
-          ElMessage.success(`成功将 ${validForms.length} 个表单转换为卡片`)
-        } catch (error) {
-          console.error('[PageManager] 卡片转换过程中出错:', error)
-          ElMessage.error('卡片转换失败: ' + (error.message || '未知错误'))
-        }
-      } else {
-        ElMessage.error('卡片转换组件未加载')
-        console.error('cardConverterRef 未定义')
-      }
-    })
-  } catch (error) {
-    console.error('[PageManager] 调用卡片转换功能时出错:', error)
-    ElMessage.error('转换过程出错: ' + (error.message || '未知错误'))
   }
 }
 
