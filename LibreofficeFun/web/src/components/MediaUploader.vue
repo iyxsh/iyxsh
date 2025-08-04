@@ -12,7 +12,7 @@
       accept="image/*,video/*"
     >
       <el-icon class="el-upload__icon"><Upload /></el-icon>
-      <div class="el-upload__text">Drag or click to upload image/video</div>
+      <div class="el-upload__text">{{ t('mediaUploader.dragText') }}</div>
     </el-upload>
     <div v-if="mediaUrl" class="media-preview">
       <img 
@@ -31,7 +31,7 @@
         @loadeddata="handleVideoLoad"
       />
       <div v-else>
-        无法预览媒体内容
+        {{ t('mediaUploader.previewUnavailable') }}
       </div>
       <el-button 
         type="danger" 
@@ -39,7 +39,7 @@
         @click="clearMedia" 
         style="margin-top: 5px;"
       >
-        清除媒体
+        {{ t('mediaUploader.clearMedia') }}
       </el-button>
     </div>
   </div>
@@ -49,7 +49,8 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Upload } from '@element-plus/icons-vue'
-import { isSupportedMediaFormat } from '@/utils/mediaUtils'
+import { isSupportedMediaFormat, getMediaType, revokeBlobURL } from '@/utils/mediaUtils'
+import { t } from '@/utils/i18n'
 
 // 添加组件加载调试信息
 console.log('MediaUploader component initializing');
@@ -81,102 +82,85 @@ onUnmounted(() => {
   isUnmounted.value = true
   console.log('MediaUploader component unmounting, cleaning up blob URLs');
   createdUrls.value.forEach(url => {
-    try {
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.warn('Failed to revoke blob URL on unmount:', url, e);
-    }
+    revokeBlobURL(url);
   });
   createdUrls.value = [];
-  
-  // 清理可能的内存泄漏检查任务
-  if (typeof cleanupTasks !== 'undefined' && Array.isArray(cleanupTasks)) {
-    cleanupTasks.forEach(task => {
-      if (typeof task === 'function') {
-        try {
-          task();
-        } catch (e) {
-          console.warn('Error executing cleanup task:', e);
-        }
-      }
-    });
-  }
 })
-
-// 检查URL是否为图片
-function isImageUrl(url) {
-  // 通过文件扩展名判断
-  if (typeof url === 'string') {
-    // 处理可能带查询参数的URL
-    const cleanUrl = url.split('?')[0];
-    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-    const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
-    
-    if (imageExtensions.test(cleanUrl)) {
-      return true;
-    }
-    if (videoExtensions.test(cleanUrl)) {
-      return false;
-    }
-  }
-  // 默认返回true（当作图片处理）
-  return true;
-}
 
 // 检查文件是否为图片
 function isImageFile(file) {
+  // 如果没有文件对象，返回true（当作图片处理）
+  if (!file) return true
+  
   // 通过MIME类型判断
-  if (file && file.type) {
-    return file.type.startsWith('image/');
+  if (file.type) {
+    return file.type.startsWith('image/')
   }
-  // 如果没有MIME类型，通过文件名判断
-  if (file && file.name) {
-    return isImageUrl(file.name);
+  
+  // 如果没有MIME类型，通过文件名扩展名判断
+  if (file.name) {
+    return getMediaType(file.name) === 'image';
   }
-  // 默认返回true（当作图片处理）
-  return true;
+  
+  // 默认返回true（无法确定类型时当作图片处理）
+  return true
 }
 
 // 处理上传成功
 function handleSuccess(res, file) {
   console.log('MediaUploader: handleSuccess called', { res, file });
   
+  // 获取原始文件
+  const rawFile = file.raw || file
+  
+  // 检测媒体类型
+  const isImg = isImageFile(rawFile)
+  
   // 创建文件的临时URL
-  const url = URL.createObjectURL(file.raw)
+  const url = URL.createObjectURL(rawFile);
   
   // 记录创建的URL以便后续清理
   createdUrls.value.push(url)
   
   // 更新组件状态
   mediaUrl.value = url
-  isImage.value = isImageFile(file.raw)
+  isImage.value = isImg
   
   // 通知父组件更新，传递包含URL和媒体类型的信息
   emit('update:modelValue', {
     url: url,
-    mediaType: isImage.value ? 'image' : 'video',
-    isImage: isImage.value,
-    file: file.raw
+    mediaType: isImg ? 'image' : 'video',
+    isImage: isImg,
+    file: rawFile
   })
-  console.log('MediaUploader: handleSuccess processed', { url, isImage: isImage.value });
+  console.log('MediaUploader: handleSuccess processed', { url, isImage: isImg });
 }
 
 // 处理上传前
 function beforeUpload(file) {
   console.log('MediaUploader: beforeUpload called', { file });
   
-  isImage.value = isImageFile(file)
-  const url = URL.createObjectURL(file)
+  // 检测媒体类型
+  const isImg = isImageFile(file)
+  
+  // 创建文件的临时URL
+  const url = URL.createObjectURL(file);
+  
   // 记录创建的URL以便后续清理
   createdUrls.value.push(url)
+  
+  // 更新组件状态
   mediaUrl.value = url
+  isImage.value = isImg
+  
   // 通知父组件更新，传递包含URL和媒体类型的信息
   emit('update:modelValue', {
     url: url,
-    mediaType: isImage.value ? 'image' : 'video',
-    isImage: isImage.value
+    mediaType: isImg ? 'image' : 'video',
+    isImage: isImg
   })
-  console.log('MediaUploader: beforeUpload processed', { file, url, isImage: isImage.value })
+  
+  console.log('MediaUploader: beforeUpload processed', { file, url, isImage: isImg })
   return false // Do not auto upload
 }
 
@@ -190,7 +174,7 @@ function handleChange(file, fileList) {
     if (currentFile) {
       // 检查文件类型是否受支持
       if (!isSupportedMediaFormat(currentFile)) {
-        ElMessage.error('不支持的媒体格式');
+        ElMessage.error(t('mediaUploader.unsupportedFormat'));
         return;
       }
       
@@ -203,11 +187,7 @@ function handleChange(file, fileList) {
 function clearMedia() {
   // 清理创建的URL对象
   if (mediaUrl.value && createdUrls.value.includes(mediaUrl.value)) {
-    try {
-      URL.revokeObjectURL(mediaUrl.value)
-    } catch (e) {
-      console.warn('Failed to revoke blob URL:', mediaUrl.value, e)
-    }
+    revokeBlobURL(mediaUrl.value);
     createdUrls.value = createdUrls.value.filter(url => url !== mediaUrl.value)
   }
   
@@ -251,58 +231,89 @@ function handleMediaError(event) {
     return
   }
   
-  console.error('MediaUploader: Media load error', { 
-    event, 
+  // 收集错误上下文信息
+  const errorContext = {
     mediaUrl: mediaUrl.value,
-    isImage: isImage.value
-  });
+    isImage: isImage.value,
+    timestamp: new Date().toISOString(),
+    userAgent: navigator.userAgent
+  };
   
-  let errorMessage = '媒体加载失败';
+  let errorMessage = t('mediaUploader.loadError');
   
-  // 处理不同类型的媒体错误
+  // 标准媒体元素错误
   if (event && event.target && event.target.error) {
     const error = event.target.error;
     
     switch(error.code) {
       case MediaError.MEDIA_ERR_ABORTED:
-        errorMessage = '用户取消了媒体加载';
+        errorMessage = t('mediaUploader.errorAborted');
         break;
       case MediaError.MEDIA_ERR_NETWORK:
-        errorMessage = '网络错误导致媒体加载失败';
+        errorMessage = t('mediaUploader.errorNetwork');
         break;
       case MediaError.MEDIA_ERR_DECODE:
-        errorMessage = '媒体解码失败（文件可能已损坏）';
+        errorMessage = t('mediaUploader.errorDecode');
+        errorContext.fileSize = event.target.size;
         break;
       case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        errorMessage = '不支持的媒体格式';
+        errorMessage = t('mediaUploader.errorNotSupported');
         break;
       default:
-        errorMessage = `未知媒体错误 [${error.code}]`;
+        errorMessage = `${t('mediaUploader.errorUnknown')} [${error.code}]`;
         break;
     }
     
-    // 添加更多调试信息
-    console.error('MediaUploader: Error details:', {
-      code: error.code,
-      message: error.message,
-      src: event.target.src,
-      mediaUrl: mediaUrl.value,
-      isImage: isImage.value
+    // 添加标准错误详细信息
+    Object.assign(errorContext, {
+      errorCode: error.code,
+      errorMessage: error.message,
+      src: event.target.src
     });
-  } else if (event && event.message) {
-    // 处理其他类型的错误事件
-    console.error('MediaUploader: Error message:', event.message);
-    errorMessage = `媒体加载错误: ${event.message}`;
-  } else if (event && event.target && event.target.src) {
-    // 处理一般加载错误
-    const src = event.target.src;
-    if (src.startsWith('blob:')) {
-      errorMessage = '本地媒体文件加载失败';
-    } else {
-      errorMessage = `媒体加载失败 [URL: ${src}]`;
+  } 
+  // 通用错误对象
+  else if (event && typeof event === 'object') {
+    // 尝试提取错误信息
+    const error = event.message ? event : 
+      (event.target && event.target.error ? event.target.error : {});
+      
+    if (error.message) {
+      errorMessage = `${t('mediaUploader.loadError')}: ${error.message}`;
+    } else if (event.target && event.target.src) {
+      const src = event.target.src;
+      if (src.startsWith('blob:')) {
+        errorMessage = t('mediaUploader.localFileError');
+        
+        // 清理无效的blob URL
+        if (createdUrls.value.includes(src)) {
+          revokeBlobURL(src);
+          createdUrls.value = createdUrls.value.filter(url => url !== src);
+        } else {
+          errorMessage = `${t('mediaUploader.loadError')} [URL: ${src}]`;
+        }
+        
+        errorContext.src = src;
+      }
     }
+    
+    // 尝试序列化错误对象用于调试
+    try {
+      Object.assign(errorContext, {
+        errorDetails: JSON.parse(JSON.stringify(error))
+      });
+    } catch (e) {
+      errorContext.errorDetails = t('mediaUploader.errorSerializationFailed');
+    }
+  } 
+  // 未知错误类型
+  else {
+    errorContext.errorDetails = t('mediaUploader.unknownErrorType');
   }
   
+  // 记录详细的错误信息
+  console.error('MediaUploader: Media load error', errorContext);
+  
+  // 显示用户友好的错误消息
   ElMessage.error(errorMessage);
 }
 
@@ -310,45 +321,46 @@ function handleMediaError(event) {
 watch(() => props.modelValue, (newVal, oldVal) => {
   // 清理旧的URL对象（仅当旧值不在当前媒体URL中时）
   if (oldVal && createdUrls.value.includes(oldVal) && oldVal !== newVal) {
-    try {
-      URL.revokeObjectURL(oldVal)
-    } catch (e) {
-      console.warn('Failed to revoke blob URL:', oldVal, e)
-    }
+    revokeBlobURL(oldVal);
     createdUrls.value = createdUrls.value.filter(url => url !== oldVal)
   }
   
   // 处理不同类型的newVal
-  if (newVal && typeof newVal === 'object' && newVal.url) {
-    // 对象格式 { url, mediaType }
-    mediaUrl.value = newVal.url
-    isImage.value = newVal.mediaType ? newVal.mediaType === 'image' : isImageUrl(newVal.url)
-  } else if (newVal && typeof newVal === 'string') {
-    // 字符串格式 URL
-    mediaUrl.value = newVal
-    // 检查是否是blob URL
-    if (newVal.startsWith('blob:')) {
-      // 对于blob URL，我们无法从URL本身判断类型
-      // 保持当前的isImage值，除非有明确的指示
-      // 默认情况下，我们假设它与之前相同或为图片（向后兼容）
-    } else {
-      // 对于普通URL，使用扩展名判断
-      isImage.value = isImageUrl(newVal)
+  if (newVal && typeof newVal === 'object') {
+    // 如果是包含url的对象
+    if ('url' in newVal) {
+      mediaUrl.value = newVal.url
+      // 使用统一的媒体类型判断函数
+      isImage.value = getMediaType(newVal) === 'image';
+    } 
+    // 如果是包含File对象的格式
+    else if ('file' in newVal && newVal.file instanceof File) {
+      isImage.value = isImageFile(newVal.file)
     }
-  } else if (newVal instanceof File) {
-    // File对象
+  } 
+  // 处理字符串URL的情况
+  else if (typeof newVal === 'string') {
+    mediaUrl.value = newVal
+    // 使用统一的媒体类型判断函数
+    isImage.value = getMediaType(newVal) === 'image';
+  } 
+  // 处理File对象的情况
+  else if (newVal instanceof File) {
     isImage.value = isImageFile(newVal)
-  } else if (newVal && typeof newVal === 'object' && newVal.file) {
-    // 包含文件对象的格式 { file }
-    isImage.value = isImageFile(newVal.file)
-  } else {
-    // 默认情况
-    mediaUrl.value = newVal || ''
-    isImage.value = newVal ? (typeof newVal === 'string' ? isImageUrl(newVal) : isImageFile(newVal)) : true
+  } 
+  // 默认情况
+  else {
+    isImage.value = getMediaType(newVal) === 'image';
   }
   
   // 确保组件状态与父组件同步
-  console.log('MediaUploader: modelValue changed', { newVal, oldVal, mediaUrl: mediaUrl.value, isImage: isImage.value })
+  console.log('MediaUploader: modelValue changed', { 
+    newVal, 
+    oldVal, 
+    mediaUrl: mediaUrl.value, 
+    isImage: isImage.value,
+    currentType: isImage.value ? 'image' : 'video'
+  })
 })
 </script>
 

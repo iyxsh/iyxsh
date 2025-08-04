@@ -582,15 +582,32 @@ const updateFormPosition = ({ formId, position }) => {
       throw new Error('表单数据无效');
     }
     
+    // 获取容器尺寸以限制拖动边界
+    let containerWidth = 800;
+    let containerHeight = 600;
+    if (containerRef.value) {
+      containerWidth = containerRef.value.clientWidth;
+      containerHeight = containerRef.value.clientHeight;
+    } else if (props.pageSize) {
+      containerWidth = props.pageSize.width;
+      containerHeight = props.pageSize.height;
+    }
+    
     // 创建更新后的表单数组
     const updatedForms = props.modelValue.map(form => {
       if (form.id === formId) {
+        // 确保表单不会被拖出容器边界
+        const boundedPosition = {
+          x: Math.max(0, Math.min(position.x, containerWidth - (form.size?.width || 200))),
+          y: Math.max(0, Math.min(position.y, containerHeight - (form.size?.height || 100)))
+        };
+        
         // 确保创建新的位置对象以避免引用问题
         return {
           ...form,
           position: { 
-            x: Math.round(position.x), 
-            y: Math.round(position.y) 
+            x: Math.round(boundedPosition.x), 
+            y: Math.round(boundedPosition.y) 
           }
         };
       }
@@ -640,15 +657,32 @@ const updateFormSize = ({ formId, size }) => {
       throw new Error('表单数据无效');
     }
     
+    // 获取容器尺寸以限制调整大小边界
+    let containerWidth = 800;
+    let containerHeight = 600;
+    if (containerRef.value) {
+      containerWidth = containerRef.value.clientWidth;
+      containerHeight = containerRef.value.clientHeight;
+    } else if (props.pageSize) {
+      containerWidth = props.pageSize.width;
+      containerHeight = props.pageSize.height;
+    }
+    
     // 创建更新后的表单数组
     const updatedForms = props.modelValue.map(form => {
       if (form.id === formId) {
+        // 确保表单不会调整得太大以至于超出容器边界
+        const boundedSize = {
+          width: Math.max(50, Math.min(size.width, containerWidth - (form.position?.x || 0))),
+          height: Math.max(50, Math.min(size.height, containerHeight - (form.position?.y || 0)))
+        };
+        
         // 确保创建新的尺寸对象以避免引用问题
         return {
           ...form,
           size: { 
-            width: Math.round(size.width), 
-            height: Math.round(size.height) 
+            width: Math.round(boundedSize.width), 
+            height: Math.round(boundedSize.height) 
           }
         };
       }
@@ -700,12 +734,12 @@ const handleFormMouseDown = (clickedForm) => {
 };
 
 // 处理表单位置更新事件
-const handleUpdatePosition = (formId, x, y) => {
+const handleUpdatePosition = ({ formId, position }) => {
   try {
-    console.log(`[FormGrid] 更新表单位置: ${formId}`, { x, y });
+    console.log(`[FormGrid] 更新表单位置: ${formId}`, position);
     
     // 验证参数
-    if (!formId || typeof x === 'undefined' || typeof y === 'undefined') {
+    if (!formId || !position || typeof position.x === 'undefined' || typeof position.y === 'undefined') {
       throw new Error('无效的位置数据或表单ID');
     }
     
@@ -715,15 +749,32 @@ const handleUpdatePosition = (formId, x, y) => {
       throw new Error('表单数据无效');
     }
     
+    // 获取容器尺寸以限制拖动边界
+    let containerWidth = 800;
+    let containerHeight = 600;
+    if (containerRef.value) {
+      containerWidth = containerRef.value.clientWidth;
+      containerHeight = containerRef.value.clientHeight;
+    } else if (props.pageSize) {
+      containerWidth = props.pageSize.width;
+      containerHeight = props.pageSize.height;
+    }
+    
     // 创建更新后的表单数组
     const updatedForms = props.modelValue.map(form => {
       if (form.id === formId) {
+        // 确保表单不会被拖出容器边界
+        const boundedPosition = {
+          x: Math.max(0, Math.min(position.x, containerWidth - (form.size?.width || 200))),
+          y: Math.max(0, Math.min(position.y, containerHeight - (form.size?.height || 100)))
+        };
+        
         // 确保创建新的位置对象以避免引用问题
         return {
           ...form,
           position: { 
-            x: Math.round(x), 
-            y: Math.round(y) 
+            x: Math.round(boundedPosition.x), 
+            y: Math.round(boundedPosition.y) 
           }
         };
       }
@@ -869,7 +920,7 @@ onMounted(() => {
       // 总是更新表单数据，确保新添加的表单能正确显示
       forms.value.splice(0, forms.value.length, ...validated);
       
-      // 更新位置信息
+      // 更新卡片位置信息
       const newPositions = validated.map(form => ({
         id: form.id,
         ...form.position,
@@ -877,19 +928,11 @@ onMounted(() => {
         height: form.size?.height || 100
       }));
       
-      // 只有当位置信息实际发生变化时才更新
-      const currentPositionStr = JSON.stringify(positions.value);
-      const newPositionStr = JSON.stringify(newPositions);
-      if (currentPositionStr !== newPositionStr) {
-        positions.value = newPositions;
-      }
-      
-      nextTick(() => {
-        initializeGridLayout();
-        // 注意：这里不要触发update:modelValue事件，避免循环更新
-        // 只有在内部状态变化时才触发该事件
-      });
-    }, { deep: true, immediate: true });
+      positions.value = newPositions;
+    }, { 
+      immediate: true,    // 立即执行
+      deep: true         // 深度监听
+    });
     
         // 优化加载状态处理
     nextTick(() => {

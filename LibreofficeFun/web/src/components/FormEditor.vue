@@ -53,7 +53,7 @@
             <template v-if="formState.media && typeof formState.media === 'object' && formState.media.url">
               <!-- 图片预览 - MediaUploader对象 -->
               <img
-                v-if="(formState.mediaType === 'image' || !formState.mediaType)"
+                v-if="formState.mediaType === 'image'"
                 :src="formState.media.url"
                 :alt="formState.title || 'Media preview'"
                 style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
@@ -74,7 +74,7 @@
             <template v-else-if="typeof (formState.media || formState.mediaPreviewUrl) === 'string' && (formState.media || formState.mediaPreviewUrl)">
               <!-- 图片预览 - 字符串URL -->
               <img
-                v-if="(formState.mediaType === 'image' || !formState.mediaType)"
+                v-if="formState.mediaType === 'image'"
                 :src="formState.media || formState.mediaPreviewUrl" 
                 :alt="formState.title || 'Media preview'"
                 style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
@@ -95,7 +95,7 @@
             <template v-else-if="typeof formState.media === 'string' && formState.media.startsWith('data:')">
               <!-- 图片预览 - base64数据 -->
               <img
-                v-if="(formState.mediaType === 'image' || !formState.mediaType) && formState.media.startsWith('data:image/')"
+                v-if="formState.media.startsWith('data:image/')"
                 :src="formState.media"
                 :alt="formState.title || 'Media preview'"
                 style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
@@ -104,7 +104,7 @@
               />
               <!-- 视频预览 - base64数据 -->
               <video
-                v-else-if="formState.mediaType === 'video' && formState.media.startsWith('data:video/')"
+                v-else
                 :src="formState.media"
                 controls
                 style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
@@ -384,8 +384,15 @@ const previewForm = computed(() => {
   
   // 确定媒体类型
   let mediaType = formState.mediaType || 'image';
-  // 只有当mediaUrl是字符串时才检查是否为blob URL
-  if (mediaUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('blob:')) {
+  
+  // 如果媒体是一个对象（来自MediaUploader），直接使用其中的mediaType
+  if (formState.media && typeof formState.media === 'object' && formState.media.mediaType) {
+    mediaType = formState.media.mediaType;
+  } else if (formState.media && typeof formState.media === 'object' && 'isImage' in formState.media) {
+    mediaType = formState.media.isImage ? 'image' : 'video';
+  } 
+  // 只有当mediaUrl是字符串且是blob URL时才检查是否为blob URL
+  else if (mediaUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('blob:')) {
     // 对于blob URL，使用本地判断的类型
     mediaType = isImageMedia(mediaUrl) ? 'image' : 'video';
   }
@@ -505,6 +512,14 @@ watch(() => formState.media, (newMedia) => {
           }
         }
       }
+    } else if (typeof newMedia === 'object' && newMedia.url) {
+      // MediaUploader传递的对象，使用其中的mediaType
+      if (newMedia.mediaType) {
+        formState.mediaType = newMedia.mediaType;
+      } else if ('isImage' in newMedia) {
+        formState.mediaType = newMedia.isImage ? 'image' : 'video';
+      }
+      // 否则保留当前的mediaType值
     } else if (typeof newMedia === 'object' && newMedia instanceof File) {
       // File对象的情况
       if (newMedia.type.startsWith('image/')) {
