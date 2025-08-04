@@ -150,32 +150,16 @@
         <el-collapse-item title="元素样式设置" name="elementStyle">
           <div class="element-style-section">
             <h4>标题样式</h4>
-            <ElementStylePanel 
-              v-model="formState.elementStyles.title" 
-              element-name="title"
-              :form-data="formState"
-            />
+            <StyleManager v-model="formState.elementStyles.title" />
             
             <h4>内容样式</h4>
-            <ElementStylePanel 
-              v-model="formState.elementStyles.value" 
-              element-name="value"
-              :form-data="formState"
-            />
+            <StyleManager v-model="formState.elementStyles.value" />
             
             <h4>备注样式</h4>
-            <ElementStylePanel 
-              v-model="formState.elementStyles.remark" 
-              element-name="remark"
-              :form-data="formState"
-            />
+            <StyleManager v-model="formState.elementStyles.remark" />
             
             <h4>媒体样式</h4>
-            <ElementStylePanel 
-              v-model="formState.elementStyles.media" 
-              element-name="media"
-              :form-data="formState"
-            />
+            <StyleManager v-model="formState.elementStyles.media" />
           </div>
         </el-collapse-item>
       </el-collapse>
@@ -214,6 +198,50 @@ const props = defineProps({
 
 // 定义事件发射器
 const emit = defineEmits(['save', 'cancel', 'error'])
+
+// 判断媒体是否为图片
+const isImageMedia = (url) => {
+  // 如果url为空或不是字符串，返回默认值true（当作图片处理）
+  if (!url || typeof url !== 'string') return true;
+  
+  // 通过文件扩展名判断
+  const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+  const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
+  
+  // 检查是否是blob URL
+  if (url.startsWith('blob:')) {
+    // 对于blob URL，我们检查媒体类型字段
+    if (formState.media && typeof formState.media === 'object' && formState.media.mediaType) {
+      return formState.media.mediaType === 'image';
+    }
+    if (formState.mediaType) {
+      return formState.mediaType === 'image';
+    }
+    // 如果没有mediaType，尝试从URL中获取类型信息
+    // blob URL格式: blob:http://localhost:3000/74f5d871-0d44-4c68-ae32-08fb5b667fc0
+    // 我们无法直接从blob URL判断类型，所以返回true作为默认值（当作图片处理）
+    return true;
+  }
+  
+  // 检查base64数据URL
+  if (url.startsWith('data:image/')) {
+    return true;
+  }
+  if (url.startsWith('data:video/')) {
+    return false;
+  }
+  
+  // 检查扩展名
+  if (imageExtensions.test(url)) {
+    return true; // 匹配图片扩展名
+  }
+  if (videoExtensions.test(url)) {
+    return false; // 匹配视频扩展名
+  }
+  
+  // 未知扩展名，返回true作为默认值（当作图片处理）
+  return true;
+};
 
 // 响应式数据
 const formRef = ref(null)
@@ -399,7 +427,11 @@ const previewForm = computed(() => {
   } 
   // 只有当mediaUrl是字符串且是blob URL时才检查是否为blob URL
   else if (mediaUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('blob:')) {
-    // 对于blob URL，使用本地判断的类型
+    // 对于blob URL，使用formState中存储的媒体类型
+    mediaType = formState.mediaType || 'image';
+  }
+  // 对于普通URL，根据扩展名判断
+  else if (mediaUrl && typeof mediaUrl === 'string') {
     mediaType = isImageMedia(mediaUrl) ? 'image' : 'video';
   }
   
@@ -452,8 +484,13 @@ const handleMediaUpdate = (newMedia) => {
       // 自动更新mediaType
       // 检查是否是blob URL
       if (newMedia.startsWith('blob:')) {
-        // 对于blob URL，使用本地判断的类型
-        formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video';
+        // 对于blob URL，使用newMedia对象中的mediaType（如果存在）
+        if (newMedia && typeof newMedia === 'object' && newMedia.mediaType) {
+          formState.mediaType = newMedia.mediaType;
+        } else {
+          // 否则保留当前的mediaType或默认为image
+          formState.mediaType = formState.mediaType || 'image';
+        }
       } else {
         // 对于普通URL，根据扩展名判断
         formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video';
@@ -485,54 +522,61 @@ const handleMediaUpdate = (newMedia) => {
 watch(() => formState.media, (newMedia) => {
   // 当media为空且有预览URL时，不需要特殊处理
   if (newMedia) {
-    // 如果是本地文件对象，则创建预览URL
+    // 处理预览URL
     if (typeof newMedia === 'object' && newMedia instanceof File) {
+      // 本地文件对象，创建预览URL
       const url = URL.createObjectURL(newMedia)
       formState.mediaPreviewUrl = url
     } else if (typeof newMedia === 'object' && newMedia.url) {
       // MediaUploader传递的对象，直接使用其中的url
       formState.mediaPreviewUrl = newMedia.url
-    } else {
-      // 否则使用现有URL作为预览URL
+    } else if (typeof newMedia === 'string') {
+      // 普通URL或base64数据
       formState.mediaPreviewUrl = newMedia
     }
     
-    // 同时更新mediaType字段
-    if (typeof newMedia === 'string') {
-      // 如果是空字符串，则清除媒体
-      if (newMedia === '') {
-        formState.mediaType = 'image';
-      } else {
-        // 检查是否是blob URL
-        if (newMedia.startsWith('blob:')) {
-          // 对于blob URL，我们保留已设置的mediaType
-          // 只有当mediaType未设置时才设置默认值
-          if (!formState.mediaType) {
-            formState.mediaType = 'image'; // 默认为image以保持向后兼容
-          }
+    // 更新mediaType字段
+    if (typeof newMedia === 'object') {
+      // MediaUploader对象或File对象
+      if ('mediaType' in newMedia) {
+        // 优先使用对象中的mediaType
+        formState.mediaType = newMedia.mediaType
+      } else if ('isImage' in newMedia) {
+        // 兼容旧版isImage字段
+        formState.mediaType = newMedia.isImage ? 'image' : 'video'
+      } else if (newMedia instanceof File) {
+        // File对象根据type字段判断
+        if (newMedia.type.startsWith('image/')) {
+          formState.mediaType = 'image'
+        } else if (newMedia.type.startsWith('video/')) {
+          formState.mediaType = 'video'
+        }
+      } else if (newMedia.url) {
+        // MediaUploader对象没有mediaType字段的情况
+        // 根据url判断
+        if (isImageMedia(newMedia.url)) {
+          formState.mediaType = 'image'
         } else {
-          // 对于普通URL，根据扩展名判断
-          if (isImageMedia(newMedia)) {
-            formState.mediaType = 'image';
-          } else {
-            formState.mediaType = 'video';
-          }
+          formState.mediaType = 'video'
         }
       }
-    } else if (typeof newMedia === 'object' && newMedia.url) {
-      // MediaUploader传递的对象，使用其中的mediaType
-      if (newMedia.mediaType) {
-        formState.mediaType = newMedia.mediaType;
-      } else if ('isImage' in newMedia) {
-        formState.mediaType = newMedia.isImage ? 'image' : 'video';
-      }
-      // 否则保留当前的mediaType值
-    } else if (typeof newMedia === 'object' && newMedia instanceof File) {
-      // File对象的情况
-      if (newMedia.type.startsWith('image/')) {
-        formState.mediaType = 'image';
-      } else if (newMedia.type.startsWith('video/')) {
-        formState.mediaType = 'video';
+    } else if (typeof newMedia === 'string') {
+      // 字符串类型处理
+      if (newMedia.startsWith('blob:')) {
+        // blob URL保持现有mediaType或默认为image
+        if (!formState.mediaType) {
+          formState.mediaType = 'image'
+        }
+      } else if (newMedia.startsWith('data:')) {
+        // base64数据根据数据类型判断
+        if (newMedia.startsWith('data:image/')) {
+          formState.mediaType = 'image'
+        } else if (newMedia.startsWith('data:video/')) {
+          formState.mediaType = 'video'
+        }
+      } else {
+        // 普通URL根据扩展名判断
+        formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video'
       }
     }
   } else {
@@ -541,14 +585,14 @@ watch(() => formState.media, (newMedia) => {
         typeof formState.mediaPreviewUrl === 'string' && 
         formState.mediaPreviewUrl.startsWith('blob:')) {
       try {
-        URL.revokeObjectURL(formState.mediaPreviewUrl);
-        console.log('Revoked blob URL:', formState.mediaPreviewUrl);
+        URL.revokeObjectURL(formState.mediaPreviewUrl)
+        console.log('Revoked blob URL:', formState.mediaPreviewUrl)
       } catch (e) {
-        console.warn('Failed to revoke blob URL:', formState.mediaPreviewUrl, e);
+        console.warn('Failed to revoke blob URL:', formState.mediaPreviewUrl, e)
       }
     }
     formState.mediaPreviewUrl = null
-    formState.mediaType = 'image';
+    formState.mediaType = 'image'
   }
 }, { immediate: true })
 
@@ -573,50 +617,6 @@ watch(() => formState.mediaPreviewUrl, (newPreviewUrl) => {
 const isLocalMediaUrl = (url) => {
   if (typeof url !== 'string') return false;
   return url.startsWith('blob:');
-};
-
-// 判断媒体是否为图片
-const isImageMedia = (url) => {
-  // 如果url为空或不是字符串，返回默认值true（当作图片处理）
-  if (!url || typeof url !== 'string') return true;
-  
-  // 通过文件扩展名判断
-  const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
-  const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
-  
-  // 检查是否是blob URL
-  if (url.startsWith('blob:')) {
-    // 对于blob URL，我们检查媒体类型字段
-    if (formState.media && typeof formState.media === 'object' && formState.media.mediaType) {
-      return formState.media.mediaType === 'image';
-    }
-    if (formState.mediaType) {
-      return formState.mediaType === 'image';
-    }
-    // 如果没有mediaType，尝试从URL中获取类型信息
-    // blob URL格式: blob:http://localhost:3000/74f5d871-0d44-4c68-ae32-08fb5b667fc0
-    // 我们无法直接从blob URL判断类型，所以返回true作为默认值（当作图片处理）
-    return true;
-  }
-  
-  // 检查base64数据URL
-  if (url.startsWith('data:image/')) {
-    return true;
-  }
-  if (url.startsWith('data:video/')) {
-    return false;
-  }
-  
-  // 检查扩展名
-  if (imageExtensions.test(url)) {
-    return true; // 匹配图片扩展名
-  }
-  if (videoExtensions.test(url)) {
-    return false; // 匹配视频扩展名
-  }
-  
-  // 未知扩展名，返回true作为默认值（当作图片处理）
-  return true;
 };
 
 // 处理媒体预览加载完成
@@ -810,6 +810,12 @@ const submitForm = async () => {
   })
 }
 
+// 保存草稿
+const saveDraft = () => {
+  // 草稿保存可以使用与提交相同的逻辑，或者添加特殊的处理
+  submitForm();
+}
+
 // 将blob URL转换为base64格式
 const blobUrlToBase64 = (blobUrl) => {
   return new Promise((resolve, reject) => {
@@ -886,6 +892,7 @@ onMounted(async () => {
 
 // 组件卸载时清理创建的blob URL
 onUnmounted(() => {
+  // 清理mediaPreviewUrl中的blob URL
   if (formState.mediaPreviewUrl && 
       typeof formState.mediaPreviewUrl === 'string' && 
       formState.mediaPreviewUrl.startsWith('blob:')) {
@@ -910,6 +917,18 @@ onUnmounted(() => {
       console.warn('Failed to revoke blob URL on FormEditor unmount (from media object):', formState.media.url, e);
     }
   }
+  
+  // 如果media是字符串形式的blob URL也需要清理
+  if (formState.media &&
+      typeof formState.media === 'string' &&
+      formState.media.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(formState.media);
+      console.log('Revoked blob URL on FormEditor unmount (from media string):', formState.media);
+    } catch (e) {
+      console.warn('Failed to revoke blob URL on FormEditor unmount (from media string):', formState.media, e);
+    }
+  }
 })
 
 // 是否显示媒体
@@ -922,17 +941,42 @@ const shouldShowMedia = computed(() => {
   
   // 检查media字段
   if (formState.media) {
-    if (typeof formState.media === 'string' && formState.media.trim() !== '') {
-      hasMedia = true;
-    } else if (typeof formState.media === 'object') {
-      // 处理MediaUploader传递的对象或File对象
+    // 处理字符串类型的媒体URL
+    if (typeof formState.media === 'string') {
+      const mediaStr = formState.media.trim();
+      if (mediaStr !== '') {
+        // 对于非blob URL，直接视为有效
+        if (!mediaStr.startsWith('blob:')) {
+          hasMedia = true;
+        } 
+        // 对于blob URL，检查是否有对应的预览URL
+        else if (formState.mediaPreviewUrl && formState.mediaPreviewUrl.trim() !== '') {
+          hasMedia = true;
+        }
+      }
+    } 
+    // 处理对象类型的媒体
+    else if (typeof formState.media === 'object') {
+      // 处理File对象
       if (formState.media instanceof File) {
         hasMedia = formState.media.size > 0;
-      } else if (formState.media.url && typeof formState.media.url === 'string') {
-        // MediaUploader传递的对象
-        hasMedia = formState.media.url.trim() !== '';
-      } else {
-        // 其他对象类型
+      } 
+      // 处理MediaUploader传递的对象
+      else if ('url' in formState.media && typeof formState.media.url === 'string') {
+        const mediaUrl = formState.media.url.trim();
+        if (mediaUrl !== '') {
+          // 对于blob URL，确保有预览URL
+          if (mediaUrl.startsWith('blob:') && 
+              formState.mediaPreviewUrl && 
+              formState.mediaPreviewUrl.trim() !== '') {
+            hasMedia = true;
+          } else if (!mediaUrl.startsWith('blob:')) {
+            hasMedia = true;
+          }
+        }
+      } 
+      // 处理其他对象类型
+      else {
         hasMedia = true;
       }
     }
@@ -940,7 +984,18 @@ const shouldShowMedia = computed(() => {
   
   // 如果media字段没有有效内容，检查mediaPreviewUrl字段
   if (!hasMedia && formState.mediaPreviewUrl) {
-    hasMedia = typeof formState.mediaPreviewUrl === 'string' && formState.mediaPreviewUrl.trim() !== '';
+    const previewUrl = formState.mediaPreviewUrl;
+    if (typeof previewUrl === 'string' && previewUrl.trim() !== '') {
+      // 对于非blob URL直接视为有效
+      if (!previewUrl.startsWith('blob:')) {
+        hasMedia = true;
+      } 
+      // 对于blob URL，需要确保有对应的媒体数据
+      else if (formState.media && typeof formState.media === 'string' && 
+               !formState.media.startsWith('blob:')) {
+        hasMedia = true;
+      }
+    }
   }
   
   return showMedia !== false && hasMedia;
@@ -950,6 +1005,7 @@ const shouldShowMedia = computed(() => {
 const isFileObject = (obj) => {
   return obj instanceof File || (obj && typeof obj === 'object' && obj.constructor && obj.constructor.name === 'File');
 };
+
 
 </script>
 
