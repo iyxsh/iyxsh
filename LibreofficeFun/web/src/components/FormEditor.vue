@@ -65,10 +65,12 @@
                 v-else
                 :src="formState.media.url"
                 controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
+                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
                 @error="handleMediaPreviewError"
                 @loadeddata="handleVideoLoaded"
-              ></video>
+              >
+                您的浏览器不支持视频播放。
+              </video>
             </template>
             <!-- 处理字符串URL -->
             <template v-else-if="typeof (formState.media || formState.mediaPreviewUrl) === 'string' && (formState.media || formState.mediaPreviewUrl)">
@@ -86,10 +88,12 @@
                 v-else
                 :src="formState.media || formState.mediaPreviewUrl"
                 controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
+                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
                 @error="handleMediaPreviewError"
                 @loadeddata="handleVideoLoaded"
-              ></video>
+              >
+                您的浏览器不支持视频播放。
+              </video>
             </template>
             <!-- 处理base64数据 -->
             <template v-else-if="typeof formState.media === 'string' && formState.media.startsWith('data:')">
@@ -107,10 +111,12 @@
                 v-else
                 :src="formState.media"
                 controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
+                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
                 @error="handleMediaPreviewError"
                 @loadeddata="handleVideoLoaded"
-              ></video>
+              >
+                您的浏览器不支持视频播放。
+              </video>
             </template>
             <div v-else-if="formState.media || formState.mediaPreviewUrl">
               <!-- 当有媒体内容但条件不匹配时 -->
@@ -446,11 +452,8 @@ const handleMediaUpdate = (newMedia) => {
       // 自动更新mediaType
       // 检查是否是blob URL
       if (newMedia.startsWith('blob:')) {
-        // 对于blob URL，我们需要保留之前设置的mediaType
-        // 如果没有设置，则默认为image（向后兼容）
-        if (!formState.mediaType) {
-          formState.mediaType = 'image';
-        }
+        // 对于blob URL，使用本地判断的类型
+        formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video';
       } else {
         // 对于普通URL，根据扩展名判断
         formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video';
@@ -480,11 +483,15 @@ const handleMediaUpdate = (newMedia) => {
 
 // 处理媒体文件变化，生成本地预览
 watch(() => formState.media, (newMedia) => {
+  // 当media为空且有预览URL时，不需要特殊处理
   if (newMedia) {
     // 如果是本地文件对象，则创建预览URL
     if (typeof newMedia === 'object' && newMedia instanceof File) {
       const url = URL.createObjectURL(newMedia)
       formState.mediaPreviewUrl = url
+    } else if (typeof newMedia === 'object' && newMedia.url) {
+      // MediaUploader传递的对象，直接使用其中的url
+      formState.mediaPreviewUrl = newMedia.url
     } else {
       // 否则使用现有URL作为预览URL
       formState.mediaPreviewUrl = newMedia
@@ -887,6 +894,20 @@ onUnmounted(() => {
       console.log('Revoked blob URL on FormEditor unmount:', formState.mediaPreviewUrl);
     } catch (e) {
       console.warn('Failed to revoke blob URL on FormEditor unmount:', formState.mediaPreviewUrl, e);
+    }
+  }
+  
+  // 如果media字段本身包含blob URL也需要清理
+  if (formState.media && 
+      typeof formState.media === 'object' && 
+      formState.media.url &&
+      typeof formState.media.url === 'string' && 
+      formState.media.url.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(formState.media.url);
+      console.log('Revoked blob URL on FormEditor unmount (from media object):', formState.media.url);
+    } catch (e) {
+      console.warn('Failed to revoke blob URL on FormEditor unmount (from media object):', formState.media.url, e);
     }
   }
 })

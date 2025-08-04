@@ -140,6 +140,12 @@ function handleSuccess(res, file) {
 function beforeUpload(file) {
   console.log('MediaUploader: beforeUpload called', { file });
   
+  // 检查文件类型是否受支持
+  if (!isSupportedMediaFormat(file)) {
+    ElMessage.error(t('mediaUploader.unsupportedFormat'));
+    return false;
+  }
+  
   // 检测媒体类型
   const isImg = isImageFile(file)
   
