@@ -300,8 +300,25 @@ namespace filemanager
                     {
                         if (cJSON_IsNumber(cellItem))
                             sheet->getCellByPosition(col, row)->setValue(cellItem->valuedouble);
-                        else if (cJSON_IsString(cellItem))
-                            sheet->getCellByPosition(col, row)->setFormula(rtl::OUString::createFromAscii(cellItem->valuestring));
+                        else if (cJSON_IsString(cellItem)) {
+                            // 检查cellItem是否包含非ASCII字符
+                            bool hasNonAscii = false;
+                            const char* str = cellItem->valuestring;
+                            while (*str) {
+                                if ((unsigned char)*str > 127) {
+                                    hasNonAscii = true;
+                                    break;
+                                }
+                                str++;
+                            }
+                            
+                            // 如果包含非ASCII字符，使用UTF-8方式创建OUString
+                            if (hasNonAscii) {
+                                sheet->getCellByPosition(col, row)->setFormula(rtl::OStringToOUString(cellItem->valuestring, RTL_TEXTENCODING_UTF8));
+                            } else {
+                                sheet->getCellByPosition(col, row)->setFormula(rtl::OUString::createFromAscii(cellItem->valuestring));
+                            }
+                        }
                         ++col;
                     }
                     ++row;
@@ -365,7 +382,14 @@ namespace filemanager
             if (cellType.equalsIgnoreAsciiCase("number"))
                 cell->setValue(newValue.toDouble());
             else
-                cell->setFormula(newValue);
+            {
+                logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+                logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
+                //将newValue转为符合单元格公式的写法格式;
+                rtl::OUString tmp = findCharPositions(newValue, readSheetData(filePath, rtl::OUString::createFromAscii("Sheet1")));
+                logger_log("updateSpreadsheetContent: ",rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                cell->setFormula(tmp);
+            }
             saveDocument(xDoc, filePath);
             closeDocument(xComp);
             return cJSON_CreateString("success");
@@ -395,6 +419,11 @@ namespace filemanager
     {
         printf("Creating new spreadsheet file with body: %s\n", body);
         // body 应为 JSON 字符串，包含文件名、sheet名、可选内容
+        if (!body) {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+        
         cJSON *root = cJSON_Parse(body);
         if (!root)
         {
@@ -410,8 +439,48 @@ namespace filemanager
             cJSON_Delete(root);
             return;
         }
-        rtl::OUString filePath = rtl::OUString::createFromAscii(filenameItem->valuestring);
-        rtl::OUString sheetName = rtl::OUString::createFromAscii(sheetnameItem->valuestring);
+        
+        // 使用UTF-8编码处理文件名和sheet名
+        rtl::OUString filePath;
+        rtl::OUString sheetName;
+        
+        // 检查filename是否包含非ASCII字符
+        bool filenameHasNonAscii = false;
+        const char* filenameStr = filenameItem->valuestring;
+        while (*filenameStr) {
+            if ((unsigned char)*filenameStr > 127) {
+                filenameHasNonAscii = true;
+                break;
+            }
+            filenameStr++;
+        }
+        if (filenameHasNonAscii) {
+            filePath = rtl::OStringToOUString(filenameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            filePath = rtl::OUString::createFromAscii(filenameItem->valuestring);
+        }
+        
+        // 检查sheetname是否包含非ASCII字符
+        bool sheetnameHasNonAscii = false;
+        const char* sheetnameStr = sheetnameItem->valuestring;
+        while (*sheetnameStr) {
+            if ((unsigned char)*sheetnameStr > 127) {
+                sheetnameHasNonAscii = true;
+                break;
+            }
+            sheetnameStr++;
+        }
+        if (sheetnameHasNonAscii) {
+            sheetName = rtl::OStringToOUString(sheetnameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            sheetName = rtl::OUString::createFromAscii(sheetnameItem->valuestring);
+        }
+        
+        // 如果有content，检查是否包含中文字符
+        if (contentItem) {
+            // 可以在这里添加对contentItem中中文字符的特殊处理
+        }
+        
         cJSON *createResult = filemanager::createNewSpreadsheetFile(filePath, sheetName, contentItem);
         if (createResult)
         {
@@ -427,6 +496,11 @@ namespace filemanager
     void updatefile(cJSON *results, const char *body)
     {
         // body 应为 JSON 字符串，支持单个或批量更新
+        if (!body) {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+        
         cJSON *root = cJSON_Parse(body);
         if (!root)
         {
@@ -460,6 +534,26 @@ namespace filemanager
                 rtl::OUString cellAddr = rtl::OUString::createFromAscii(cellItem->valuestring);
                 rtl::OUString value = rtl::OUString::createFromAscii(valueItem->valuestring);
                 rtl::OUString type = rtl::OUString::createFromAscii(typeItem->valuestring);
+                
+                // 如果值包含中文字符，需要特殊处理
+                if (valueItem->valuestring) {
+                    // 检查是否包含非ASCII字符（可能的中文字符）
+                    bool hasNonAscii = false;
+                    const char* str = valueItem->valuestring;
+                    while (*str) {
+                        if ((unsigned char)*str > 127) {
+                            hasNonAscii = true;
+                            break;
+                        }
+                        str++;
+                    }
+                    
+                    // 如果包含非ASCII字符，使用RTL_TEXTENCODING_UTF8方式创建OUString
+                    if (hasNonAscii) {
+                        value = rtl::OStringToOUString(valueItem->valuestring, RTL_TEXTENCODING_UTF8);
+                    }
+                }
+                
                 cJSON *res = filemanager::updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
                 if (res)
                     cJSON_AddItemToArray(results, res);
@@ -491,6 +585,26 @@ namespace filemanager
             rtl::OUString cellAddr = rtl::OUString::createFromAscii(cellItem->valuestring);
             rtl::OUString value = rtl::OUString::createFromAscii(valueItem->valuestring);
             rtl::OUString type = rtl::OUString::createFromAscii(typeItem->valuestring);
+            
+            // 如果值包含中文字符，需要特殊处理
+            if (valueItem->valuestring) {
+                // 检查是否包含非ASCII字符（可能的中文字符）
+                bool hasNonAscii = false;
+                const char* str = valueItem->valuestring;
+                while (*str) {
+                    if ((unsigned char)*str > 127) {
+                        hasNonAscii = true;
+                        break;
+                    }
+                    str++;
+                }
+                
+                // 如果包含非ASCII字符，使用RTL_TEXTENCODING_UTF8方式创建OUString
+                if (hasNonAscii) {
+                    value = rtl::OStringToOUString(valueItem->valuestring, RTL_TEXTENCODING_UTF8);
+                }
+            }
+            
             cJSON *res = filemanager::updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
             if (res)
                 cJSON_AddItemToArray(results, res);
@@ -508,7 +622,473 @@ namespace filemanager
     {
         // body 应为 JSON 字符串，支持批量编辑（如批量写入单元格）
         // 这里实现与 updatefile 类似，支持多单元格写入
-        // updatefile(results, body);
+        updatefile(results, body);
+    }
+    
+    cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue)
+    {
+        try
+        {
+            // 通过 XUnoUrlResolver 远程连接外部 headless soffice 服务
+            uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
+            uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
+            uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
+                rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+            uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
+            uno::Reference<uno::XInterface> xCtxIface;
+            try {
+                xCtxIface = xUrlResolver->resolve(
+                    rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+            } catch (const uno::Exception &e) {
+                std::cerr << "[UNO] XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                return nullptr;
+            }
+            uno::Reference<uno::XComponentContext> xContext(xCtxIface, uno::UNO_QUERY);
+            if (!xContext.is()) {
+                std::cerr << "[UNO] XComponentContext (socket) is null! 请确保已启动 soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                return nullptr;
+            }
+            uno::Reference<lang::XMultiComponentFactory> xMCF_base = xContext->getServiceManager();
+            if (!xMCF_base.is()) {
+                std::cerr << "[UNO] getServiceManager() returned null!" << std::endl;
+                return nullptr;
+            }
+            uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
+            uno::Reference<frame::XComponentLoader> xLoader(xMCF->createInstance(
+                                                                rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
+                                                            uno::UNO_QUERY);
+            if (!xLoader.is()) {
+                std::cerr << "findValueInSheet: XComponentLoader is null!" << std::endl;
+                return nullptr;
+            }
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            uno::Sequence<beans::PropertyValue> args(0);
+            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            if (!xDoc.is()) {
+                std::cerr << "findValueInSheet: Cannot open spreadsheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+            
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            if (!sheet.is()) {
+                std::cerr << "findValueInSheet: Cannot get sheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+            
+            // 创建返回的 cJSON 数组，用于存储所有匹配的位置
+            cJSON *positions = cJSON_CreateArray();
+            
+            // 在固定范围内搜索（前100行，前20列）
+            for (sal_Int32 row = 0; row < 100; ++row) {
+                for (sal_Int32 col = 0; col < 20; ++col) {
+                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                    if (!cell.is()) {
+                        continue;
+                    }
+                    
+                    // 获取单元格的值和公式
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+                    
+                    // 检查单元格值是否匹配搜索值
+                    bool found = false;
+                    if (searchValue.getLength() == 0 && (cellValue == 0.0 && cellFormula.getLength() == 0)) {
+                        // 查找空单元格
+                        found = true;
+                    } else if (cellFormula.getLength() > 0) {
+                        // 如果有公式，比较公式文本
+                        if (cellFormula.equals(searchValue)) {
+                            found = true;
+                        }
+                    } else {
+                        // 比较数值或文本值
+                        rtl::OUString cellText = rtl::OUString::number(cellValue);
+                        if (cellText.equals(searchValue)) {
+                            found = true;
+                        }
+                    }
+                    
+                    if (found) {
+                        // 计算列名 (A, B, ..., Z, AA, AB, ...)
+                        std::string columnName;
+                        int column = col;
+                        do {
+                            columnName = static_cast<char>('A' + (column % 26)) + columnName;
+                            column = (column / 26) - 1;
+                        } while (column >= 0);
+                        
+                        // 计算行号 (1-based)
+                        int rowNumber = row + 1;
+                        
+                        // 创建位置字符串，如 "A1", "B2" 等
+                        std::string position = columnName + std::to_string(rowNumber);
+                        
+                        // 添加到结果数组
+                        cJSON *pos = cJSON_CreateString(position.c_str());
+                        cJSON_AddItemToArray(positions, pos);
+                    }
+                }
+            }
+            
+            closeDocument(xComp);
+            return positions;
+        }
+        catch (const uno::Exception &e)
+        {
+            std::cerr << "findValueInSheet error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            return nullptr;
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "findValueInSheet error: " << e.what() << std::endl;
+            return nullptr;
+        }
+    }
+
+    void findInSheet(cJSON *results, const char *body)
+    {
+        // 解析输入的 JSON 字符串
+        if (!body) {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+        
+        cJSON *root = cJSON_Parse(body);
+        if (!root)
+        {
+            cJSON_AddStringToObject(results, "error", "Invalid JSON body");
+            return;
+        }
+        
+        cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
+        cJSON *valueItem = cJSON_GetObjectItem(root, "value");
+        
+        if (!filenameItem || !cJSON_IsString(filenameItem) || 
+            !sheetnameItem || !cJSON_IsString(sheetnameItem) ||
+            !valueItem || !cJSON_IsString(valueItem))
+        {
+            cJSON_AddStringToObject(results, "error", "Missing filename, sheetname or value");
+            cJSON_Delete(root);
+            return;
+        }
+        
+        // 使用UTF-8编码处理文件名和sheet名
+        rtl::OUString filePath;
+        rtl::OUString sheetName;
+        rtl::OUString searchValue;
+        
+        // 检查filename是否包含非ASCII字符
+        bool filenameHasNonAscii = false;
+        const char* filenameStr = filenameItem->valuestring;
+        while (*filenameStr) {
+            if ((unsigned char)*filenameStr > 127) {
+                filenameHasNonAscii = true;
+                break;
+            }
+            filenameStr++;
+        }
+        if (filenameHasNonAscii) {
+            filePath = rtl::OStringToOUString(filenameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            filePath = rtl::OUString::createFromAscii(filenameItem->valuestring);
+        }
+        
+        // 检查sheetname是否包含非ASCII字符
+        bool sheetnameHasNonAscii = false;
+        const char* sheetnameStr = sheetnameItem->valuestring;
+        while (*sheetnameStr) {
+            if ((unsigned char)*sheetnameStr > 127) {
+                sheetnameHasNonAscii = true;
+                break;
+            }
+            sheetnameStr++;
+        }
+        if (sheetnameHasNonAscii) {
+            sheetName = rtl::OStringToOUString(sheetnameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            sheetName = rtl::OUString::createFromAscii(sheetnameItem->valuestring);
+        }
+        
+        // 检查搜索值是否包含非ASCII字符
+        bool valueHasNonAscii = false;
+        const char* valueStr = valueItem->valuestring;
+        while (*valueStr) {
+            if ((unsigned char)*valueStr > 127) {
+                valueHasNonAscii = true;
+                break;
+            }
+            valueStr++;
+        }
+        if (valueHasNonAscii) {
+            searchValue = rtl::OStringToOUString(valueItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            searchValue = rtl::OUString::createFromAscii(valueItem->valuestring);
+        }
+        
+        cJSON *positions = filemanager::findValueInSheet(filePath, sheetName, searchValue);
+        if (positions)
+        {
+            cJSON_AddItemToObject(results, "positions", positions);
+        }
+        else
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to search in spreadsheet");
+        }
+        
+        cJSON_Delete(root);
+    }
+    
+    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    {
+        logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+        logger_log("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
+        try
+        {
+            // 通过 XUnoUrlResolver 远程连接外部 headless soffice 服务
+            uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
+            uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
+            uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
+                rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+            uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
+            uno::Reference<uno::XInterface> xCtxIface;
+            try {
+                xCtxIface = xUrlResolver->resolve(
+                    rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+            } catch (const uno::Exception &e) {
+                std::cerr << "[UNO] XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                return nullptr;
+            }
+            uno::Reference<uno::XComponentContext> xContext(xCtxIface, uno::UNO_QUERY);
+            if (!xContext.is()) {
+                std::cerr << "[UNO] XComponentContext (socket) is null! 请确保已启动 soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                return nullptr;
+            }
+            uno::Reference<lang::XMultiComponentFactory> xMCF_base = xContext->getServiceManager();
+            if (!xMCF_base.is()) {
+                std::cerr << "[UNO] getServiceManager() returned null!" << std::endl;
+                return nullptr;
+            }
+            uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
+            uno::Reference<frame::XComponentLoader> xLoader(xMCF->createInstance(
+                                                                rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
+                                                            uno::UNO_QUERY);
+            if (!xLoader.is()) {
+                std::cerr << "readSheetData: XComponentLoader is null!" << std::endl;
+                return nullptr;
+            }
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            uno::Sequence<beans::PropertyValue> args(0);
+            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            if (!xDoc.is()) {
+                std::cerr << "readSheetData: Cannot open spreadsheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+            
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            if (!sheet.is()) {
+                std::cerr << "readSheetData: Cannot get sheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+            
+            // 创建返回的 cJSON 对象，用于存储单元格内容和位置的映射
+            cJSON *contentMap = cJSON_CreateObject();
+            
+            // 创建一个用于跟踪已添加内容的辅助对象，确保内容不重复
+            cJSON *addedContents = cJSON_CreateObject();
+            
+            // 在固定范围内读取（前100行，前20列）
+            for (sal_Int32 row = 0; row < 100; ++row) {
+                for (sal_Int32 col = 0; col < 20; ++col) {
+                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                    if (!cell.is()) {
+                        continue;
+                    }
+                    
+                    // 获取单元格的值和公式
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+                    
+                    // 检查单元格是否为空
+                    if (cellValue == 0.0 && cellFormula.getLength() == 0) {
+                        continue; // 跳过空单元格
+                    }
+                    
+                    // 获取单元格内容
+                    rtl::OUString cellContent;
+                    if (cellFormula.getLength() > 0) {
+                        // 如果有公式，使用公式文本
+                        cellContent = cellFormula;
+                    } else {
+                        // 否则使用数值或文本值
+                        cellContent = rtl::OUString::number(cellValue);
+                    }
+                    
+                    // 将内容转换为字符串用于比较
+                    std::string contentStr = rtl::OUStringToOString(cellContent, RTL_TEXTENCODING_UTF8).getStr();
+                    
+                    // 检查内容是否已经添加过（避免重复）
+                    if (cJSON_GetObjectItem(addedContents, contentStr.c_str()) != nullptr) {
+                        continue; // 内容已存在，跳过
+                    }
+                    
+                    // 计算列名 (A, B, ..., Z, AA, AB, ...)
+                    std::string columnName;
+                    int column = col;
+                    do {
+                        columnName = static_cast<char>('A' + (column % 26)) + columnName;
+                        column = (column / 26) - 1;
+                    } while (column >= 0);
+                    
+                    // 计算行号 (1-based)
+                    int rowNumber = row + 1;
+                    
+                    // 创建位置字符串，如 "A1", "B2" 等
+                    std::string position = columnName + std::to_string(rowNumber);
+                    
+                    // 添加内容到结果对象（内容作为key，位置作为value）
+                    cJSON_AddStringToObject(contentMap, contentStr.c_str(), position.c_str());
+                    
+                    // 标记内容已添加
+                    cJSON_AddStringToObject(addedContents, contentStr.c_str(), "added");
+                }
+            }
+            
+            // 清理辅助对象
+            cJSON_Delete(addedContents);
+            
+            closeDocument(xComp);
+            return contentMap;
+        }
+        catch (const uno::Exception &e)
+        {
+            std::cerr << "readSheetData error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            return nullptr;
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "readSheetData error: " << e.what() << std::endl;
+            return nullptr;
+        }
+    }
+    
+    void readSheetContents(cJSON *results, const char *body)
+    {
+        // 解析输入的 JSON 字符串
+        if (!body) {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+        
+        cJSON *root = cJSON_Parse(body);
+        if (!root)
+        {
+            cJSON_AddStringToObject(results, "error", "Invalid JSON body");
+            return;
+        }
+        
+        cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
+        
+        if (!filenameItem || !cJSON_IsString(filenameItem) || 
+            !sheetnameItem || !cJSON_IsString(sheetnameItem))
+        {
+            cJSON_AddStringToObject(results, "error", "Missing filename or sheetname");
+            cJSON_Delete(root);
+            return;
+        }
+        
+        // 使用UTF-8编码处理文件名和sheet名
+        rtl::OUString filePath;
+        rtl::OUString sheetName;
+        
+        // 检查filename是否包含非ASCII字符
+        bool filenameHasNonAscii = false;
+        const char* filenameStr = filenameItem->valuestring;
+        while (*filenameStr) {
+            if ((unsigned char)*filenameStr > 127) {
+                filenameHasNonAscii = true;
+                break;
+            }
+            filenameStr++;
+        }
+        if (filenameHasNonAscii) {
+            filePath = rtl::OStringToOUString(filenameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            filePath = rtl::OUString::createFromAscii(filenameItem->valuestring);
+        }
+        
+        // 检查sheetname是否包含非ASCII字符
+        bool sheetnameHasNonAscii = false;
+        const char* sheetnameStr = sheetnameItem->valuestring;
+        while (*sheetnameStr) {
+            if ((unsigned char)*sheetnameStr > 127) {
+                sheetnameHasNonAscii = true;
+                break;
+            }
+            sheetnameStr++;
+        }
+        if (sheetnameHasNonAscii) {
+            sheetName = rtl::OStringToOUString(sheetnameItem->valuestring, RTL_TEXTENCODING_UTF8);
+        } else {
+            sheetName = rtl::OUString::createFromAscii(sheetnameItem->valuestring);
+        }
+        
+        cJSON *contentMap = filemanager::readSheetData(filePath, sheetName);
+        if (contentMap)
+        {
+            cJSON_AddItemToObject(results, "contents", contentMap);
+        }
+        else
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to read spreadsheet contents");
+        }
+        
+        cJSON_Delete(root);
+    }
+    
+    rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData)
+    {
+        logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
+        logger_log("sheetData:%s", cJSON_Print(sheetData));
+        // 创建一个OUStringBuffer来构建结果字符串
+        rtl::OUStringBuffer resultBuffer;
+        
+        // 遍历输入字符串中的每个字符
+        for (sal_Int32 i = 0; i < newValue.getLength(); ++i) {
+            // 获取当前字符
+            rtl::OUString charStr = newValue.copy(i, 1);
+            
+            // 将字符转换为ASCII字符串用于在sheetData中查找
+            std::string charStdStr = rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr();
+            
+            // 在sheetData中查找该字符
+            cJSON *positionItem = cJSON_GetObjectItem(sheetData, charStdStr.c_str());
+            
+            if (positionItem && positionItem->valuestring) {
+                // 如果找到位置信息，添加到结果中
+                if (i > 0) {
+                    // 除了第一个字符外，其他字符前面都加空格
+                    resultBuffer.append(rtl::OUString::createFromAscii(" "));
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii(positionItem->valuestring));
+            } else {
+                // 如果未找到字符位置，可以添加一个占位符或跳过
+                if (i > 0) {
+                    resultBuffer.append(rtl::OUString::createFromAscii(" "));
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii("N/A"));
+            }
+        }
+        
+        // 返回组合的位置字符串
+        return resultBuffer.makeStringAndClear();
     }
 
 } // namespace filemanager

@@ -109,7 +109,7 @@ void send_response(SSL *ssl, ResponseBody responsebody)
                        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
                        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
                        "Access-Control-Max-Age: 86400\r\n"
-                       "Content-Type: %s\r\n"
+                       "Content-Type: %s; charset=utf-8\r\n"
                        "X-Total-Count: %d\r\n"  // 总数据量
                        "X-Current-Page: %d\r\n" // 当前页码
                        "X-Page-Size: %d\r\n"    // 每页条数

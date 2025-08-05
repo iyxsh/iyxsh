@@ -6,6 +6,7 @@
 #include <vector>
 // cJSON
 #include "../cJSON/cJSON.h"
+#include "../logger/logger.h"
 // UNO C++ 头文件
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>
@@ -53,7 +54,12 @@ com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> getSheet(
 void newfileCreate(cJSON *results, const char *body);
 void updatefile(cJSON *results, const char *body);
 void editfile(cJSON *results, const char *body);
-//void deletefile(cJSON *results, const char *body);
-//void listfile(cJSON *results, const char *body);
+void findInSheet(cJSON *results, const char *body);
+void readSheetContents(cJSON *results, const char *body);
+    
+// 内部辅助函数
+cJSON* findValueInSheet(const rtl::OUString& filePath, const rtl::OUString& sheetName, const rtl::OUString& searchValue);
+cJSON* readSheetData(const rtl::OUString& filePath, const rtl::OUString& sheetName);
+rtl::OUString findCharPositions(const rtl::OUString& newValue, cJSON* sheetData);
 } // namespace filemanager
 #endif // FILEMANAGER_H

@@ -42,6 +42,7 @@ void deal_style_request(RequestBody requestbody,ResponseBody *responsebody)
     memset(responsebody->body, 0, sizeof(responsebody->body));
     sprintf(responsebody->body, "%s", json_str);
     cJSON_Delete(results);
+
 }
 
 // 新增处理函数
@@ -53,6 +54,22 @@ void deal_newfile_request(RequestBody requestbody,ResponseBody *responsebody)
         sprintf(responsebody->content_type, "application/json");
         return;
     }
+    
+    // 检查请求体是否为空
+    if (!requestbody.body_start) {
+        responsebody->status = STATUS_BAD_REQUEST;
+        memset(responsebody->content_type, 0, sizeof(responsebody->content_type));
+        sprintf(responsebody->content_type, "application/json");
+        cJSON *error_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(error_obj, "error", "Empty request body");
+        char *error_str = cJSON_Print(error_obj);
+        memset(responsebody->body, 0, sizeof(responsebody->body));
+        sprintf(responsebody->body, "%s", error_str);
+        cJSON_Delete(error_obj);
+        free(error_str);
+        return;
+    }
+    
     cJSON *results = cJSON_CreateObject();
     filemanager::newfileCreate(results,requestbody.body_start);
     char *json_str = cJSON_Print(results);
@@ -62,6 +79,7 @@ void deal_newfile_request(RequestBody requestbody,ResponseBody *responsebody)
     memset(responsebody->body, 0, sizeof(responsebody->body));
     sprintf(responsebody->body, "%s", json_str);
     cJSON_Delete(results);
+    free(json_str);
 }
 
 void deal_updatefile_request(RequestBody requestbody,ResponseBody *responsebody)
@@ -72,6 +90,22 @@ void deal_updatefile_request(RequestBody requestbody,ResponseBody *responsebody)
         sprintf(responsebody->content_type, "application/json");
         return;
     }
+    
+    // 检查请求体是否为空
+    if (!requestbody.body_start) {
+        responsebody->status = STATUS_BAD_REQUEST;
+        memset(responsebody->content_type, 0, sizeof(responsebody->content_type));
+        sprintf(responsebody->content_type, "application/json");
+        cJSON *error_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(error_obj, "error", "Empty request body");
+        char *error_str = cJSON_Print(error_obj);
+        memset(responsebody->body, 0, sizeof(responsebody->body));
+        sprintf(responsebody->body, "%s", error_str);
+        cJSON_Delete(error_obj);
+        free(error_str);
+        return;
+    }
+    
     cJSON *results = cJSON_CreateArray();
     printf("request update body:%s\n", requestbody.body_start);
     filemanager::updatefile(results,requestbody.body_start);
@@ -82,6 +116,7 @@ void deal_updatefile_request(RequestBody requestbody,ResponseBody *responsebody)
     memset(responsebody->body, 0, sizeof(responsebody->body));
     sprintf(responsebody->body, "%s", json_str);
     cJSON_Delete(results);
+    free(json_str);
 }
 
 void deal_editfile_request(RequestBody requestbody,ResponseBody *responsebody)
@@ -92,6 +127,22 @@ void deal_editfile_request(RequestBody requestbody,ResponseBody *responsebody)
         sprintf(responsebody->content_type, "application/json");
         return;
     }
+    
+    // 检查请求体是否为空
+    if (!requestbody.body_start) {
+        responsebody->status = STATUS_BAD_REQUEST;
+        memset(responsebody->content_type, 0, sizeof(responsebody->content_type));
+        sprintf(responsebody->content_type, "application/json");
+        cJSON *error_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(error_obj, "error", "Empty request body");
+        char *error_str = cJSON_Print(error_obj);
+        memset(responsebody->body, 0, sizeof(responsebody->body));
+        sprintf(responsebody->body, "%s", error_str);
+        cJSON_Delete(error_obj);
+        free(error_str);
+        return;
+    }
+    
     cJSON *results = cJSON_CreateArray();
     printf("request editfile body:%s\n", requestbody.body_start);
     filemanager::editfile(results,requestbody.body_start);
@@ -102,6 +153,7 @@ void deal_editfile_request(RequestBody requestbody,ResponseBody *responsebody)
     memset(responsebody->body, 0, sizeof(responsebody->body));
     sprintf(responsebody->body, "%s", json_str);
     cJSON_Delete(results);
+    free(json_str);
 }
 
 void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody)
@@ -112,6 +164,22 @@ void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody)
         sprintf(responsebody->content_type, "application/json");
         return;
     }
+    
+    // 检查请求体是否为空
+    if (!requestbody.body_start) {
+        responsebody->status = STATUS_BAD_REQUEST;
+        memset(responsebody->content_type, 0, sizeof(responsebody->content_type));
+        sprintf(responsebody->content_type, "application/json");
+        cJSON *error_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(error_obj, "error", "Empty request body");
+        char *error_str = cJSON_Print(error_obj);
+        memset(responsebody->body, 0, sizeof(responsebody->body));
+        sprintf(responsebody->body, "%s", error_str);
+        cJSON_Delete(error_obj);
+        free(error_str);
+        return;
+    }
+    
     cJSON *results = cJSON_CreateArray();
     responsebody->current_page = requestbody.current_page;
     responsebody->page_size = requestbody.page_size;
@@ -123,6 +191,7 @@ void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody)
     memset(responsebody->body, 0, sizeof(responsebody->body));
     sprintf(responsebody->body, "%s", json_str);
     cJSON_Delete(results);
+    free(json_str);
 }
 
 void deal_filelist_request(RequestBody requestbody,ResponseBody *responsebody)
