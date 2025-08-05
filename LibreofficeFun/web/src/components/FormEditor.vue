@@ -36,102 +36,8 @@
           <MediaUploader 
             v-model="formState.media" 
             @update:modelValue="handleMediaUpdate" 
+            :show-preview="true"
           />
-        </div>
-        <!-- 媒体预览 -->
-        <div v-if="shouldShowMedia" class="media-preview">
-          <el-card 
-            :body-style="{ padding: '15px' }" 
-            style="margin-top: 12px; border: 1px solid #e8e8e8; border-radius: 6px;"
-          >
-            <div style="display: flex; align-items: center; margin-bottom: 8px;">
-              <el-icon name="Picture" v-if="formState.mediaType === 'image' || !formState.mediaType" />
-              <el-icon name="VideoCamera" v-else />
-              <span style="margin-left: 8px; font-weight: 500;">媒体预览</span>
-            </div>
-            <!-- 处理MediaUploader传递的对象 -->
-            <template v-if="formState.media && typeof formState.media === 'object' && formState.media.url">
-              <!-- 图片预览 - MediaUploader对象 -->
-              <img
-                v-if="formState.mediaType === 'image'"
-                :src="formState.media.url"
-                :alt="formState.title || 'Media preview'"
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
-                @error="handleMediaPreviewError"
-                @load="handleMediaPreviewLoad"
-              />
-              <!-- 视频预览 - MediaUploader对象 -->
-              <video
-                v-else
-                :src="formState.media.url"
-                controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
-                @error="handleMediaPreviewError"
-                @loadeddata="handleVideoLoaded"
-              >
-                您的浏览器不支持视频播放。
-              </video>
-            </template>
-            <!-- 处理字符串URL -->
-            <template v-else-if="typeof (formState.media || formState.mediaPreviewUrl) === 'string' && (formState.media || formState.mediaPreviewUrl)">
-              <!-- 图片预览 - 字符串URL -->
-              <img
-                v-if="formState.mediaType === 'image'"
-                :src="formState.media || formState.mediaPreviewUrl" 
-                :alt="formState.title || 'Media preview'"
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
-                @error="handleMediaPreviewError"
-                @load="handleMediaPreviewLoad"
-              />
-              <!-- 视频预览 - 字符串URL -->
-              <video
-                v-else
-                :src="formState.media || formState.mediaPreviewUrl"
-                controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
-                @error="handleMediaPreviewError"
-                @loadeddata="handleVideoLoaded"
-              >
-                您的浏览器不支持视频播放。
-              </video>
-            </template>
-            <!-- 处理base64数据 -->
-            <template v-else-if="typeof formState.media === 'string' && formState.media.startsWith('data:')">
-              <!-- 图片预览 - base64数据 -->
-              <img
-                v-if="formState.media.startsWith('data:image/')"
-                :src="formState.media"
-                :alt="formState.title || 'Media preview'"
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);"
-                @error="handleMediaPreviewError"
-                @load="handleMediaPreviewLoad"
-              />
-              <!-- 视频预览 - base64数据 -->
-              <video
-                v-else-if="formState.media.startsWith('data:video/') && isMediaPreviewVisible"
-                :src="formState.media"
-                controls
-                style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
-                @error="handleMediaPreviewError"
-                @loadeddata="handleVideoLoaded"
-              >
-                您的浏览器不支持视频播放。
-              </video>
-              <!-- 对于base64视频，先显示占位符 -->
-              <div v-else-if="formState.media.startsWith('data:video/')" 
-                   @click="showMediaPreview" 
-                   style="width: 100%; height: 200px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; border-radius: 4px; cursor: pointer;">
-                <div style="text-align: center;">
-                  <el-icon style="font-size: 48px; color: #999;"><VideoCamera /></el-icon>
-                  <p style="margin-top: 10px; color: #666;">点击加载视频预览</p>
-                </div>
-              </div>
-            </template>
-            <div v-else-if="(formState.media || formState.mediaPreviewUrl) && isMediaPreviewVisible">
-              <!-- 当有媒体内容但条件不匹配时 -->
-              <p>无法预览媒体内容</p>
-            </div>
-          </el-card>
         </div>
       </el-form-item>
 
@@ -259,14 +165,6 @@ const activeCollapse = ref(['visibility', 'style', 'elementStyle'])
 // 添加一个ref来跟踪组件是否已卸载
 const isUnmounted = ref(false)
 
-// 添加媒体预览可见性控制
-const isMediaPreviewVisible = ref(false)
-
-// 显示媒体预览的方法
-const showMediaPreview = () => {
-  isMediaPreviewVisible.value = true
-}
-
 // 组件卸载前的清理工作
 onBeforeUnmount(() => {
   isUnmounted.value = true
@@ -318,13 +216,6 @@ const ensureElementStyleIntegrity = (style) => {
   
   return result
 }
-
-
-// 打开统一样式设置面板
-
-// 关闭统一样式设置面板
-
-// 应用统一样式到所有启用的元素样式
 
 // 表单状态
 /** @type {Form} */
@@ -631,9 +522,6 @@ watch(() => formState.mediaPreviewUrl, (newPreviewUrl) => {
 
 // 监听媒体变化，重置媒体预览可见性
 watch(() => formState.media, (newMedia) => {
-  // 重置媒体预览可见性
-  isMediaPreviewVisible.value = false;
-  
   // 同时更新mediaType字段
   if (newMedia) {
     if (typeof newMedia === 'object' && newMedia.url) {
@@ -675,66 +563,6 @@ const isLocalMediaUrl = (url) => {
   if (typeof url !== 'string') return false;
   return url.startsWith('blob:');
 };
-
-// 处理媒体预览加载完成
-function handleMediaPreviewLoad(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
-  }
-  
-  console.log('FormEditor: Media preview loaded successfully', event);
-}
-
-// 处理视频预览加载完成
-const handleVideoLoaded = (event) => {
-  try {
-    console.log('[FormEditor] 视频加载成功');
-    // 可以在这里添加视频加载成功后的处理逻辑
-  } catch (error) {
-    console.error('[FormEditor] 处理视频加载事件时出错:', error);
-  }
-};
-
-const handleMediaPreviewError = (event) => {
-  try {
-    // 检查是否是视频文件且是base64格式
-    if (formState.media && typeof formState.media === 'string') {
-      if (formState.media.startsWith('data:video/')) {
-        console.log('[FormEditor] 检测到base64视频加载失败，使用静默处理');
-        // 对于base64视频，我们只记录日志，不显示用户提示以减少干扰
-        // 阻止事件继续传播
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-    }
-    
-    // 只对非base64视频显示错误提示
-    console.error('[FormEditor] 媒体预览加载失败:', event);
-    ElMessage.warning('媒体预览加载失败');
-  } catch (error) {
-    console.error('[FormEditor] 处理媒体预览错误时出错:', error);
-  }
-};
-
-// 防抖函数
-const debounce = (func, wait) => {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-};
-
-// 优化视频加载，使用防抖
-const debouncedVideoLoad = debounce(() => {
-  console.log('[FormEditor] 视频加载防抖处理');
-}, 300);
 
 // 关闭预览模式
 const closePreview = () => {
@@ -939,8 +767,6 @@ const handleError = (error, context) => {
 // 组件挂载时的操作
 onMounted(async () => {
   console.log('FormEditor mounted');
-  // 重置媒体预览可见性
-  isMediaPreviewVisible.value = false;
   
   // 如果是编辑模式，自动聚焦到标题输入框
   if (props.isEdit && formRef.value) {
@@ -957,8 +783,6 @@ onMounted(async () => {
     }
   }
 })
-
-// 无需此部分，已合并到上面的onMounted钩子中
 
 // 组件卸载时清理创建的blob URL
 onUnmounted(() => {
@@ -1035,8 +859,6 @@ const shouldShowMedia = computed(() => {
 const isFileObject = (obj) => {
   return obj instanceof File || (obj && typeof obj === 'object' && obj.constructor && obj.constructor.name === 'File');
 };
-
-
 </script>
 
 <style scoped>
@@ -1051,58 +873,6 @@ const isFileObject = (obj) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-}
-
-.media-preview,
-.local-media-preview {
-  margin-top: 10px;
-}
-
-.media-preview img,
-.media-preview video,
-.media-preview audio,
-.local-media-preview img,
-.local-media-preview video {
-  max-width: 100%;
-  max-height: 200px;
-  border-radius: 4px;
-}
-
-.local-media-preview {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px dashed #dcdfe6;
-  border-radius: 4px;
-  background-color: #f5f7fa;
-}
-
-.local-media-preview .preview-label {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 5px;
-}
-
-.local-media-image,
-.local-media-video {
-  max-width: 100%;
-  max-height: 200px;
-  display: block;
-  margin: 5px 0;
-}
-
-.local-media-preview .preview-label {
-  margin-top: 8px;
-  font-size: 14px;
-  color: #666;
-}
-
-.local-media-preview img {
-  margin-top: 4px;
-}
-
-.local-media-preview video {
-  margin-top: 4px;
-  width: 100%;
 }
 
 .form-content {
@@ -1178,7 +948,7 @@ const isFileObject = (obj) => {
 }
 
 /* 全屏预览样式 */
-.preview-overlay {
+.preview-mode-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -1191,60 +961,37 @@ const isFileObject = (obj) => {
   z-index: 3000;
 }
 
-.preview-content {
+.preview-mode-content {
   background: #ffffff;
-  border-radius: 8px;
+  padding: 20px;
+  border-radius: 4px;
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   width: 80%;
   max-width: 600px;
+  position: relative;
   max-height: 80vh;
-  display: flex;
-  flex-direction: column;
+  overflow-y: auto;
 }
 
-.preview-header {
+.preview-mode-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
-  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 20px;
 }
 
-.preview-header h3 {
-  margin: 0;
-  color: #303133;
-}
-
-.preview-close {
-  background: #f5f7fa;
-  border: none;
-  color: #909399;
-}
-
-.preview-close:hover {
-  background: #e1e4e8;
-  color: #606266;
-}
-
-.preview-card {
-  padding: 20px;
-  flex: 1;
-  overflow-y: auto;
+.preview-mode-actions {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  gap: 10px;
 }
 
-.preview-card :deep(.single-form-card) {
+.preview-mode-body {
   width: 100%;
-  max-width: 300px;
+  box-sizing: border-box;
 }
 
-.preview-footer {
-  padding: 20px;
-  border-top: 1px solid #ebeef5;
-  display: flex;
-  justify-content: flex-end;
+.preview-element {
+  cursor: pointer;
 }
 
 .element-style-panel-overlay {
@@ -1287,7 +1034,7 @@ const isFileObject = (obj) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 3002;
+  z-index: 3001;
 }
 
 .global-style-panel-content {
@@ -1298,6 +1045,8 @@ const isFileObject = (obj) => {
   width: 80%;
   max-width: 600px;
   position: relative;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .global-style-panel-header {
@@ -1305,11 +1054,6 @@ const isFileObject = (obj) => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
-}
-
-.global-style-panel-body {
-  max-height: 60vh;
-  overflow-y: auto;
 }
 
 .global-style-panel-actions {

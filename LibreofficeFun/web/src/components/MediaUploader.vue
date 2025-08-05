@@ -14,39 +14,44 @@
       <el-icon class="el-upload__icon"><Upload /></el-icon>
       <div class="el-upload__text">{{ t('mediaUploader.dragText') }}</div>
     </el-upload>
-    <div v-if="mediaUrl" class="media-preview">
-      <img 
-        v-if="isImageValue(mediaUrl) && typeof mediaUrl === 'string'"
-        :src="mediaUrl"
-        style="max-width:100%;max-height:120px;" 
-        @error="handleMediaError" 
-        @load="handleMediaLoad"
-      />
-      <video 
-        v-else-if="!isImageValue(mediaUrl) && typeof mediaUrl === 'string'"
-        :src="mediaUrl"
-        controls 
-        preload="auto"
-        playsinline
-        style="max-width:100%;max-height:120px;" 
-        @error="handleMediaError" 
-        @loadeddata="handleVideoLoad"
-        @canplay="handleVideoCanPlay"
-      >
-        您的浏览器不支持视频播放。
-        <source :src="mediaUrl" :type="getVideoType(mediaUrl)">
-      </video>
-      <div v-else>
-        {{ t('mediaUploader.previewUnavailable') }}
+    
+    <!-- 媒体预览区域 -->
+    <div v-if="mediaUrl && showPreview" class="media-preview">
+      <!-- 图片预览 -->
+      <div v-if="isImageValue(mediaUrl)" class="image-preview">
+        <img 
+          :src="mediaUrl" 
+          alt="Image preview"
+          class="preview-image"
+          @error="handlePreviewError"
+          @load="handlePreviewLoad"
+        />
       </div>
-      <el-button 
-        type="danger" 
-        size="small" 
-        @click="clearMedia" 
-        style="margin-top: 5px;"
-      >
-        {{ t('mediaUploader.clearMedia') }}
-      </el-button>
+      
+      <!-- 视频预览 -->
+      <div v-else class="video-preview">
+        <video 
+          :src="mediaUrl"
+          class="preview-video"
+          controls
+          preload="metadata"
+          @error="handlePreviewError"
+          @loadeddata="handleVideoLoaded"
+        >
+          您的浏览器不支持视频播放
+        </video>
+      </div>
+      
+      <!-- 清除按钮 -->
+      <div class="preview-actions">
+        <el-button 
+          type="danger" 
+          size="small" 
+          @click="clearMedia"
+        >
+          {{ t('mediaUploader.clearMedia') }}
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -63,7 +68,11 @@ console.log('MediaUploader component initializing');
 
 // 定义props
 const props = defineProps({
-  modelValue: [String, Object]
+  modelValue: [String, Object],
+  showPreview: {
+    type: Boolean,
+    default: true
+  }
 })
 
 // 定义emits
@@ -235,108 +244,21 @@ function clearMedia() {
   emit('update:modelValue', '')
 }
 
-const handleMediaError = (event) => {
-  try {
-    // 检查是否是base64格式的视频
-    if (mediaUrl.value && typeof mediaUrl.value === 'string') {
-      if (mediaUrl.value.startsWith('data:video/')) {
-        console.log('[MediaUploader] 检测到base64视频加载失败，使用静默处理');
-        // 对于base64视频，我们只记录日志，不显示用户提示以减少干扰
-        // 阻止事件继续传播
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
-    }
-    
-    // 只对非base64视频显示错误提示
-    console.error('[MediaUploader] 媒体加载失败:', event);
-    ElMessage.warning('媒体加载失败');
-  } catch (error) {
-    console.error('[MediaUploader] 处理媒体错误时出错:', error);
-  }
-};
+// 处理预览加载错误
+const handlePreviewError = (event) => {
+  console.error('Media preview load error:', event);
+  ElMessage.error(t('mediaUploader.loadError'));
+}
 
-// 添加一个防抖函数用于处理媒体加载
-const debounceMediaLoad = (() => {
-  let timeout;
-  return function(callback, delay) {
-    clearTimeout(timeout);
-    timeout = setTimeout(callback, delay);
-  };
-})();
+// 处理图片预览加载完成
+const handlePreviewLoad = (event) => {
+  console.log('Image preview loaded successfully');
+}
 
-// 优化媒体加载处理，避免强制回流
-const handleMediaLoad = (event) => {
-  try {
-    console.log('[MediaUploader] 媒体加载成功');
-    // 使用防抖处理，避免频繁更新
-    debounceMediaLoad(() => {
-      // 在下一帧执行，避免强制回流
-      requestAnimationFrame(() => {
-        console.log('[MediaUploader] 媒体加载完成回调执行');
-      });
-    }, 100);
-  } catch (error) {
-    console.error('[MediaUploader] 处理媒体加载事件时出错:', error);
-  }
-};
-
-// 优化视频加载处理
-const handleVideoLoad = (event) => {
-  try {
-    console.log('[MediaUploader] 视频数据加载成功');
-    // 使用防抖处理
-    debounceMediaLoad(() => {
-      requestAnimationFrame(() => {
-        console.log('[MediaUploader] 视频加载完成回调执行');
-      });
-    }, 100);
-  } catch (error) {
-    console.error('[MediaUploader] 处理视频加载事件时出错:', error);
-  }
-};
-
-// 优化视频可播放处理
-const handleVideoCanPlay = (event) => {
-  try {
-    console.log('[MediaUploader] 视频可以播放');
-    // 使用防抖处理
-    debounceMediaLoad(() => {
-      requestAnimationFrame(() => {
-        console.log('[MediaUploader] 视频可播放回调执行');
-      });
-    }, 100);
-  } catch (error) {
-    console.error('[MediaUploader] 处理视频可播放事件时出错:', error);
-  }
-};
-
-// 获取视频类型
-const getVideoType = (url) => {
-  try {
-    if (url && typeof url === 'string') {
-      // 根据文件扩展名判断视频类型
-      const extension = url.split('.').pop().toLowerCase();
-      switch (extension) {
-        case 'mp4':
-          return 'video/mp4';
-        case 'webm':
-          return 'video/webm';
-        case 'ogg':
-          return 'video/ogg';
-        case 'mov':
-          return 'video/quicktime';
-        default:
-          return 'video/mp4'; // 默认使用mp4
-      }
-    }
-    return 'video/mp4';
-  } catch (error) {
-    console.error('[MediaUploader] 获取视频类型时出错:', error);
-    return 'video/mp4';
-  }
-};
+// 处理视频预览加载完成
+const handleVideoLoaded = (event) => {
+  console.log('Video preview loaded successfully');
+}
 
 // 监听modelValue变化
 watch(() => props.modelValue, (newVal, oldVal) => {
@@ -389,7 +311,37 @@ watch(() => props.modelValue, (newVal, oldVal) => {
 }
 
 .media-preview {
-  margin-top: 8px;
+  margin-top: 15px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  padding: 10px;
+  background-color: #f5f7fa;
+}
+
+.image-preview,
+.video-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.preview-video {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 4px;
+}
+
+.preview-actions {
+  display: flex;
+  justify-content: center;
 }
 
 .el-upload__icon {
@@ -397,5 +349,9 @@ watch(() => props.modelValue, (newVal, oldVal) => {
   color: #c0c4cc;
   margin: 40px 0 16px;
   line-height: 50px;
+}
+
+:deep(.el-upload-dragger) {
+  width: 100%;
 }
 </style>
