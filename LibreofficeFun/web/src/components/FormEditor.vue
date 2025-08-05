@@ -108,7 +108,7 @@
               />
               <!-- 视频预览 - base64数据 -->
               <video
-                v-else
+                v-else-if="formState.media.startsWith('data:video/') && isMediaPreviewVisible"
                 :src="formState.media"
                 controls
                 style="width: 100%; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); max-height: 300px;"
@@ -117,8 +117,17 @@
               >
                 您的浏览器不支持视频播放。
               </video>
+              <!-- 对于base64视频，先显示占位符 -->
+              <div v-else-if="formState.media.startsWith('data:video/')" 
+                   @click="showMediaPreview" 
+                   style="width: 100%; height: 200px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; border-radius: 4px; cursor: pointer;">
+                <div style="text-align: center;">
+                  <el-icon style="font-size: 48px; color: #999;"><VideoCamera /></el-icon>
+                  <p style="margin-top: 10px; color: #666;">点击加载视频预览</p>
+                </div>
+              </div>
             </template>
-            <div v-else-if="formState.media || formState.mediaPreviewUrl">
+            <div v-else-if="(formState.media || formState.mediaPreviewUrl) && isMediaPreviewVisible">
               <!-- 当有媒体内容但条件不匹配时 -->
               <p>无法预览媒体内容</p>
             </div>
@@ -177,7 +186,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick, watch, onUnmounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Setting } from '@element-plus/icons-vue'
+import { Close, Setting, VideoCamera, Picture } from '@element-plus/icons-vue'
 import StyleManager from './StyleManager.vue'
 import MediaUploader from './MediaUploader.vue'
 import SingleFormShow from './SingleFormShow.vue'
@@ -245,11 +254,18 @@ const isImageMedia = (url) => {
 
 // 响应式数据
 const formRef = ref(null)
-const isEdit = ref(false)
 const isSaving = ref(false)
 const activeCollapse = ref(['visibility', 'style', 'elementStyle'])
 // 添加一个ref来跟踪组件是否已卸载
 const isUnmounted = ref(false)
+
+// 添加媒体预览可见性控制
+const isMediaPreviewVisible = ref(false)
+
+// 显示媒体预览的方法
+const showMediaPreview = () => {
+  isMediaPreviewVisible.value = true
+}
 
 // 组件卸载前的清理工作
 onBeforeUnmount(() => {
@@ -613,6 +629,47 @@ watch(() => formState.mediaPreviewUrl, (newPreviewUrl) => {
   }
 })
 
+// 监听媒体变化，重置媒体预览可见性
+watch(() => formState.media, (newMedia) => {
+  // 重置媒体预览可见性
+  isMediaPreviewVisible.value = false;
+  
+  // 同时更新mediaType字段
+  if (newMedia) {
+    if (typeof newMedia === 'object' && newMedia.url) {
+      // MediaUploader对象
+      if (newMedia.mediaType) {
+        formState.mediaType = newMedia.mediaType;
+      } else if ('isImage' in newMedia) {
+        formState.mediaType = newMedia.isImage ? 'image' : 'video';
+      } else {
+        formState.mediaType = 'image';
+      }
+    } else if (typeof newMedia === 'string') {
+      // 字符串URL或base64数据
+      if (newMedia.startsWith('data:')) {
+        // base64数据
+        if (newMedia.startsWith('data:image/')) {
+          formState.mediaType = 'image';
+        } else if (newMedia.startsWith('data:video/')) {
+          formState.mediaType = 'video';
+        } else {
+          formState.mediaType = 'image';
+        }
+      } else {
+        // 普通URL
+        formState.mediaType = isImageMedia(newMedia) ? 'image' : 'video';
+      }
+    } else if (newMedia instanceof File) {
+      // File对象
+      formState.mediaType = newMedia.type.startsWith('image/') ? 'image' : 'video';
+    }
+  } else {
+    // 清空媒体时重置为默认值
+    formState.mediaType = 'image';
+  }
+})
+
 // 检查是否为本地媒体URL
 const isLocalMediaUrl = (url) => {
   if (typeof url !== 'string') return false;
@@ -630,47 +687,54 @@ function handleMediaPreviewLoad(event) {
 }
 
 // 处理视频预览加载完成
-function handleVideoLoaded(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
+const handleVideoLoaded = (event) => {
+  try {
+    console.log('[FormEditor] 视频加载成功');
+    // 可以在这里添加视频加载成功后的处理逻辑
+  } catch (error) {
+    console.error('[FormEditor] 处理视频加载事件时出错:', error);
   }
-  
-  console.log('FormEditor: Video preview loaded successfully', event);
-}
+};
 
-// 处理媒体预览错误
-function handleMediaPreviewError(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
-  }
-  
-  console.error('FormEditor: Media preview error', event);
-  
-  let errorMessage = '媒体预览加载失败';
-  
-  if (event && event.target) {
-    const mediaSrc = event.target.src;
-    const mediaType = formState.mediaType || 'unknown';
-    
-    // 检查URL是否有效
-    if (!mediaSrc) {
-      errorMessage = '媒体预览URL为空';
-    } else if (mediaSrc.startsWith('blob:')) {
-      errorMessage = `Blob URL媒体预览加载失败 [类型: ${mediaType}]`;
-    } else {
-      errorMessage = `媒体预览加载失败 [URL: ${mediaSrc}, 类型: ${mediaType}]`;
+const handleMediaPreviewError = (event) => {
+  try {
+    // 检查是否是视频文件且是base64格式
+    if (formState.media && typeof formState.media === 'string') {
+      if (formState.media.startsWith('data:video/')) {
+        console.log('[FormEditor] 检测到base64视频加载失败，使用静默处理');
+        // 对于base64视频，我们只记录日志，不显示用户提示以减少干扰
+        // 阻止事件继续传播
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
+    
+    // 只对非base64视频显示错误提示
+    console.error('[FormEditor] 媒体预览加载失败:', event);
+    ElMessage.warning('媒体预览加载失败');
+  } catch (error) {
+    console.error('[FormEditor] 处理媒体预览错误时出错:', error);
   }
-  
-  console.error('FormEditor: Detailed preview error info', {
-    formState: { ...formState },
-    media: formState.media,
-    mediaPreviewUrl: formState.mediaPreviewUrl,
-    mediaType: formState.mediaType
-  });
-}
+};
+
+// 防抖函数
+const debounce = (func, wait) => {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
+
+// 优化视频加载，使用防抖
+const debouncedVideoLoad = debounce(() => {
+  console.log('[FormEditor] 视频加载防抖处理');
+}, 300);
 
 // 关闭预览模式
 const closePreview = () => {
@@ -872,23 +936,29 @@ const handleError = (error, context) => {
   }
 };
 
-// 组件挂载后的操作
+// 组件挂载时的操作
 onMounted(async () => {
-  try {
-    // 确保DOM已渲染
-    await nextTick()
-
-    // 如果是编辑模式，自动聚焦到标题输入框
-    if (props.isEdit && formRef.value) {
+  console.log('FormEditor mounted');
+  // 重置媒体预览可见性
+  isMediaPreviewVisible.value = false;
+  
+  // 如果是编辑模式，自动聚焦到标题输入框
+  if (props.isEdit && formRef.value) {
+    try {
+      // 确保DOM已渲染
+      await nextTick();
+      
       // 通过 $el 访问真实的DOM元素
-      const formElement = formRef.value.$el || formRef.value
-      const titleInput = formElement.querySelector('input[type="text"]')
-      if (titleInput) titleInput.focus()
+      const formElement = formRef.value.$el || formRef.value;
+      const titleInput = formElement.querySelector('input[type="text"]');
+      if (titleInput) titleInput.focus();
+    } catch (error) {
+      handleError(error, '自动聚焦失败');
     }
-  } catch (error) {
-    handleError(error, '组件挂载失败')
   }
 })
+
+// 无需此部分，已合并到上面的onMounted钩子中
 
 // 组件卸载时清理创建的blob URL
 onUnmounted(() => {
@@ -931,74 +1001,34 @@ onUnmounted(() => {
   }
 })
 
-// 是否显示媒体
+// 计算属性：是否应该显示媒体预览
 const shouldShowMedia = computed(() => {
-  // 如果showMedia字段不存在，默认为true（向后兼容）
-  const showMedia = formState.showMedia !== undefined ? formState.showMedia : true;
+  // 检查是否启用了媒体显示
+  if (formState.showMedia === false) {
+    return false;
+  }
   
   // 检查是否有媒体内容
   let hasMedia = false;
-  
-  // 检查media字段
   if (formState.media) {
-    // 处理字符串类型的媒体URL
-    if (typeof formState.media === 'string') {
-      const mediaStr = formState.media.trim();
-      if (mediaStr !== '') {
-        // 对于非blob URL，直接视为有效
-        if (!mediaStr.startsWith('blob:')) {
-          hasMedia = true;
-        } 
-        // 对于blob URL，检查是否有对应的预览URL
-        else if (formState.mediaPreviewUrl && formState.mediaPreviewUrl.trim() !== '') {
-          hasMedia = true;
-        }
-      }
+    // 处理MediaUploader传递的对象
+    if (typeof formState.media === 'object' && formState.media.url) {
+      hasMedia = true;
     } 
-    // 处理对象类型的媒体
-    else if (typeof formState.media === 'object') {
-      // 处理File对象
-      if (formState.media instanceof File) {
-        hasMedia = formState.media.size > 0;
-      } 
-      // 处理MediaUploader传递的对象
-      else if ('url' in formState.media && typeof formState.media.url === 'string') {
-        const mediaUrl = formState.media.url.trim();
-        if (mediaUrl !== '') {
-          // 对于blob URL，确保有预览URL
-          if (mediaUrl.startsWith('blob:') && 
-              formState.mediaPreviewUrl && 
-              formState.mediaPreviewUrl.trim() !== '') {
-            hasMedia = true;
-          } else if (!mediaUrl.startsWith('blob:')) {
-            hasMedia = true;
-          }
-        }
-      } 
-      // 处理其他对象类型
-      else {
-        hasMedia = true;
-      }
+    // 处理字符串URL或base64数据
+    else if (typeof formState.media === 'string' && formState.media.length > 0) {
+      hasMedia = true;
     }
+    // 处理File对象
+    else if (formState.media instanceof File) {
+      hasMedia = true;
+    }
+  } else if (formState.mediaPreviewUrl) {
+    // 检查mediaPreviewUrl
+    hasMedia = typeof formState.mediaPreviewUrl === 'string' && formState.mediaPreviewUrl.length > 0;
   }
   
-  // 如果media字段没有有效内容，检查mediaPreviewUrl字段
-  if (!hasMedia && formState.mediaPreviewUrl) {
-    const previewUrl = formState.mediaPreviewUrl;
-    if (typeof previewUrl === 'string' && previewUrl.trim() !== '') {
-      // 对于非blob URL直接视为有效
-      if (!previewUrl.startsWith('blob:')) {
-        hasMedia = true;
-      } 
-      // 对于blob URL，需要确保有对应的媒体数据
-      else if (formState.media && typeof formState.media === 'string' && 
-               !formState.media.startsWith('blob:')) {
-        hasMedia = true;
-      }
-    }
-  }
-  
-  return showMedia !== false && hasMedia;
+  return formState.showMedia && hasMedia;
 });
 
 // 检查对象是否为File类型

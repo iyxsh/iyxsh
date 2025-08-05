@@ -1,112 +1,61 @@
 <template>
-  <div 
-    class="single-form-card-wrapper"
-    :class="{ 'preview-mode': previewMode }"
-    :style="cardStyle"
-    @mousedown="handleMouseDown"
-    @dblclick="handleDblClick"
-  >
-    <el-card 
-      :class="['single-form-card', { 'editable': editable, 'no-style': !cardStyleOn }]">
+  <div class="single-form-card-wrapper" :class="{ 'preview-mode': previewMode }" :style="cardStyle"
+    @mousedown="handleMouseDown" @dblclick="handleDblClick">
+    <el-card :class="['single-form-card', { 'editable': editable, 'no-style': !cardStyleOn }]">
       <div class="form-content">
         <!-- 标题 -->
-        <div 
-          v-if="shouldShowTitle" 
-          class="form-title"
-          :style="titleStyle"
-        >
+        <div v-if="shouldShowTitle" class="form-title" :style="titleStyle">
           {{ form.title }}
         </div>
 
         <!-- 内容 -->
-        <div 
-          v-if="shouldShowValue" 
-          class="form-value"
-          :style="valueStyle"
-        >
+        <div v-if="shouldShowValue" class="form-value" :style="valueStyle">
           {{ form.value }}
         </div>
 
         <!-- 备注 -->
-        <div 
-          v-if="shouldShowRemark" 
-          class="form-remark"
-          :style="remarkStyle"
-        >
+        <div v-if="shouldShowRemark" class="form-remark" :style="remarkStyle">
           {{ form.remark }}
         </div>
 
         <!-- 媒体内容（如果有的话） -->
-        <div 
-          v-if="shouldShowMedia" 
-          class="form-media"
-          :style="mediaStyle"
-        >
+        <div v-if="shouldShowMedia" class="form-media" :style="mediaStyle">
           <!-- 处理MediaUploader传递的对象 -->
           <template v-if="form.media && typeof form.media === 'object' && form.media.url">
             <!-- 图片预览 - MediaUploader对象 -->
-            <img
-              v-if="isImageMedia"
-              :src="mediaPreviewUrl"
-              :alt="form.title || 'Form media'"
-              class="media-image"
-              @error="handleMediaError"
-              @load="handleMediaLoad"
-            >
+            <img v-if="(form.mediaType === 'image' || !form.mediaType)" :src="form.media.url"
+              :alt="form.title || 'Form media'" class="media-image" @error="handleMediaError" @load="handleMediaLoad" />
             <!-- 视频预览 - MediaUploader对象 -->
-            <video
-              v-else
-              :src="mediaPreviewUrl"
-              controls
-              class="media-video"
-              @error="handleMediaError"
-              @loadeddata="handleVideoLoad"
-            ></video>
+            <video v-else-if="form.mediaType === 'video'" :src="form.media.url" controls class="media-video"
+              @error="handleMediaError" @loadeddata="handleVideoLoad">
+              您的浏览器不支持视频播放。
+            </video>
           </template>
           <!-- 处理字符串URL -->
-          <template v-else-if="mediaPreviewUrl">
+          <template
+            v-else-if="typeof (form.media || form.mediaPreviewUrl) === 'string' && (form.media || form.mediaPreviewUrl)">
             <!-- 图片预览 - 字符串URL -->
-            <img 
-              v-if="isImageMedia"
-              :src="mediaPreviewUrl"
-              :alt="form.title || 'Form media'"
-              class="media-image"
-              @error="handleMediaError"
-              @load="handleMediaLoad"
-            >
+            <img v-if="(form.mediaType === 'image' || !form.mediaType)" :src="form.media || form.mediaPreviewUrl"
+              :alt="form.title || 'Form media'" class="media-image" @error="handleMediaError" @load="handleMediaLoad" />
             <!-- 视频预览 - 字符串URL -->
-            <video 
-              v-else
-              :src="mediaPreviewUrl"
-              controls
-              class="media-video"
-              @error="handleMediaError"
-              @loadeddata="handleVideoLoad"
-            ></video>
+            <video v-else-if="form.mediaType === 'video'" :src="form.media || form.mediaPreviewUrl" controls
+              class="media-video" @error="handleMediaError" @loadeddata="handleVideoLoad">
+              您的浏览器不支持视频播放。
+            </video>
           </template>
-          <!-- 处理base64数据 -->
-          <template v-else-if="typeof form.media === 'string' && form.media.startsWith('data:')">
-            <!-- 图片预览 - base64数据 -->
-            <img
-              v-if="isImageMedia && form.media.startsWith('data:image/')"
-              :src="form.media"
-              :alt="form.title || 'Form media'"
-              class="media-image"
-              @error="handleMediaError"
-              @load="handleMediaLoad"
-            >
-            <!-- 视频预览 - base64数据 -->
-            <video
-              v-else-if="!isImageMedia && form.media.startsWith('data:video/')"
-              :src="form.media"
-              controls
-              class="media-video"
-              @error="handleMediaError"
-              @loadeddata="handleVideoLoad"
-            ></video>
+          <!-- 处理File对象 -->
+          <template v-else-if="form.media instanceof File">
+            <!-- 图片预览 - File对象 -->
+            <img v-if="(form.mediaType === 'image' || !form.mediaType)" :src="form.mediaPreviewUrl"
+              :alt="form.title || 'Form media'" class="media-image" @error="handleMediaError" @load="handleMediaLoad" />
+            <!-- 视频预览 - File对象 -->
+            <video v-else-if="form.mediaType === 'video'" :src="form.mediaPreviewUrl" controls class="media-video"
+              @error="handleMediaError" @loadeddata="handleVideoLoad">
+              您的浏览器不支持视频播放。
+            </video>
           </template>
-          <div v-else-if="form.media || form.mediaPreviewUrl" class="media-unavailable">
-            <p>{{ t('singleFormShow.mediaUnavailable') }}</p>
+          <div v-else class="media-unavailable">
+            <p>无法预览媒体内容</p>
           </div>
         </div>
       </div>
@@ -115,27 +64,29 @@
       <div v-if="editable" class="form-actions">
         <el-dropdown @command="handleCommand">
           <el-button class="action-button" size="small">
-            <el-icon><MoreFilled /></el-icon>
+            <el-icon>
+              <MoreFilled />
+            </el-icon>
           </el-button>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="edit">
-                <el-icon><Edit /></el-icon> {{ t('singleFormShow.edit') }}
+                <el-icon>
+                  <Edit />
+                </el-icon> {{ t('singleFormShow.edit') }}
               </el-dropdown-item>
               <el-dropdown-item command="delete">
-                <el-icon><Delete /></el-icon> {{ t('singleFormShow.delete') }}
+                <el-icon>
+                  <Delete />
+                </el-icon> {{ t('singleFormShow.delete') }}
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
       </div>
-      
+
       <!-- 调整大小手柄 -->
-      <div 
-        v-if="editable" 
-        class="resize-handle" 
-        @mousedown="startResize"
-      ></div>
+      <div v-if="editable" class="resize-handle" @mousedown="startResize"></div>
     </el-card>
   </div>
 </template>
@@ -179,8 +130,8 @@ const props = defineProps({
 
 // 定义emits
 const emit = defineEmits([
-  'edit', 
-  'delete', 
+  'edit',
+  'delete',
   'dblclick',
   'mousedown',
   'update-position',
@@ -213,8 +164,45 @@ const cardStyle = computed(() => {
 
 // 判断媒体是否为图片
 const isImageMedia = computed(() => {
-  // 使用统一的媒体类型判断函数
-  return getMediaType(props.form.media) === 'image';
+  // 处理空值情况
+  if (!props.form.media) return true;
+
+  // 如果是对象，优先检查对象属性
+  if (typeof props.form.media === 'object') {
+    // MediaUploader传递的对象，包含mediaType属性
+    if (props.form.media.mediaType) {
+      return props.form.media.mediaType === 'image';
+    }
+
+    // MediaUploader传递的对象，包含isImage属性
+    if (typeof props.form.media.isImage === 'boolean') {
+      return props.form.media.isImage;
+    }
+
+    // 检查是否有File对象
+    if (props.form.media instanceof File || (props.form.media.file && props.form.media.file instanceof File)) {
+      const file = props.form.media instanceof File ? props.form.media : props.form.media.file;
+      if (file.type) {
+        return file.type.startsWith('image/');
+      }
+    }
+
+    // 检查url属性
+    if (props.form.media.url && typeof props.form.media.url === 'string') {
+      return getMediaType(props.form.media.url) === 'image';
+    }
+
+    // 默认当作图片处理
+    return true;
+  }
+
+  // 处理字符串
+  if (typeof props.form.media === 'string') {
+    return getMediaType(props.form.media) === 'image';
+  }
+
+  // 默认当作图片处理
+  return true;
 })
 
 // 计算媒体预览URL
@@ -285,7 +273,11 @@ const shouldShowRemark = computed(() => {
 
 // 是否显示媒体
 const shouldShowMedia = computed(() => {
-  return props.form?.showMedia && (props.form.media || props.form.mediaPreviewUrl)
+  // 如果showMedia字段不存在，默认为true（向后兼容）
+  const showMedia = props.form?.showMedia !== undefined ? props.form.showMedia : true;
+  // 检查是否有媒体内容
+  const hasMedia = !!(props.form?.media || props.form?.mediaPreviewUrl);
+  return showMedia !== false && hasMedia;
 })
 
 // 处理命令
@@ -302,7 +294,28 @@ const handleCommand = (command) => {
 
 // 处理双击事件
 const handleDblClick = (event) => {
-  emit('dblclick', props.form, event)
+  // 添加防抖，防止频繁双击触发
+  if (performance.now() - (handleDblClick.lastCall || 0) < 300) {
+    return;
+  }
+  handleDblClick.lastCall = performance.now();
+  
+  // 如果是视频表单，添加特殊处理
+  if (props.form && props.form.type === 'video') {
+    // 使用requestIdleCallback推迟执行，避免强制回流（如果浏览器支持）
+    if (window.requestIdleCallback) {
+      window.requestIdleCallback(() => {
+        emit('dblclick', props.form, event);
+      }, { timeout: 1000 });
+    } else {
+      // 降级到requestAnimationFrame
+      requestAnimationFrame(() => {
+        emit('dblclick', props.form, event);
+      });
+    }
+  } else {
+    emit('dblclick', props.form, event);
+  }
 }
 
 // 处理鼠标按下事件（开始拖动）
@@ -311,10 +324,10 @@ const handleMouseDown = (event) => {
   if (event.target.classList.contains('resize-handle')) {
     return;
   }
-  
+
   if (props.editable) {
     emit('mousedown', props.form, event)
-    
+
     // 开始拖动
     startDrag(event)
   }
@@ -324,12 +337,12 @@ const handleMouseDown = (event) => {
 const startDrag = (event) => {
   event.preventDefault()
   isDragging.value = true
-  
+
   startX.value = event.clientX
   startY.value = event.clientY
   startLeft.value = props.position.x
   startTop.value = props.position.y
-  
+
   document.addEventListener('mousemove', drag)
   document.addEventListener('mouseup', stopDrag)
 }
@@ -337,23 +350,23 @@ const startDrag = (event) => {
 // 拖动过程
 const drag = (event) => {
   if (!isDragging.value) return
-  
+
   const deltaX = event.clientX - startX.value
   const deltaY = event.clientY - startY.value
-  
+
   let newLeft = startLeft.value + deltaX
   let newTop = startTop.value + deltaY
-  
+
   // 限制拖动边界，不能拖出容器左边和上边
   newLeft = Math.max(0, newLeft)
   newTop = Math.max(0, newTop)
-  
+
   // 传递表单ID和新位置
-  emit('update-position', { 
+  emit('update-position', {
     formId: props.form.id,
     position: {
-      x: Math.round(newLeft), 
-      y: Math.round(newTop) 
+      x: Math.round(newLeft),
+      y: Math.round(newTop)
     }
   })
 }
@@ -370,12 +383,12 @@ const startResize = (event) => {
   event.stopPropagation()
   event.preventDefault()
   isResizing.value = true
-  
+
   startX.value = event.clientX
   startY.value = event.clientY
   startWidth.value = props.size.width
   startHeight.value = props.size.height
-  
+
   document.addEventListener('mousemove', resize)
   document.addEventListener('mouseup', stopResize)
 }
@@ -384,26 +397,26 @@ const startResize = (event) => {
 let resizeTimer = null;
 const resize = (event) => {
   if (!isResizing.value) return
-  
+
   const deltaX = event.clientX - startX.value
   const deltaY = event.clientY - startY.value
-  
+
   // 设置最小尺寸为50x50像素
   const newWidth = Math.max(50, startWidth.value + deltaX)
   const newHeight = Math.max(50, startHeight.value + deltaY)
-  
+
   // 使用防抖避免频繁更新
   if (resizeTimer) {
     clearTimeout(resizeTimer)
   }
-  
+
   resizeTimer = setTimeout(() => {
     // 传递表单ID和新尺寸
-    emit('update-size', { 
+    emit('update-size', {
       formId: props.form.id,
       size: {
-        width: Math.round(newWidth), 
-        height: Math.round(newHeight) 
+        width: Math.round(newWidth),
+        height: Math.round(newHeight)
       }
     })
   }, 16) // 约60fps
@@ -414,7 +427,7 @@ const stopResize = () => {
   isResizing.value = false
   document.removeEventListener('mousemove', resize)
   document.removeEventListener('mouseup', stopResize)
-  
+
   // 清除防抖定时器
   if (resizeTimer) {
     clearTimeout(resizeTimer)
@@ -424,42 +437,65 @@ const stopResize = () => {
 
 // 处理媒体加载错误
 const handleMediaError = (event) => {
-  console.error('SingleFormShow: Media load error', event);
-  
-  let errorMessage = t('singleFormShow.mediaLoadError');
-  
-  if (event && event.target && event.target.error) {
-    const error = event.target.error;
-    switch(error.code) {
-      case MediaError.MEDIA_ERR_ABORTED:
-        errorMessage = t('singleFormShow.mediaErrorAborted');
-        break;
-      case MediaError.MEDIA_ERR_NETWORK:
-        errorMessage = t('singleFormShow.mediaErrorNetwork');
-        break;
-      case MediaError.MEDIA_ERR_DECODE:
-        errorMessage = t('singleFormShow.mediaErrorDecode');
-        break;
-      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        errorMessage = t('singleFormShow.mediaErrorNotSupported');
-        break;
-      default:
-        errorMessage = `${t('singleFormShow.mediaErrorUnknown')} [${error.code}]`;
-        break;
+  try {
+    console.error('[SingleFormShow] 媒体加载失败:', event);
+
+    // 检查是否是base64格式的视频
+    if (props.form.media && typeof props.form.media === 'string') {
+      if (props.form.media.startsWith('data:video/')) {
+        ElMessage.info('视频为base64格式，可能需要较长时间加载');
+      } else {
+        ElMessage.warning('媒体加载失败');
+      }
+    } else {
+      ElMessage.warning('媒体加载失败');
     }
+
+    // 如果有错误对象，记录详细信息
+    if (event && event.target && event.target.error) {
+      const error = event.target.error;
+      let errorDetails = `媒体加载错误 [${error.code}]`;
+
+      switch (error.code) {
+        case MediaError.MEDIA_ERR_ABORTED:
+          errorDetails += ': 用户中止加载';
+          break;
+        case MediaError.MEDIA_ERR_NETWORK:
+          errorDetails += ': 网络错误';
+          break;
+        case MediaError.MEDIA_ERR_DECODE:
+          errorDetails += ': 解码错误';
+          break;
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          errorDetails += ': 不支持的媒体格式';
+          break;
+        default:
+          errorDetails += ': 未知错误';
+      }
+
+      console.error(`[SingleFormShow] ${errorDetails}`, error);
+    }
+  } catch (error) {
+    console.error('[SingleFormShow] 处理媒体错误时出错:', error);
   }
-  
-  ElMessage.error(errorMessage);
 }
 
 // 处理媒体加载完成
 const handleMediaLoad = (event) => {
-  console.log('SingleFormShow: Media loaded successfully', event);
+  try {
+    console.log('[SingleFormShow] 媒体加载成功');
+  } catch (error) {
+    console.error('[SingleFormShow] 处理媒体加载事件时出错:', error);
+  }
 }
 
 // 处理视频加载完成
 const handleVideoLoad = (event) => {
-  console.log('SingleFormShow: Video loaded successfully', event);
+  try {
+    console.log('[SingleFormShow] 视频加载成功');
+  } catch (error) {
+    console.error('[SingleFormShow] 处理视频加载事件时出错:', error);
+  }
 }
 
 // 组件挂载前
@@ -475,19 +511,19 @@ onBeforeUnmount(() => {
     document.removeEventListener('mouseup', stopResize)
     isResizing.value = false
   }
-  
+
   if (isDragging.value) {
     document.removeEventListener('mousemove', drag)
     document.removeEventListener('mouseup', stopDrag)
     isDragging.value = false
   }
-  
+
   // 清除防抖定时器
   if (resizeTimer) {
     clearTimeout(resizeTimer)
     resizeTimer = null
   }
-  
+
   console.log('SingleFormShow component unmounting', props.form);
 })
 </script>
@@ -550,7 +586,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
   max-height: 200px;
   border-radius: 4px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
 }
 
 .media-unavailable {

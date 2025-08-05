@@ -16,20 +16,26 @@
     </el-upload>
     <div v-if="mediaUrl" class="media-preview">
       <img 
-        v-if="isImage && typeof mediaUrl === 'string'"
+        v-if="isImageValue(mediaUrl) && typeof mediaUrl === 'string'"
         :src="mediaUrl"
         style="max-width:100%;max-height:120px;" 
         @error="handleMediaError" 
         @load="handleMediaLoad"
       />
       <video 
-        v-else-if="!isImage && typeof mediaUrl === 'string'"
+        v-else-if="!isImageValue(mediaUrl) && typeof mediaUrl === 'string'"
         :src="mediaUrl"
         controls 
+        preload="auto"
+        playsinline
         style="max-width:100%;max-height:120px;" 
         @error="handleMediaError" 
         @loadeddata="handleVideoLoad"
-      />
+        @canplay="handleVideoCanPlay"
+      >
+        您的浏览器不支持视频播放。
+        <source :src="mediaUrl" :type="getVideoType(mediaUrl)">
+      </video>
       <div v-else>
         {{ t('mediaUploader.previewUnavailable') }}
       </div>
@@ -94,16 +100,43 @@ function isImageFile(file) {
   
   // 通过MIME类型判断
   if (file.type) {
-    return file.type.startsWith('image/')
+    return file.type.startsWith('image/');
   }
   
-  // 如果没有MIME类型，通过文件名扩展名判断
+  // 如果没有MIME类型，通过文件名判断
   if (file.name) {
-    return getMediaType(file.name) === 'image';
+    const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+    return imageExtensions.test(file.name);
   }
   
-  // 默认返回true（无法确定类型时当作图片处理）
-  return true
+  // 默认当作图片处理
+  return true;
+}
+
+// 准确判断媒体URL是否为图片
+const isImageValue = (url) => {
+  // 如果url为空或不是字符串，返回默认值true（当作图片处理）
+  if (!url || typeof url !== 'string') return true;
+  
+  // 检查base64数据URL
+  if (url.startsWith('data:')) {
+    return url.startsWith('data:image/');
+  }
+  
+  // 通过文件扩展名判断
+  const imageExtensions = /\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i;
+  const videoExtensions = /\.(mp4|webm|ogg|avi|mov|wmv|flv|mkv)$/i;
+  
+  // 检查扩展名
+  if (imageExtensions.test(url)) {
+    return true; // 匹配图片扩展名
+  }
+  if (videoExtensions.test(url)) {
+    return false; // 匹配视频扩展名
+  }
+  
+  // 未知扩展名，返回当前isImage值作为默认值
+  return isImage.value;
 }
 
 // 处理上传成功
@@ -202,126 +235,108 @@ function clearMedia() {
   emit('update:modelValue', '')
 }
 
-// 处理媒体加载完成
-function handleMediaLoad(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
-  }
-  
-  console.log('MediaUploader: Media loaded successfully', { 
-    event, 
-    mediaUrl: mediaUrl.value,
-    isImage: isImage.value
-  });
-}
-
-// 处理视频加载完成
-function handleVideoLoad(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
-  }
-  
-  console.log('MediaUploader: Video loaded successfully', { 
-    event, 
-    mediaUrl: mediaUrl.value,
-    isImage: isImage.value
-  });
-}
-
-// 处理媒体错误
-function handleMediaError(event) {
-  // 检查组件是否已卸载
-  if (isUnmounted.value) {
-    return
-  }
-  
-  // 收集错误上下文信息
-  const errorContext = {
-    mediaUrl: mediaUrl.value,
-    isImage: isImage.value,
-    timestamp: new Date().toISOString(),
-    userAgent: navigator.userAgent
-  };
-  
-  let errorMessage = t('mediaUploader.loadError');
-  
-  // 标准媒体元素错误
-  if (event && event.target && event.target.error) {
-    const error = event.target.error;
-    
-    switch(error.code) {
-      case MediaError.MEDIA_ERR_ABORTED:
-        errorMessage = t('mediaUploader.errorAborted');
-        break;
-      case MediaError.MEDIA_ERR_NETWORK:
-        errorMessage = t('mediaUploader.errorNetwork');
-        break;
-      case MediaError.MEDIA_ERR_DECODE:
-        errorMessage = t('mediaUploader.errorDecode');
-        errorContext.fileSize = event.target.size;
-        break;
-      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-        errorMessage = t('mediaUploader.errorNotSupported');
-        break;
-      default:
-        errorMessage = `${t('mediaUploader.errorUnknown')} [${error.code}]`;
-        break;
-    }
-    
-    // 添加标准错误详细信息
-    Object.assign(errorContext, {
-      errorCode: error.code,
-      errorMessage: error.message,
-      src: event.target.src
-    });
-  } 
-  // 通用错误对象
-  else if (event && typeof event === 'object') {
-    // 尝试提取错误信息
-    const error = event.message ? event : 
-      (event.target && event.target.error ? event.target.error : {});
-      
-    if (error.message) {
-      errorMessage = `${t('mediaUploader.loadError')}: ${error.message}`;
-    } else if (event.target && event.target.src) {
-      const src = event.target.src;
-      if (src.startsWith('blob:')) {
-        errorMessage = t('mediaUploader.localFileError');
-        
-        // 清理无效的blob URL
-        if (createdUrls.value.includes(src)) {
-          revokeBlobURL(src);
-          createdUrls.value = createdUrls.value.filter(url => url !== src);
-        } else {
-          errorMessage = `${t('mediaUploader.loadError')} [URL: ${src}]`;
-        }
-        
-        errorContext.src = src;
+const handleMediaError = (event) => {
+  try {
+    // 检查是否是base64格式的视频
+    if (mediaUrl.value && typeof mediaUrl.value === 'string') {
+      if (mediaUrl.value.startsWith('data:video/')) {
+        console.log('[MediaUploader] 检测到base64视频加载失败，使用静默处理');
+        // 对于base64视频，我们只记录日志，不显示用户提示以减少干扰
+        // 阻止事件继续传播
+        event.preventDefault();
+        event.stopPropagation();
+        return;
       }
     }
     
-    // 尝试序列化错误对象用于调试
-    try {
-      Object.assign(errorContext, {
-        errorDetails: JSON.parse(JSON.stringify(error))
-      });
-    } catch (e) {
-      errorContext.errorDetails = t('mediaUploader.errorSerializationFailed');
-    }
-  } 
-  // 未知错误类型
-  else {
-    errorContext.errorDetails = t('mediaUploader.unknownErrorType');
+    // 只对非base64视频显示错误提示
+    console.error('[MediaUploader] 媒体加载失败:', event);
+    ElMessage.warning('媒体加载失败');
+  } catch (error) {
+    console.error('[MediaUploader] 处理媒体错误时出错:', error);
   }
-  
-  // 记录详细的错误信息
-  console.error('MediaUploader: Media load error', errorContext);
-  
-  // 显示用户友好的错误消息
-  ElMessage.error(errorMessage);
-}
+};
+
+// 添加一个防抖函数用于处理媒体加载
+const debounceMediaLoad = (() => {
+  let timeout;
+  return function(callback, delay) {
+    clearTimeout(timeout);
+    timeout = setTimeout(callback, delay);
+  };
+})();
+
+// 优化媒体加载处理，避免强制回流
+const handleMediaLoad = (event) => {
+  try {
+    console.log('[MediaUploader] 媒体加载成功');
+    // 使用防抖处理，避免频繁更新
+    debounceMediaLoad(() => {
+      // 在下一帧执行，避免强制回流
+      requestAnimationFrame(() => {
+        console.log('[MediaUploader] 媒体加载完成回调执行');
+      });
+    }, 100);
+  } catch (error) {
+    console.error('[MediaUploader] 处理媒体加载事件时出错:', error);
+  }
+};
+
+// 优化视频加载处理
+const handleVideoLoad = (event) => {
+  try {
+    console.log('[MediaUploader] 视频数据加载成功');
+    // 使用防抖处理
+    debounceMediaLoad(() => {
+      requestAnimationFrame(() => {
+        console.log('[MediaUploader] 视频加载完成回调执行');
+      });
+    }, 100);
+  } catch (error) {
+    console.error('[MediaUploader] 处理视频加载事件时出错:', error);
+  }
+};
+
+// 优化视频可播放处理
+const handleVideoCanPlay = (event) => {
+  try {
+    console.log('[MediaUploader] 视频可以播放');
+    // 使用防抖处理
+    debounceMediaLoad(() => {
+      requestAnimationFrame(() => {
+        console.log('[MediaUploader] 视频可播放回调执行');
+      });
+    }, 100);
+  } catch (error) {
+    console.error('[MediaUploader] 处理视频可播放事件时出错:', error);
+  }
+};
+
+// 获取视频类型
+const getVideoType = (url) => {
+  try {
+    if (url && typeof url === 'string') {
+      // 根据文件扩展名判断视频类型
+      const extension = url.split('.').pop().toLowerCase();
+      switch (extension) {
+        case 'mp4':
+          return 'video/mp4';
+        case 'webm':
+          return 'video/webm';
+        case 'ogg':
+          return 'video/ogg';
+        case 'mov':
+          return 'video/quicktime';
+        default:
+          return 'video/mp4'; // 默认使用mp4
+      }
+    }
+    return 'video/mp4';
+  } catch (error) {
+    console.error('[MediaUploader] 获取视频类型时出错:', error);
+    return 'video/mp4';
+  }
+};
 
 // 监听modelValue变化
 watch(() => props.modelValue, (newVal, oldVal) => {
@@ -337,7 +352,7 @@ watch(() => props.modelValue, (newVal, oldVal) => {
     if ('url' in newVal) {
       mediaUrl.value = newVal.url
       // 使用统一的媒体类型判断函数
-      isImage.value = getMediaType(newVal) === 'image';
+      isImage.value = isImageValue(newVal.url);
     } 
     // 如果是包含File对象的格式
     else if ('file' in newVal && newVal.file instanceof File) {
@@ -348,7 +363,7 @@ watch(() => props.modelValue, (newVal, oldVal) => {
   else if (typeof newVal === 'string') {
     mediaUrl.value = newVal
     // 使用统一的媒体类型判断函数
-    isImage.value = getMediaType(newVal) === 'image';
+    isImage.value = isImageValue(newVal);
   } 
   // 处理File对象的情况
   else if (newVal instanceof File) {
@@ -356,18 +371,16 @@ watch(() => props.modelValue, (newVal, oldVal) => {
   } 
   // 默认情况
   else {
-    isImage.value = getMediaType(newVal) === 'image';
+    isImage.value = isImageValue(newVal);
   }
   
   // 确保组件状态与父组件同步
   console.log('MediaUploader: modelValue changed', { 
     newVal, 
-    oldVal, 
     mediaUrl: mediaUrl.value, 
-    isImage: isImage.value,
-    currentType: isImage.value ? 'image' : 'video'
+    isImage: isImage.value 
   })
-})
+}, { immediate: true });
 </script>
 
 <style scoped>

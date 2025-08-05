@@ -17,7 +17,7 @@
     </div>
 
     <!-- 表单网格内容 -->
-    <div v-if="!loading && !error && !showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
+    <div v-else-if="!showAddFormEditor && !showFormEditor" class="form-grid" ref="containerRef" :style="gridContainerStyle">
       <!-- 表单卡片列表 -->
         <SingleFormShow
           v-for="(form, index) in forms"
@@ -37,14 +37,14 @@
     </div>
 
     <!-- 添加表单编辑器 -->
-    <div v-if="showAddFormEditor" class="form-editor-overlay">
+    <div v-else-if="showAddFormEditor" class="form-editor-overlay">
       <div class="form-editor-wrapper">
         <FormEditor :form="addFormData" @save="saveAddForm" @cancel="cancelAddForm" @error="handleFormEditorError" :key="addFormDataKey" />
       </div>
     </div>
 
     <!-- 表单编辑器 -->
-    <div class="form-editor-overlay" v-if="showFormEditor">
+    <div class="form-editor-overlay" v-else-if="showFormEditor">
       <div class="form-editor-wrapper">
         <FormEditor 
           :form="selectedForm" 
@@ -847,22 +847,51 @@ const handleFormSave = (updatedForm) => {
 // 处理编辑表单
 const handleEditForm = (formToEdit) => {
   try {
-    if (!props.editable) {
-      ElMessage.warning('当前页面不可编辑，请先解锁页面');
-      return;
+    console.log('[FormGrid] 处理表单编辑请求:', formToEdit?.id, '类型:', formToEdit?.type);
+    
+    // 检查是否是视频表单
+    if (formToEdit && formToEdit.type === 'video' && formToEdit.content) {
+      // 检查是否是base64格式的视频
+      if (typeof formToEdit.content === 'string' && formToEdit.content.startsWith('data:video/')) {
+        console.log('[FormGrid] 检测到base64视频表单，准备优化处理');
+        // 使用requestIdleCallback推迟执行，避免强制回流（如果浏览器支持）
+        if (window.requestIdleCallback) {
+          window.requestIdleCallback(() => {
+            continueEditForm(formToEdit);
+          }, { timeout: 1000 });
+        } else {
+          // 降级到setTimeout
+          setTimeout(() => {
+            continueEditForm(formToEdit);
+          }, 0);
+        }
+        return;
+      }
     }
     
-    // 设置当前选中的表单
-    selectedForm.value = { ...formToEdit };
-    
-    // 显示表单编辑器
-    showFormEditor.value = true;
-    
-    console.log('[FormGrid] 打开表单编辑器，表单ID:', formToEdit.id);
+    // 正常处理流程
+    continueEditForm(formToEdit);
   } catch (error) {
     console.error('[FormGrid] 编辑表单失败:', error);
     handleError(error, '编辑表单失败');
   }
+};
+
+// 实际执行表单编辑的函数
+const continueEditForm = (formToEdit) => {
+  // 检查页面是否可编辑
+  if (!props.editable) {
+    ElMessage.warning('当前页面不可编辑，请先解锁页面');
+    return;
+  }
+  
+  // 设置当前选中的表单
+  selectedForm.value = { ...formToEdit };
+  
+  // 显示表单编辑器
+  showFormEditor.value = true;
+  
+  console.log('[FormGrid] 打开表单编辑器，表单ID:', formToEdit.id);
 };
 
 // 隐藏表单编辑器

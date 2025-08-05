@@ -30,7 +30,7 @@
     />
 
     <!-- 应用内容 -->
-    <div v-if="isLoaded">
+    <div v-else>
       <div v-if="!hasError">
         <router-view v-if="isRouterAlive" v-slot="{ Component }">
           <component 
@@ -127,6 +127,17 @@ export default {
     // 增强的错误处理
     const handleComponentError = (error) => {
       console.error('组件错误:', error);
+      
+      // 特殊处理媒体相关错误
+      if (error && error.type === 'error' && error.target) {
+        // 检查是否是媒体加载错误
+        const target = error.target;
+        if (target.tagName && (target.tagName === 'IMG' || target.tagName === 'VIDEO')) {
+          console.log('媒体加载错误，可能是base64格式视频导致的性能问题');
+          // 不将媒体加载错误视为应用级错误，完全阻止传播
+          return true; // 返回true表示已处理并不再传播
+        }
+      }
       
       // 增强的错误处理逻辑
       if (error && error.message) {
