@@ -387,7 +387,7 @@ namespace filemanager
                 logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
                 //将newValue转为符合单元格公式的写法格式;
                 rtl::OUString tmp = findCharPositions(newValue, readSheetData(filePath, rtl::OUString::createFromAscii("Sheet1")));
-                logger_log("updateSpreadsheetContent: ",rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                logger_log("updateSpreadsheetContent: %s",rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
                 cell->setFormula(tmp);
             }
             saveDocument(xDoc, filePath);
@@ -1064,30 +1064,35 @@ namespace filemanager
         for (sal_Int32 i = 0; i < newValue.getLength(); ++i) {
             // 获取当前字符
             rtl::OUString charStr = newValue.copy(i, 1);
-            
-            // 将字符转换为ASCII字符串用于在sheetData中查找
+            logger_log("charStr: %s", rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr());
+            // 将字符转换为UTF8字符串用于在sheetData中查找
             std::string charStdStr = rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr();
-            
+            logger_log("charStdStr: %s", charStdStr.c_str());
             // 在sheetData中查找该字符
             cJSON *positionItem = cJSON_GetObjectItem(sheetData, charStdStr.c_str());
             
             if (positionItem && positionItem->valuestring) {
+                logger_log("positionItem: %s", positionItem->valuestring);
                 // 如果找到位置信息，添加到结果中
                 if (i > 0) {
-                    // 除了第一个字符外，其他字符前面都加空格
-                    resultBuffer.append(rtl::OUString::createFromAscii(" "));
+                    // 除了第一个字符外，其他字符前面都加&
+                    resultBuffer.append(rtl::OUString::createFromAscii("&"));
                 }
+                else
+                {
+                    resultBuffer.append(rtl::OUString::createFromAscii("="));
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii("$Sheet1."));
                 resultBuffer.append(rtl::OUString::createFromAscii(positionItem->valuestring));
             } else {
                 // 如果未找到字符位置，可以添加一个占位符或跳过
-                if (i > 0) {
-                    resultBuffer.append(rtl::OUString::createFromAscii(" "));
+                if (i > 0 && resultBuffer.getLength() > 0) {
+                    resultBuffer.append(rtl::OUString::createFromAscii("&"));
                 }
                 resultBuffer.append(rtl::OUString::createFromAscii("N/A"));
             }
         }
-        
-        // 返回组合的位置字符串
+        // 返回组合的位置字符串，此处使用后会清空
         return resultBuffer.makeStringAndClear();
     }
 

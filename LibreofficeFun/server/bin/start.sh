@@ -1,9 +1,7 @@
 #!/bin/sh
-export URE_BOOTSTRAP=/usr/local/lib/libreoffice/program/fundamentalrc
-
+sh stop.sh # 重新执行停止流程，确保完全退出
+export URE_BOOTSTRAP=file:///usr/local/lib/libreoffice/program/fundamentalrc
 soffice --headless --accept="socket,host=127.0.0.1,port=2002;urp;" &
-
-# 启动主程序
 echo "启动主程序..."
 ./libreofficefun &
 
