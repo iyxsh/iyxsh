@@ -7,7 +7,8 @@
 #include "./filemanager/filemanager.h"
 #include "./logger/logger.h"
 #include "./config/json_config.h"
-
+#include "filemanager/filemanager.h"
+#include <iostream>
 /* ======= dbmanager.c  ======= */
 //extern GridCircle *gridcircldata; // json文件默认配置读取
 extern char *defaultdbname;
@@ -454,6 +455,30 @@ int main()
     if (port == 0) {
         fprintf(stderr, "警告: 无法从配置文件中读取端口配置，使用默认端口8443\n");
         port = 8443; // 默认端口
+    }
+
+    // 初始化文件管理器模板缓存
+    filemanager::initializeTemplateCache();
+
+    // 初始化 LibreOffice 连接
+    std::cout << "Attempting to initialize LibreOffice connection..." << std::endl;
+    if (!filemanager::LibreOfficeConnectionManager::initialize())
+    {
+        std::cerr << "========================================" << std::endl;
+        std::cerr << "WARNING: Failed to initialize LibreOffice connection!" << std::endl;
+        std::cerr << "This may be caused by:" << std::endl;
+        std::cerr << "1. LibreOffice is not running in headless mode" << std::endl;
+        std::cerr << "2. LibreOffice is not accepting connections on port 2002" << std::endl;
+        std::cerr << "3. URE_BOOTSTRAP environment variable is not set correctly" << std::endl;
+        std::cerr << std::endl;
+        std::cerr << "To start LibreOffice in headless mode, run:" << std::endl;
+        std::cerr << "soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard" << std::endl;
+        std::cerr << "========================================" << std::endl;
+        
+        // 继续运行服务，但会有一些功能受限
+        std::cout << "Service will continue to run, but LibreOffice-related features will not work until connection is established." << std::endl;
+    } else {
+        std::cout << "LibreOffice connection initialized successfully." << std::endl;
     }
 
     // 创建SSL上下文

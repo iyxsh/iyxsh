@@ -1,25 +1,5 @@
 #include "filemanager.h"
 #include "../cJSON/cJSON.h"
-#include <com/sun/star/uno/Exception.hpp>
-#include <com/sun/star/uno/Any.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/lang/XMultiServiceFactory.hpp>
-#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
-#include <com/sun/star/sheet/XSpreadsheet.hpp>
-#include <com/sun/star/sheet/XSpreadsheets.hpp>
-#include <com/sun/star/table/XCell.hpp>
-#include <com/sun/star/frame/XComponentLoader.hpp>
-#include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/frame/XStorable.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
-#include <com/sun/star/container/XNameAccess.hpp>
-#include <com/sun/star/container/XNameContainer.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
-#include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/bridge/UnoUrlResolver.hpp>
-#include <cppuhelper/bootstrap.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <rtl/ustring.hxx>
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -30,11 +10,280 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <unordered_map>
+#include <thread>
+#include <chrono>
 
-using namespace com::sun::star;
+// 静态成员变量初始化
+std::unordered_map<std::string, cJSON *> filemanager::templateCache;
+std::unordered_map<std::string, cJSON *> filemanager::templateDataCache;
+std::unordered_map<std::string, time_t> filemanager::templateFileTimestamps;
+std::unordered_map<std::string, bool> filemanager::templateDataCacheLoading;
+uno::Reference<uno::XComponentContext> filemanager::LibreOfficeConnectionManager::mContext;
+uno::Reference<frame::XComponentLoader> filemanager::LibreOfficeConnectionManager::mLoader;
+bool filemanager::LibreOfficeConnectionManager::mIsConnected = false;
 
 namespace filemanager
 {
+    // 获取缓存中的模板数据
+    cJSON *getCachedTemplate(const std::string &templateKey)
+    {
+        auto it = templateCache.find(templateKey);
+        if (it != templateCache.end())
+        {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    // 将模板数据存入缓存
+    void cacheTemplate(const std::string &templateKey, cJSON *templateData)
+    {
+        // 先检查是否已存在相同key的缓存
+        auto it = templateCache.find(templateKey);
+        if (it != templateCache.end())
+        {
+            // 释放旧的内存
+            cJSON_Delete(it->second);
+        }
+        else if (templateCache.size() >= MAX_TEMPLATE_CACHE_SIZE)
+        {
+            // 如果缓存已满，删除最旧的条目（简单实现：删除第一个条目）
+            auto oldest = templateCache.begin();
+            if (oldest != templateCache.end())
+            {
+                cJSON_Delete(oldest->second);
+                templateCache.erase(oldest);
+            }
+        }
+
+        // 存储新的模板数据
+        templateCache[templateKey] = cJSON_Duplicate(templateData, true);
+    }
+
+    void clearTemplateCache()
+    {
+        for (auto &pair : templateCache)
+        {
+            cJSON_Delete(pair.second);
+        }
+        templateCache.clear();
+        std::cout << "Template cache cleared" << std::endl;
+    }
+
+    void clearSheetDataCache()
+    {
+        for (auto &pair : templateDataCache)
+        {
+            cJSON_Delete(pair.second);
+        }
+        templateDataCache.clear();
+        templateFileTimestamps.clear();
+        std::cout << "Sheet data cache cleared" << std::endl;
+    }
+
+    // 实现连接初始化
+    bool LibreOfficeConnectionManager::initialize()
+    {
+        if (mIsConnected)
+        {
+            return true;
+        }
+
+        // 尝试重新连接最多3次
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; ++attempt)
+        {
+            if (attempt > 1)
+            {
+                std::cout << "Retrying LibreOffice connection (attempt " << attempt << "/" << maxRetries << ")..." << std::endl;
+                // 等待一段时间再重试
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000 * attempt));
+            }
+
+            try
+            {
+                // 检查并输出 URE_BOOTSTRAP 环境变量
+                const char *ure_bootstrap = std::getenv("URE_BOOTSTRAP");
+                if (ure_bootstrap)
+                    std::cout << "[UNO] URE_BOOTSTRAP=" << ure_bootstrap << std::endl;
+                else
+                    std::cout << "[UNO] URE_BOOTSTRAP not set!" << std::endl;
+
+                // 创建本地组件上下文
+                uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
+                if (!xLocalContext.is())
+                {
+                    std::cerr << "Failed to create local component context" << std::endl;
+                    continue; // 重试
+                }
+
+                // 获取本地服务管理器
+                uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
+                if (!xLocalMCF.is())
+                {
+                    std::cerr << "Failed to get local service manager" << std::endl;
+                    continue; // 重试
+                }
+
+                // 创建UnoUrlResolver实例
+                uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
+                    rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+                if (!xResolverIface.is())
+                {
+                    std::cerr << "Failed to create UnoUrlResolver instance" << std::endl;
+                    continue; // 重试
+                }
+
+                // 查询XUnoUrlResolver接口
+                uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
+                if (!xUrlResolver.is())
+                {
+                    std::cerr << "Failed to query XUnoUrlResolver interface" << std::endl;
+                    continue; // 重试
+                }
+
+                // 连接到LibreOffice服务
+                uno::Reference<uno::XInterface> xCtxIface;
+                try
+                {
+                    xCtxIface = xUrlResolver->resolve(
+                        rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+                }
+                catch (const uno::Exception &e)
+                {
+                    std::cerr << "XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                    std::cerr << "Please ensure LibreOffice is running with: soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                    std::cerr << "You can also try: soffice --headless --accept=\"socket,host=0.0.0.0,port=2002;urp;\" (for remote access)" << std::endl;
+                    continue; // 重试
+                }
+                catch (...)
+                {
+                    std::cerr << "Unknown exception during resolve" << std::endl;
+                    continue; // 重试
+                }
+
+                // 获取组件上下文
+                mContext = uno::Reference<uno::XComponentContext>(xCtxIface, uno::UNO_QUERY);
+                if (!mContext.is())
+                {
+                    std::cerr << "XComponentContext is null! Please ensure LibreOffice is running with correct parameters." << std::endl;
+                    continue; // 重试
+                }
+
+                // 获取服务管理器
+                uno::Reference<lang::XMultiComponentFactory> xMCF_base = mContext->getServiceManager();
+                if (!xMCF_base.is())
+                {
+                    std::cerr << "getServiceManager() returned null!" << std::endl;
+                    continue; // 重试
+                }
+
+                // 创建桌面服务
+                uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
+                mLoader = uno::Reference<frame::XComponentLoader>(xMCF->createInstance(
+                                                                      rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
+                                                                  uno::UNO_QUERY);
+                if (!mLoader.is())
+                {
+                    std::cerr << "XComponentLoader is null!" << std::endl;
+                    continue; // 重试
+                }
+
+                mIsConnected = true;
+                std::cout << "Successfully connected to LibreOffice service" << std::endl;
+                return true;
+            }
+            catch (const uno::Exception &e)
+            {
+                std::cerr << "UNO Exception during LibreOffice initialization: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+                std::cerr << "Please ensure LibreOffice is running with: soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
+                std::cerr << "You can also try: soffice --headless --accept=\"socket,host=0.0.0.0,port=2002;urp;\" (for remote access)" << std::endl;
+                mIsConnected = false;
+                continue; // 重试
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << "STD Exception during LibreOffice initialization: " << e.what() << std::endl;
+                mIsConnected = false;
+                continue; // 重试
+            }
+            catch (...)
+            {
+                std::cerr << "Unknown exception during LibreOffice initialization" << std::endl;
+                mIsConnected = false;
+                continue; // 重试
+            }
+        }
+
+        // 所有重试都失败了
+        std::cerr << "Failed to connect to LibreOffice after " << maxRetries << " attempts" << std::endl;
+        mIsConnected = false;
+        return false;
+    }
+
+    // 获取组件加载器
+    uno::Reference<frame::XComponentLoader> LibreOfficeConnectionManager::getComponentLoader()
+    {
+        if (!mIsConnected && !initialize())
+        {
+            return nullptr;
+        }
+
+        // 检查连接是否仍然有效
+        try
+        {
+            if (mContext.is() && mLoader.is())
+            {
+                // 尝试执行一个简单的操作来验证连接
+                uno::Reference<lang::XMultiComponentFactory> xMCF_base = mContext->getServiceManager();
+                if (xMCF_base.is())
+                {
+                    return mLoader;
+                }
+            }
+        }
+        catch (...)
+        {
+            // 忽略异常，继续执行重连逻辑
+        }
+
+        // 如果连接无效，尝试重新连接
+        std::cout << "LibreOffice connection lost, attempting to reconnect..." << std::endl;
+        release(); // 释放旧的连接
+        if (initialize())
+        {
+            std::cout << "Successfully reconnected to LibreOffice service" << std::endl;
+            return mLoader;
+        }
+
+        return nullptr;
+    }
+
+    // 获取组件上下文
+    uno::Reference<uno::XComponentContext> LibreOfficeConnectionManager::getContext()
+    {
+        if (!mIsConnected && !initialize())
+        {
+            return nullptr;
+        }
+        return mContext;
+    }
+
+    // 释放连接
+    void LibreOfficeConnectionManager::release()
+    {
+        mLoader.clear();
+        mContext.clear();
+        mIsConnected = false;
+    }
+
+    // 内部辅助函数声明
+    static uno::Reference<uno::XComponentContext> connectToLibreOffice();
+    static std::string convertToAbsolutePath(const std::string &path);
+    static rtl::OUString convertStringToOUString(const char *str);
+    static void make_dirs(const std::string &path);
+    static void writeCellContent(const uno::Reference<sheet::XSpreadsheet> &sheet, int col, int row, cJSON *cellItem);
     // 内部辅助函数声明
     static uno::Reference<uno::XComponentContext> connectToLibreOffice();
     static std::string convertToAbsolutePath(const std::string &path);
@@ -67,9 +316,9 @@ namespace filemanager
             // 中文字符范围判断（基本汉字）
             // 注意：sal_Unicode 是 unsigned short 类型，范围是 0x0000-0xFFFF
             // 所以只检查基本平面的中文字符范围
-            if ((c >= 0x4E00 && c <= 0x9FFF) ||   // CJK统一汉字
+            if ((c >= 0x4E00 && c <= 0x9FFF) || // CJK统一汉字
                 (c >= 0x3400 && c <= 0x4DBF))
-            {  // CJK扩展A
+            { // CJK扩展A
                 chineseChars++;
             }
             // 英文字母
@@ -291,102 +540,31 @@ namespace filemanager
         }
     }
 
+    // 在命名空间结束前添加连接管理器的清理
+    struct LibreOfficeCleanup
+    {
+        ~LibreOfficeCleanup()
+        {
+            LibreOfficeConnectionManager::release();
+            clearTemplateCache();
+            clearSheetDataCache();
+        }
+    };
+
+    static LibreOfficeCleanup gLibreOfficeCleanup;
+
     // 连接到LibreOffice服务
     static uno::Reference<uno::XComponentContext> connectToLibreOffice()
     {
-        // 检查并输出 URE_BOOTSTRAP 环境变量
-        const char *ure_bootstrap = std::getenv("URE_BOOTSTRAP");
-        if (ure_bootstrap)
-            std::cout << "[UNO] URE_BOOTSTRAP=" << ure_bootstrap << std::endl;
-        else
-            std::cout << "[UNO] URE_BOOTSTRAP not set!" << std::endl;
-
-        // 通过 XUnoUrlResolver 远程连接外部 headless soffice 服务
-        uno::Reference<uno::XComponentContext> xLocalContext = cppu::defaultBootstrap_InitialComponentContext();
-        if (!xLocalContext.is())
-        {
-            std::cerr << "connectToLibreOffice: Failed to create local component context" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<lang::XMultiComponentFactory> xLocalMCF = xLocalContext->getServiceManager();
-        if (!xLocalMCF.is())
-        {
-            std::cerr << "connectToLibreOffice: Failed to get local service manager" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<uno::XInterface> xResolverIface = xLocalMCF->createInstanceWithContext(
-            rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
-        if (!xResolverIface.is())
-        {
-            std::cerr << "connectToLibreOffice: Failed to create UnoUrlResolver instance" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<bridge::XUnoUrlResolver> xUrlResolver(xResolverIface, uno::UNO_QUERY);
-        if (!xUrlResolver.is())
-        {
-            std::cerr << "connectToLibreOffice: Failed to query XUnoUrlResolver interface" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<uno::XInterface> xCtxIface;
-        try
-        {
-            xCtxIface = xUrlResolver->resolve(
-                rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
-        }
-        catch (const uno::Exception &e)
-        {
-            std::cerr << "[UNO] XUnoUrlResolver(socket) failed: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            std::cerr << "Please ensure LibreOffice is running with: soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\"" << std::endl;
-            return nullptr;
-        }
-        catch (...)
-        {
-            std::cerr << "connectToLibreOffice: Unknown exception during resolve" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<uno::XComponentContext> xContext(xCtxIface, uno::UNO_QUERY);
-        if (!xContext.is())
-        {
-            std::cerr << "[UNO] XComponentContext (socket) is null! Please ensure LibreOffice is running with correct parameters." << std::endl;
-            return nullptr;
-        }
-
-        return xContext;
+        // 使用连接管理器
+        return LibreOfficeConnectionManager::getContext();
     }
 
     // 获取ComponentLoader用于加载文档
     static uno::Reference<frame::XComponentLoader> getComponentLoader()
     {
-        // 连接到LibreOffice服务
-        uno::Reference<uno::XComponentContext> xContext = connectToLibreOffice();
-        if (!xContext.is())
-        {
-            return nullptr;
-        }
-
-        uno::Reference<lang::XMultiComponentFactory> xMCF_base = xContext->getServiceManager();
-        if (!xMCF_base.is())
-        {
-            std::cerr << "[UNO] getServiceManager() returned null!" << std::endl;
-            return nullptr;
-        }
-
-        uno::Reference<lang::XMultiServiceFactory> xMCF(xMCF_base, uno::UNO_QUERY);
-        uno::Reference<frame::XComponentLoader> xLoader(xMCF->createInstance(
-                                                            rtl::OUString::createFromAscii("com.sun.star.frame.Desktop")),
-                                                        uno::UNO_QUERY);
-        if (!xLoader.is())
-        {
-            std::cerr << "getComponentLoader: XComponentLoader is null!" << std::endl;
-            return nullptr;
-        }
-
-        return xLoader;
+        // 使用连接管理器
+        return LibreOfficeConnectionManager::getComponentLoader();
     }
 
     // 将相对路径转换为绝对路径
@@ -509,139 +687,159 @@ namespace filemanager
         }
     }
 
-    cJSON *readSpreadsheetFile(const rtl::OUString &filePath)
+    // 修改updateSpreadsheetContent函数，使用缓存版本的readSheetData
+    cJSON *updateSpreadsheetContent(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &cellAddress, const rtl::OUString &newValue, const rtl::OUString &cellType)
     {
         try
         {
-            std::string filePathStr = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-            std::cerr << "readSpreadsheetFile: Attempting to read file: " << filePathStr << std::endl;
-
-            // 处理相对路径，转换为绝对路径
-            std::string absolutePath = convertToAbsolutePath(filePathStr);
-            std::cerr << "readSpreadsheetFile: Absolute path: " << absolutePath << std::endl;
-
             // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = getComponentLoader();
+            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
             if (!xLoader.is())
             {
                 return nullptr;
             }
 
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(absolutePath.c_str());
-            std::string urlStr = std::string(rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
-            std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
-
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
-            if (!xComp.is())
-            {
-                std::cerr << "readSpreadsheetFile: Failed to load component from URL" << std::endl;
-                return nullptr;
-            }
-
             uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
-            if (!xDoc.is())
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            sal_Int32 col, row;
+            parseCellAddress(cellAddress, col, row);
+            uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+
+            if (cellType.equalsIgnoreAsciiCase("number"))
+                cell->setValue(newValue.toDouble());
+            else
             {
-                std::cerr << "readSpreadsheetFile: Loaded component is not a spreadsheet document" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
-            }
-
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            if (!sheets.is())
-            {
-                std::cerr << "readSpreadsheetFile: Failed to get sheets" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
-            }
-
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-            if (!nameAccess.is())
-            {
-                std::cerr << "readSpreadsheetFile: Failed to get name access" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
-            }
-
-            cJSON *root = cJSON_CreateObject();
-            uno::Sequence<rtl::OUString> names = nameAccess->getElementNames();
-            std::cerr << "readSpreadsheetFile: Found " << names.getLength() << " sheets" << std::endl;
-
-            for (sal_Int32 i = 0; i < names.getLength(); ++i)
-            {
-                std::string sheetName = std::string(rtl::OUStringToOString(names[i], RTL_TEXTENCODING_UTF8).getStr());
-                std::cerr << "readSpreadsheetFile: Processing sheet: " << sheetName << std::endl;
-
-                uno::Any any = nameAccess->getByName(names[i]);
-                uno::Reference<sheet::XSpreadsheet> sheet;
-                any >>= sheet;
-
-                if (!sheet.is())
+                logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+                logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
+                // 将newValue转为符合单元格公式的写法格式;
+                // 从配置中获取默认工作表名
+                const char *defaultSheetName = json_config_get_string("WordsSheet");
+                if (!defaultSheetName)
                 {
-                    std::cerr << "readSpreadsheetFile: Failed to get sheet: " << sheetName << std::endl;
-                    continue;
+                    defaultSheetName = "WordsSheet"; // 默认值
                 }
-
-                cJSON *sheetJson = cJSON_CreateArray();
-                for (sal_Int32 row = 0; row < 100; ++row)
-                { // 只导出前100行
-                    cJSON *rowJson = cJSON_CreateArray();
-                    for (sal_Int32 col = 0; col < 20; ++col)
-                    { // 只导出前20列
-                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                        if (!cell.is())
-                        {
-                            std::cerr << "readSpreadsheetFile: Failed to get cell at " << col << "," << row << " in sheet " << sheetName << std::endl;
-                            // 创建一个空的单元格对象
-                            cJSON *cellJson = cJSON_CreateObject();
-                            cJSON_AddNumberToObject(cellJson, "value", 0.0);
-                            cJSON_AddStringToObject(cellJson, "formula", "");
-                            cJSON_AddItemToArray(rowJson, cellJson);
-                            continue;
-                        }
-
-                        cJSON *cellJson = cJSON_CreateObject();
-                        cJSON_AddNumberToObject(cellJson, "value", cell->getValue());
-
-                        rtl::OUString formula = cell->getFormula();
-                        std::string formulaStr = std::string(rtl::OUStringToOString(formula, RTL_TEXTENCODING_UTF8).getStr());
-                        cJSON_AddStringToObject(cellJson, "formula", formulaStr.c_str());
-                        cJSON_AddItemToArray(rowJson, cellJson);
-                    }
-                    cJSON_AddItemToArray(sheetJson, rowJson);
+                rtl::OUString defaultSheetNameOUString = rtl::OUString::createFromAscii(defaultSheetName);
+                logger_log("defaultSheetName: %s", rtl::OUStringToOString(defaultSheetNameOUString, RTL_TEXTENCODING_UTF8).getStr());
+                cJSON *cachedSheetData = getCachedSheetData(filePath, defaultSheetNameOUString);
+                if (cachedSheetData)
+                {
+                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                    logger_log("updateSpreadsheetContent: %s:", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                    cell->setFormula(tmp);
                 }
-
-                cJSON_AddItemToObject(root, sheetName.c_str(), sheetJson);
-                std::cerr << "readSpreadsheetFile: Finished processing sheet: " << sheetName << std::endl;
+                else
+                {
+                    std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                    return nullptr;
+                }
             }
 
+            saveDocument(xDoc, filePath);
             closeDocument(xComp);
-            std::cerr << "readSpreadsheetFile: Successfully read file" << std::endl;
-            return root;
+            return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
         {
-            std::cerr << "readSpreadsheetFile UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            return nullptr;
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "readSpreadsheetFile std exception: " << e.what() << std::endl;
-            return nullptr;
-        }
-        catch (...)
-        {
-            std::cerr << "readSpreadsheetFile unknown exception occurred" << std::endl;
+            std::cerr << "updateSpreadsheetContent error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
             return nullptr;
         }
     }
 
+    // 修改batchUpdateSpreadsheetContent函数，使用缓存版本的readSheetData
+    cJSON *batchUpdateSpreadsheetContent(const rtl::OUString &filePath, const rtl::OUString &sheetName, const cJSON *updateData)
+    {
+        try
+        {
+            // 获取ComponentLoader
+            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
+            if (!xLoader.is())
+            {
+                return nullptr;
+            }
+
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            uno::Sequence<beans::PropertyValue> args(0);
+            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+
+            // 获取缓存的表数据，用于所有更新项
+            rtl::OUString defaultSheetNameOUString = sheetName; // 使用当前工作表名
+            const char *defaultSheetName = json_config_get_string("WordsSheet");
+            if (defaultSheetName)
+            {
+                defaultSheetNameOUString = rtl::OUString::createFromAscii(defaultSheetName);
+            }
+            cJSON *cachedSheetData = getCachedSheetData(filePath, defaultSheetNameOUString);
+
+            // 批量处理所有更新项
+            cJSON *item = nullptr;
+            cJSON_ArrayForEach(item, const_cast<cJSON *>(updateData))
+            {
+                if (!cJSON_IsObject(item))
+                    continue;
+
+                cJSON *cellItem = cJSON_GetObjectItem(item, "cell");
+                cJSON *valueItem = cJSON_GetObjectItem(item, "value");
+                cJSON *typeItem = cJSON_GetObjectItem(item, "type");
+
+                if (!cellItem || !valueItem || !typeItem ||
+                    !cJSON_IsString(cellItem) || !cJSON_IsString(valueItem) || !cJSON_IsString(typeItem))
+                {
+                    continue;
+                }
+
+                rtl::OUString cellAddress = convertStringToOUString(cellItem->valuestring);
+                rtl::OUString newValue = convertStringToOUString(valueItem->valuestring);
+                rtl::OUString cellType = convertStringToOUString(typeItem->valuestring);
+
+                // 解析单元格地址
+                sal_Int32 col, row;
+                parseCellAddress(cellAddress, col, row);
+                uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+
+                if (cellType.equalsIgnoreAsciiCase("number"))
+                    cell->setValue(newValue.toDouble());
+                else
+                {
+                    logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+                    logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
+                    logger_log("defaultSheetName: %s", rtl::OUStringToOString(defaultSheetNameOUString, RTL_TEXTENCODING_UTF8).getStr());
+                    if (cachedSheetData)
+                    {
+                        rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                        logger_log("batchUpdateSpreadsheetContent: %s:", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                        cell->setFormula(tmp);
+                    }
+                    else
+                    {
+                        std::cerr << "batchUpdateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                        return nullptr;
+                    }
+                }
+            }
+
+            saveDocument(xDoc, filePath);
+            closeDocument(xComp);
+            return cJSON_CreateString("success");
+        }
+        catch (const uno::Exception &e)
+        {
+            std::cerr << "batchUpdateSpreadsheetContent error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            return nullptr;
+        }
+    }
+
+    // 修改createNewSpreadsheetFile函数，使用连接管理器
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath, const rtl::OUString &sheetName, const cJSON *contentData)
     {
         try
         {
             // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = getComponentLoader();
+            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
             if (!xLoader.is())
             {
                 return nullptr;
@@ -784,53 +982,130 @@ namespace filemanager
         }
     }
 
-    cJSON *updateSpreadsheetContent(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &cellAddress, const rtl::OUString &newValue, const rtl::OUString &cellType)
+    // 修改readSpreadsheetFile函数，使用连接管理器
+    cJSON *readSpreadsheetFile(const rtl::OUString &filePath)
     {
         try
         {
+            std::string filePathStr = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+            std::cerr << "readSpreadsheetFile: Attempting to read file: " << filePathStr << std::endl;
+
+            // 处理相对路径，转换为绝对路径
+            std::string absolutePath = convertToAbsolutePath(filePathStr);
+            std::cerr << "readSpreadsheetFile: Absolute path: " << absolutePath << std::endl;
+
             // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = getComponentLoader();
+            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
             if (!xLoader.is())
             {
                 return nullptr;
             }
 
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(absolutePath.c_str());
+            std::string urlStr = std::string(rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
+            std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
+
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
-            sal_Int32 col, row;
-            parseCellAddress(cellAddress, col, row);
-            uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-
-            if (cellType.equalsIgnoreAsciiCase("number"))
-                cell->setValue(newValue.toDouble());
-            else
+            if (!xComp.is())
             {
-                logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-                logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
-                // 将newValue转为符合单元格公式的写法格式;
-                // 从配置中获取默认工作表名
-                const char *defaultSheetName = json_config_get_string("WordsSheet");
-                if (!defaultSheetName)
-                {
-                    defaultSheetName = "WordsSheet"; // 默认值
-                }
-                rtl::OUString defaultSheetNameOUString = rtl::OUString::createFromAscii(defaultSheetName);
-                logger_log("defaultSheetName: %s", rtl::OUStringToOString(defaultSheetNameOUString, RTL_TEXTENCODING_UTF8).getStr());
-                rtl::OUString tmp = findCharPositions(newValue, readSheetData(filePath, defaultSheetNameOUString));
-                logger_log("updateSpreadsheetContent: %s:", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                cell->setFormula(tmp);
+                std::cerr << "readSpreadsheetFile: Failed to load component from URL" << std::endl;
+                return nullptr;
             }
 
-            saveDocument(xDoc, filePath);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            if (!xDoc.is())
+            {
+                std::cerr << "readSpreadsheetFile: Loaded component is not a spreadsheet document" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
+            if (!sheets.is())
+            {
+                std::cerr << "readSpreadsheetFile: Failed to get sheets" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            if (!nameAccess.is())
+            {
+                std::cerr << "readSpreadsheetFile: Failed to get name access" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            cJSON *root = cJSON_CreateObject();
+            uno::Sequence<rtl::OUString> names = nameAccess->getElementNames();
+            std::cerr << "readSpreadsheetFile: Found " << names.getLength() << " sheets" << std::endl;
+
+            for (sal_Int32 i = 0; i < names.getLength(); ++i)
+            {
+                std::string sheetName = std::string(rtl::OUStringToOString(names[i], RTL_TEXTENCODING_UTF8).getStr());
+                std::cerr << "readSpreadsheetFile: Processing sheet: " << sheetName << std::endl;
+
+                uno::Any any = nameAccess->getByName(names[i]);
+                uno::Reference<sheet::XSpreadsheet> sheet;
+                any >>= sheet;
+
+                if (!sheet.is())
+                {
+                    std::cerr << "readSpreadsheetFile: Failed to get sheet: " << sheetName << std::endl;
+                    continue;
+                }
+
+                cJSON *sheetJson = cJSON_CreateArray();
+                for (sal_Int32 row = 0; row < 100; ++row)
+                { // 只导出前100行
+                    cJSON *rowJson = cJSON_CreateArray();
+                    for (sal_Int32 col = 0; col < 20; ++col)
+                    { // 只导出前20列
+                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                        if (!cell.is())
+                        {
+                            std::cerr << "readSpreadsheetFile: Failed to get cell at " << col << "," << row << " in sheet " << sheetName << std::endl;
+                            // 创建一个空的单元格对象
+                            cJSON *cellJson = cJSON_CreateObject();
+                            cJSON_AddNumberToObject(cellJson, "value", 0.0);
+                            cJSON_AddStringToObject(cellJson, "formula", "");
+                            cJSON_AddItemToArray(rowJson, cellJson);
+                            continue;
+                        }
+
+                        cJSON *cellJson = cJSON_CreateObject();
+                        cJSON_AddNumberToObject(cellJson, "value", cell->getValue());
+
+                        rtl::OUString formula = cell->getFormula();
+                        std::string formulaStr = std::string(rtl::OUStringToOString(formula, RTL_TEXTENCODING_UTF8).getStr());
+                        cJSON_AddStringToObject(cellJson, "formula", formulaStr.c_str());
+                        cJSON_AddItemToArray(rowJson, cellJson);
+                    }
+                    cJSON_AddItemToArray(sheetJson, rowJson);
+                }
+
+                cJSON_AddItemToObject(root, sheetName.c_str(), sheetJson);
+                std::cerr << "readSpreadsheetFile: Finished processing sheet: " << sheetName << std::endl;
+            }
+
             closeDocument(xComp);
-            return cJSON_CreateString("success");
+            std::cerr << "readSpreadsheetFile: Successfully read file" << std::endl;
+            return root;
         }
         catch (const uno::Exception &e)
         {
-            std::cerr << "updateSpreadsheetContent error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            std::cerr << "readSpreadsheetFile UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            return nullptr;
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "readSpreadsheetFile std exception: " << e.what() << std::endl;
+            return nullptr;
+        }
+        catch (...)
+        {
+            std::cerr << "readSpreadsheetFile unknown exception occurred" << std::endl;
             return nullptr;
         }
     }
@@ -852,6 +1127,13 @@ namespace filemanager
     void newfileCreate(cJSON *results, const char *body)
     {
         printf("Creating new spreadsheet file\n");
+
+        // 初始化连接管理器
+        if (!LibreOfficeConnectionManager::initialize())
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to initialize LibreOffice connection");
+            return;
+        }
 
         // 从配置文件中获取数据路径和默认文件名
         const char *datapath = json_config_get_string("datapath");
@@ -905,11 +1187,11 @@ namespace filemanager
         // 默认sheet名
         rtl::OUString sheetName = rtl::OUString::createFromAscii(defaultSheetName);
 
-        // 尝试从默认文件中读取WordsSheet的内容
+        // 尝试从默认文件中读取WordsSheet的内容，使用缓存版本
         cJSON *contentData = nullptr;
         printf("Attempting to read %s from default spreadsheet file...\n", defaultSheetName);
         rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
-        contentData = readSheetData(defaultFilePath, wordsSheetName);
+        contentData = getCachedSheetData(defaultFilePath, wordsSheetName);
         if (contentData)
         {
             logger_log("contentData: %s\n", cJSON_Print(contentData));
@@ -950,6 +1232,7 @@ namespace filemanager
         else
         {
             printf("Failed to read WordsSheet directly\n");
+            return;
         }
 
         // 创建新的电子表格文件，包含从默认文件复制的内容
@@ -967,10 +1250,7 @@ namespace filemanager
         }
 
         cJSON *createResult = filemanager::createNewSpreadsheetFile(newFilePath, sheetName, contentData);
-        if (contentData)
-        {
-            cJSON_Delete(contentData);
-        }
+        // 注意：这里不要删除contentData，因为它可能来自缓存
 
         if (createResult)
         {
@@ -995,57 +1275,52 @@ namespace filemanager
             return;
         }
 
+        // 初始化连接管理器
+        if (!LibreOfficeConnectionManager::initialize())
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to initialize LibreOffice connection");
+            return;
+        }
+
         cJSON *root = cJSON_Parse(body);
         if (!root)
         {
             cJSON_AddStringToObject(results, "error", "Invalid JSON body");
             return;
         }
+
         // 支持批量：body为数组，或单对象
         if (cJSON_IsArray(root))
         {
-            cJSON *item = nullptr;
-            cJSON_ArrayForEach(item, root)
+            // 对于批量更新，我们使用新的批量更新方法
+            // 提取第一个项目获取文件路径和工作表名
+            cJSON *firstItem = cJSON_GetArrayItem(root, 0);
+            if (!firstItem || !cJSON_IsObject(firstItem))
             {
-                if (!cJSON_IsObject(item))
-                    continue;
-                cJSON *filenameItem = cJSON_GetObjectItem(item, "filename");
-                cJSON *sheetnameItem = cJSON_GetObjectItem(item, "sheetname");
-                cJSON *cellItem = cJSON_GetObjectItem(item, "cell");
-                cJSON *valueItem = cJSON_GetObjectItem(item, "value");
-                cJSON *typeItem = cJSON_GetObjectItem(item, "type");
-                if (!filenameItem || !sheetnameItem || !cellItem || !valueItem || !typeItem ||
-                    !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem) || !cJSON_IsString(cellItem) ||
-                    !cJSON_IsString(valueItem) || !cJSON_IsString(typeItem))
-                {
-                    cJSON *err = cJSON_CreateObject();
-                    cJSON_AddStringToObject(err, "error", "Missing or invalid fields");
-                    cJSON_AddItemToArray(results, err);
-                    continue;
-                }
-
-                rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
-                rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-                rtl::OUString cellAddr = convertStringToOUString(cellItem->valuestring);
-                rtl::OUString value = convertStringToOUString(valueItem->valuestring);
-                rtl::OUString type = convertStringToOUString(typeItem->valuestring);
-
-                // 检测value的语言
-                std::string language = detectLanguage(value);
-                printf("Detected language for value '%s': %s\n",
-                       rtl::OUStringToOString(value, RTL_TEXTENCODING_UTF8).getStr(),
-                       language.c_str());
-
-                cJSON *res = filemanager::updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
-                if (res)
-                    cJSON_AddItemToArray(results, res);
-                else
-                {
-                    cJSON *err = cJSON_CreateObject();
-                    cJSON_AddStringToObject(err, "error", "Update failed");
-                    cJSON_AddItemToArray(results, err);
-                }
+                cJSON_AddStringToObject(results, "error", "Empty or invalid batch update data");
+                cJSON_Delete(root);
+                return;
             }
+
+            cJSON *filenameItem = cJSON_GetObjectItem(firstItem, "filename");
+            cJSON *sheetnameItem = cJSON_GetObjectItem(firstItem, "sheetname");
+
+            if (!filenameItem || !sheetnameItem || !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem))
+            {
+                cJSON_AddStringToObject(results, "error", "Missing filename or sheetname in batch data");
+                cJSON_Delete(root);
+                return;
+            }
+
+            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+
+            // 使用批量更新方法
+            cJSON *res = batchUpdateSpreadsheetContent(filePath, sheetName, root);
+            if (res)
+                cJSON_AddItemToObject(results, "result", res);
+            else
+                cJSON_AddStringToObject(results, "error", "Batch update failed");
         }
         else if (cJSON_IsObject(root))
         {
@@ -1077,7 +1352,7 @@ namespace filemanager
 
             cJSON *res = filemanager::updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
             if (res)
-                cJSON_AddItemToArray(results, res);
+                cJSON_AddItemToObject(results, "result", res);
             else
                 cJSON_AddStringToObject(results, "error", "Update failed");
         }
@@ -1254,148 +1529,6 @@ namespace filemanager
         cJSON_Delete(root);
     }
 
-    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
-    {
-        logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-        logger_log("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
-        try
-        {
-            // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = getComponentLoader();
-            if (!xLoader.is())
-            {
-                return nullptr;
-            }
-
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
-            uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
-            if (!xDoc.is())
-            {
-                std::cerr << "readSheetData: Cannot open spreadsheet!" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
-            }
-
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
-            if (!sheet.is())
-            {
-                std::cerr << "readSheetData: Cannot get sheet!" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
-            }
-
-            // 创建返回的 cJSON 对象，用于存储单元格内容和位置的映射
-            cJSON *contentMap = cJSON_CreateObject();
-
-            // 创建一个用于跟踪已添加内容的辅助对象，确保内容不重复
-            cJSON *addedContents = cJSON_CreateObject();
-
-            // 按列优先读取数据，每列读取到第一个空单元格为止
-            sal_Int32 col = 0;
-            const sal_Int32 maxCols = 1000; // 设置一个最大列数限制，防止无限循环
-            const sal_Int32 maxRows = 30000; // 设置一个最大行数限制，防止无限循环
-            
-            // 循环处理每一列
-            while (col < maxCols) {
-                bool foundDataInColumn = false;
-                
-                // 处理当前列的每一行
-                for (sal_Int32 row = 0; row < maxRows; ++row) {
-                    uno::Reference<table::XCell> cell;
-                    
-                    try {
-                        // 尝试获取单元格
-                        cell = sheet->getCellByPosition(col, row);
-                    } catch (const uno::Exception &) {
-                        // 如果获取单元格失败，认为此列结束
-                        break;
-                    }
-                    
-                    if (!cell.is()) {
-                        // 单元格无效，此列结束
-                        break;
-                    }
-
-                    // 获取单元格的值和公式
-                    double cellValue = cell->getValue();
-                    rtl::OUString cellFormula = cell->getFormula();
-
-                    // 检查单元格是否为空
-                    if (cellValue == 0.0 && cellFormula.getLength() == 0) {
-                        // 遇到空单元格，此列结束
-                        break;
-                    }
-
-                    // 标记此列有数据
-                    foundDataInColumn = true;
-
-                    // 获取单元格内容
-                    rtl::OUString cellContent;
-                    if (cellFormula.getLength() > 0) {
-                        // 如果有公式，使用公式文本
-                        cellContent = cellFormula;
-                    } else {
-                        // 否则使用数值或文本值
-                        cellContent = rtl::OUString::number(cellValue);
-                    }
-
-                    // 将内容转换为字符串用于比较
-                    std::string contentStr = rtl::OUStringToOString(cellContent, RTL_TEXTENCODING_UTF8).getStr();
-
-                    // 检查内容是否已经添加过（避免重复）
-                    if (cJSON_GetObjectItem(addedContents, contentStr.c_str()) != nullptr) {
-                        continue; // 内容已存在，跳过
-                    }
-
-                    // 计算列名 (A, B, ..., Z, AA, AB, ...)
-                    std::string columnName;
-                    int column = col;
-                    do {
-                        columnName = static_cast<char>('A' + (column % 26)) + columnName;
-                        column = (column / 26) - 1;
-                    } while (column >= 0);
-
-                    // 计算行号 (1-based)
-                    int rowNumber = row + 1;
-
-                    // 创建位置字符串，如 "A1", "B2" 等
-                    std::string position = columnName + std::to_string(rowNumber);
-
-                    // 添加内容到结果对象（内容作为key，位置作为value）
-                    cJSON_AddStringToObject(contentMap, contentStr.c_str(), position.c_str());
-
-                    // 标记内容已添加
-                    cJSON_AddStringToObject(addedContents, contentStr.c_str(), "added");
-                }
-                
-                // 如果此列没有数据，则认为是空列，停止处理后续列
-                if (!foundDataInColumn) {
-                    break;
-                }
-                
-                ++col;
-            }
-
-            // 清理辅助对象
-            cJSON_Delete(addedContents);
-
-            closeDocument(xComp);
-            return contentMap;
-        }
-        catch (const uno::Exception &e)
-        {
-            std::cerr << "readSheetData error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            return nullptr;
-        }
-        catch (const std::exception &e)
-        {
-            std::cerr << "readSheetData error: " << e.what() << std::endl;
-            return nullptr;
-        }
-    }
-
     void readSheetContents(cJSON *results, const char *body)
     {
         // 解析输入的 JSON 字符串
@@ -1440,10 +1573,202 @@ namespace filemanager
         cJSON_Delete(root);
     }
 
+    // 文件监控线程函数
+    static std::string g_defaultFilePathStr;
+    static rtl::OUString g_defaultFilePath;
+    static rtl::OUString g_wordsSheetName;
+
+    static void fileMonitoringThread()
+    {
+        // 每30秒检查一次文件变化
+        while (true)
+        {
+            try
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(30));
+
+                // 检查文件是否存在
+                struct stat fileStat;
+                if (stat(g_defaultFilePathStr.c_str(), &fileStat) == 0)
+                {
+                    time_t lastModified = fileStat.st_mtime;
+
+                    // 构建缓存键
+                    std::string sheetNameStr = rtl::OUStringToOString(g_wordsSheetName, RTL_TEXTENCODING_UTF8).getStr();
+                    std::string cacheKey = g_defaultFilePathStr + "#" + sheetNameStr;
+
+                    // 检查缓存中的时间戳
+                    auto timeIt = templateFileTimestamps.find(cacheKey);
+                    if (timeIt != templateFileTimestamps.end() && timeIt->second < lastModified)
+                    {
+                        // 文件已修改，需要更新缓存
+                        std::cout << "Template file changed, updating cache: " << g_defaultFilePathStr << std::endl;
+                        preloadTemplateData(g_defaultFilePath, g_wordsSheetName);
+                    }
+                }
+            }
+            catch (const std::exception &e)
+            {
+                std::cerr << "Exception in file monitoring thread: " << e.what() << std::endl;
+            }
+            catch (...)
+            {
+                std::cerr << "Unknown exception in file monitoring thread" << std::endl;
+            }
+        }
+    }
+
+    // 启动文件监控线程
+    void startFileMonitoring()
+    {
+        // 从配置文件中获取数据路径和默认文件名
+        const char *datapath = json_config_get_string("datapath");
+        const char *defaultname = json_config_get_string("defaultname");
+        const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
+
+        if (!datapath)
+        {
+            datapath = "../data"; // 默认数据路径
+        }
+
+        if (!defaultname)
+        {
+            defaultname = "default.xlsx"; // 默认文件名
+        }
+
+        // 默认工作表名
+        const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
+
+        // 构建默认文件的完整路径
+        std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
+
+        // 处理相对路径，转换为绝对路径
+        std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
+
+        rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
+        rtl::OUString defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
+
+        rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+
+        // 保存全局变量供监控线程使用
+        g_defaultFilePathStr = absoluteDefaultFilePathStr;
+        g_defaultFilePath = defaultFilePath;
+        g_wordsSheetName = wordsSheetName;
+
+        // 启动监控线程
+        std::thread monitorThread(fileMonitoringThread);
+        monitorThread.detach();
+
+        std::cout << "File monitoring thread started for: " << absoluteDefaultFilePathStr << std::endl;
+    }
+
+    // 服务启动时初始化模板缓存
+    void initializeTemplateCache()
+    {
+        // 从配置文件中获取数据路径和默认文件名
+        const char *datapath = json_config_get_string("datapath");
+        const char *defaultname = json_config_get_string("defaultname");
+        const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
+
+        if (!datapath)
+        {
+            datapath = "../data"; // 默认数据路径
+        }
+
+        if (!defaultname)
+        {
+            defaultname = "default.xlsx"; // 默认文件名
+        }
+
+        // 默认工作表名
+        const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
+
+        // 构建默认文件的完整路径
+        std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
+
+        // 处理相对路径，转换为绝对路径
+        std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
+
+        rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
+        rtl::OUString defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
+
+        rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+
+        // 检查文件是否存在
+        std::string filePathStr = rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr();
+        struct stat fileStat;
+        if (stat(filePathStr.c_str(), &fileStat) != 0)
+        {
+            std::cerr << "initializeTemplateCache: Template file not found: " << filePathStr << std::endl;
+            std::cerr << "Please make sure the template file exists at the specified path." << std::endl;
+            return;
+        }
+
+        // 预加载默认模板数据
+        std::cout << "Initializing template cache with default template: " << absoluteDefaultFilePathStr << std::endl;
+        preloadTemplateData(defaultFilePath, wordsSheetName);
+
+        // 等待首次加载完成，最多等待15秒
+        std::string sheetNameStr = rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr();
+        std::string cacheKey = filePathStr + "#" + sheetNameStr;
+
+        int waitCount = 0;
+        while (waitCount < 150 && templateDataCacheLoading[cacheKey])
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            waitCount++;
+        }
+
+        // 检查是否成功加载
+        auto it = templateDataCache.find(cacheKey);
+        if (it != templateDataCache.end())
+        {
+            std::cout << "Template cache initialized successfully with "
+                      << cJSON_GetArraySize(it->second) << " items" << std::endl;
+        }
+        else
+        {
+            // 尝试重新连接LibreOffice并重新预加载
+            std::cout << "Template cache initialization failed or timed out, trying to reconnect to LibreOffice..." << std::endl;
+            if (LibreOfficeConnectionManager::initialize())
+            {
+                std::cout << "LibreOffice reconnected, retrying template cache initialization..." << std::endl;
+                preloadTemplateData(defaultFilePath, wordsSheetName);
+
+                // 再次等待加载完成，最多等待15秒
+                waitCount = 0;
+                while (waitCount < 150 && templateDataCacheLoading[cacheKey])
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    waitCount++;
+                }
+
+                // 再次检查是否成功加载
+                it = templateDataCache.find(cacheKey);
+                if (it != templateDataCache.end())
+                {
+                    std::cout << "Template cache initialized successfully on retry with "
+                              << cJSON_GetArraySize(it->second) << " items" << std::endl;
+                }
+                else
+                {
+                    std::cerr << "Template cache initialization still failed after LibreOffice reconnection" << std::endl;
+                    std::cerr << "The service will continue to run, but template data will be loaded on-demand" << std::endl;
+                }
+            }
+            else
+            {
+                std::cerr << "Template cache initialization failed and LibreOffice reconnection failed" << std::endl;
+                std::cerr << "The service will continue to run, but template data will be loaded on-demand" << std::endl;
+            }
+        }
+
+        // 启动文件监控线程
+        startFileMonitoring();
+    }
+
     rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData)
     {
-        logger_log("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
-        logger_log("sheetData:%s", cJSON_Print(sheetData));
         // 创建一个OUStringBuffer来构建结果字符串
         rtl::OUStringBuffer resultBuffer;
 
@@ -1452,16 +1777,14 @@ namespace filemanager
         {
             // 获取当前字符
             rtl::OUString charStr = newValue.copy(i, 1);
-            logger_log("charStr: %s", rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr());
             // 将字符转换为UTF8字符串用于在sheetData中查找
             std::string charStdStr = rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr();
-            logger_log("charStdStr: %s", charStdStr.c_str());
+
             // 在sheetData中查找该字符
             cJSON *positionItem = cJSON_GetObjectItem(sheetData, charStdStr.c_str());
 
             if (positionItem && positionItem->valuestring)
             {
-                logger_log("positionItem: %s", positionItem->valuestring);
                 // 如果找到位置信息，添加到结果中
                 if (i > 0)
                 {
@@ -1493,9 +1816,312 @@ namespace filemanager
                 resultBuffer.append(rtl::OUString::createFromAscii("N/A"));
             }
         }
-        // 注意此处的打印和return 语句 makeStringAndClear 打印中调用后就清理了，return 会返回空串
-        // logger_log("resultBuffer: %s", rtl::OUStringToOString(resultBuffer.makeStringAndClear(), RTL_TEXTENCODING_UTF8).getStr());
-        //  返回组合的位置字符串
+
+        // 返回组合的位置字符串
         return resultBuffer.makeStringAndClear();
+    }
+
+    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    {
+        // 减少日志输出以提高性能
+        // logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
+        try
+        {
+            // 获取ComponentLoader
+            uno::Reference<frame::XComponentLoader> xLoader = getComponentLoader();
+            if (!xLoader.is())
+            {
+                return nullptr;
+            }
+
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            uno::Sequence<beans::PropertyValue> args(0);
+            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
+            if (!xDoc.is())
+            {
+                std::cerr << "readSheetData: Cannot open spreadsheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            if (!sheet.is())
+            {
+                std::cerr << "readSheetData: Cannot get sheet!" << std::endl;
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            // 创建返回的 cJSON 对象，用于存储单元格内容和位置的映射
+            cJSON *contentMap = cJSON_CreateObject();
+
+            // 创建一个用于跟踪已添加内容的辅助对象，确保内容不重复
+            cJSON *addedContents = cJSON_CreateObject();
+
+            // 按列优先读取数据，每列读取到第一个空单元格为止
+            sal_Int32 col = 0;
+            // 从配置文件读取最大列数和行数限制
+            int maxCols = json_config_get_int("maxCols");
+            int maxRows = json_config_get_int("maxRows");
+            logger_log("maxRows: %d", maxRows);
+            logger_log("maxCols: %d", maxCols);
+            // 循环处理每一列
+            while (col < maxCols)
+            {
+                bool foundDataInColumn = false;
+
+                // 处理当前列的每一行
+                for (sal_Int32 row = 0; row < maxRows; ++row)
+                {
+                    uno::Reference<table::XCell> cell;
+
+                    try
+                    {
+                        // 尝试获取单元格
+                        cell = sheet->getCellByPosition(col, row);
+                    }
+                    catch (const uno::Exception &)
+                    {
+                        // 如果获取单元格失败，认为此列结束
+                        break;
+                    }
+
+                    if (!cell.is())
+                    {
+                        // 单元格无效，此列结束
+                        break;
+                    }
+
+                    // 获取单元格的值和公式
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+
+                    // 检查单元格是否为空
+                    if (cellValue == 0.0 && cellFormula.getLength() == 0)
+                    {
+                        // 遇到空单元格，此列结束
+                        break;
+                    }
+
+                    // 标记此列有数据
+                    foundDataInColumn = true;
+
+                    // 获取单元格内容
+                    rtl::OUString cellContent;
+                    if (cellFormula.getLength() > 0)
+                    {
+                        // 如果有公式，使用公式文本
+                        cellContent = cellFormula;
+                    }
+                    else
+                    {
+                        // 否则使用数值或文本值
+                        cellContent = rtl::OUString::number(cellValue);
+                    }
+
+                    // 将内容转换为字符串用于比较
+                    std::string contentStr = rtl::OUStringToOString(cellContent, RTL_TEXTENCODING_UTF8).getStr();
+
+                    // 检查内容是否已经添加过（避免重复）
+                    if (cJSON_GetObjectItem(addedContents, contentStr.c_str()) != nullptr)
+                    {
+                        continue; // 内容已存在，跳过
+                    }
+
+                    // 计算列名 (A, B, ..., Z, AA, AB, ...)
+                    std::string columnName;
+                    int column = col;
+                    do
+                    {
+                        columnName = static_cast<char>('A' + (column % 26)) + columnName;
+                        column = (column / 26) - 1;
+                    } while (column >= 0);
+
+                    // 计算行号 (1-based)
+                    int rowNumber = row + 1;
+
+                    // 创建位置字符串，如 "A1", "B2" 等
+                    std::string position = columnName + std::to_string(rowNumber);
+
+                    // 添加内容到结果对象（内容作为key，位置作为value）
+                    cJSON_AddStringToObject(contentMap, contentStr.c_str(), position.c_str());
+
+                    // 标记内容已添加
+                    cJSON_AddStringToObject(addedContents, contentStr.c_str(), "added");
+                }
+
+                // 如果此列没有数据，则认为是空列，停止处理后续列
+                if (!foundDataInColumn)
+                {
+                    break;
+                }
+
+                ++col;
+            }
+
+            // 清理辅助对象
+            cJSON_Delete(addedContents);
+
+            closeDocument(xComp);
+            return contentMap;
+        }
+        catch (const uno::Exception &e)
+        {
+            std::cerr << "readSheetData error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            return nullptr;
+        }
+        catch (const std::exception &e)
+        {
+            std::cerr << "readSheetData error: " << e.what() << std::endl;
+            return nullptr;
+        }
+    }
+
+    cJSON *getCachedSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    {
+        // 构建缓存键
+        std::string filePathStr = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
+        std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+        std::string cacheKey = filePathStr + "#" + sheetNameStr;
+
+        // 首先判断是否正在加载中
+        auto loadingIt = templateDataCacheLoading.find(cacheKey);
+        if (loadingIt != templateDataCacheLoading.end() && loadingIt->second)
+        {
+            // 正在加载中，直接返回错误提示
+            std::cerr << "getCachedSheetData: Data is currently being loaded for " << cacheKey << std::endl;
+            return nullptr;
+        }
+
+        // 检查缓存中是否存在
+        auto it = templateDataCache.find(cacheKey);
+        if (it != templateDataCache.end())
+        {
+            // 检查文件是否被修改
+            struct stat fileStat;
+            if (stat(filePathStr.c_str(), &fileStat) == 0)
+            {
+                time_t lastModified = fileStat.st_mtime;
+                auto timeIt = templateFileTimestamps.find(cacheKey);
+                if (timeIt != templateFileTimestamps.end() && timeIt->second >= lastModified)
+                {
+                    // 文件未被修改，返回缓存数据
+                    // std::cout << "Returning cached data for " << cacheKey << std::endl;
+                    return it->second;
+                }
+                else
+                {
+                    // 文件已修改，缓存失效
+                    std::cerr << "getCachedSheetData: Cached data is outdated for " << cacheKey << std::endl;
+                    return nullptr;
+                }
+            }
+            else
+            {
+                // 无法获取文件状态
+                std::cerr << "getCachedSheetData: Cannot get file status for " << filePathStr << std::endl;
+                return nullptr;
+            }
+        }
+        else
+        {
+            // 未获取到缓存数据
+            std::cerr << "getCachedSheetData: No cached data found for " << cacheKey << std::endl;
+            return nullptr;
+        }
+    }
+
+    // 预加载模板数据
+    void preloadTemplateData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    {
+        // 构建缓存键
+        std::string filePathStr = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
+        std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+        std::string cacheKey = filePathStr + "#" + sheetNameStr;
+
+        // 检查文件是否存在
+        struct stat fileStat;
+        if (stat(filePathStr.c_str(), &fileStat) != 0)
+        {
+            std::cerr << "preloadTemplateData: File not found: " << filePathStr << std::endl;
+            return;
+        }
+
+        time_t lastModified = fileStat.st_mtime;
+        auto timeIt = templateFileTimestamps.find(cacheKey);
+
+        // 检查文件是否已修改或者尚未缓存
+        if (timeIt == templateFileTimestamps.end() || timeIt->second < lastModified)
+        {
+            std::cout << "preloadTemplateData: File changed or not cached, loading: " << filePathStr << std::endl;
+
+            // 在后台线程中预加载数据到缓存
+            std::thread([filePath, sheetName, cacheKey, lastModified]()
+                        {
+                // 标记为正在加载
+                templateDataCacheLoading[cacheKey] = true;
+                
+                // 读取新的数据
+                cJSON *data = readSheetData(filePath, sheetName);
+                if (data) {
+                    // 如果已有旧缓存，先删除
+                    auto it = templateDataCache.find(cacheKey);
+                    if (it != templateDataCache.end()) {
+                        cJSON_Delete(it->second);
+                    }
+                    
+                    // 缓存新数据
+                    templateDataCache[cacheKey] = data;
+                    
+                    // 更新时间戳
+                    templateFileTimestamps[cacheKey] = lastModified;
+                    
+                    std::cout << "preloadTemplateData: Successfully loaded and cached data for " 
+                              << cacheKey << " with " << cJSON_GetArraySize(data) << " items" << std::endl;
+                } else {
+                    std::cerr << "preloadTemplateData: Failed to load data for " << cacheKey << std::endl;
+                    std::cerr << "This may be due to LibreOffice not running or file access issues." << std::endl;
+                    std::cerr << "The data will be loaded on-demand when needed." << std::endl;
+                    
+                    // 尝试重新初始化LibreOffice连接并重试一次
+                    std::this_thread::sleep_for(std::chrono::milliseconds(2000)); // 等待2秒后重试
+                    if (LibreOfficeConnectionManager::initialize()) {
+                        std::cout << "preloadTemplateData: LibreOffice reconnected, retrying..." << std::endl;
+                        data = readSheetData(filePath, sheetName);
+                        if (data) {
+                            // 如果已有旧缓存，先删除
+                            auto it = templateDataCache.find(cacheKey);
+                            if (it != templateDataCache.end()) {
+                                cJSON_Delete(it->second);
+                            }
+                            
+                            // 缓存新数据
+                            templateDataCache[cacheKey] = data;
+                            
+                            // 更新时间戳
+                            templateFileTimestamps[cacheKey] = lastModified;
+                            
+                            std::cout << "preloadTemplateData: Successfully loaded and cached data on retry for " 
+                                      << cacheKey << " with " << cJSON_GetArraySize(data) << " items" << std::endl;
+                        } else {
+                            std::cerr << "preloadTemplateData: Still failed to load data after LibreOffice reconnection" << std::endl;
+                        }
+                    } else {
+                        std::cerr << "preloadTemplateData: Failed to reconnect to LibreOffice" << std::endl;
+                    }
+                }
+                
+                // 取消加载标记
+                templateDataCacheLoading[cacheKey] = false; })
+                .detach();
+        }
+        // 即使文件未修改，也要确保加载标记被清除（防止意外中断导致的标记残留）
+        else
+        {
+            // 确保加载标记被正确设置为false
+            templateDataCacheLoading[cacheKey] = false;
+        }
     }
 } // namespace filemanager
