@@ -7,6 +7,8 @@
 // cJSON
 #include "../cJSON/cJSON.h"
 #include "../logger/logger.h"
+// 配置文件
+#include "../config/json_config.h"
 // UNO C++ 头文件
 #include <com/sun/star/uno/Reference.hxx>
 #include <rtl/ustring.hxx>

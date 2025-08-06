@@ -2,9 +2,10 @@
     "description": "此文件用于配置项目的相关信息",
     "version": "1.0.0",
     "port": 8443,
-    "databasedata": "../data",
-    "defaultname": "default.db",
+    "datapath": "../data",
+    "defaultname": "default.xlsx",
     "logdata": "../log/server.log",
+    "WordsSheet": "WordsSheet",
     "log_max_size": 10,
     "log_max_backups": 30,
     "gridcircle": [

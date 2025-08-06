@@ -434,9 +434,16 @@ int main()
     signal(SIGTERM, cleanup_resources);
     signal(SIGSEGV, cleanup_resources);
 
-    json_config_init("config.json");
+    // 初始化配置系统，先尝试当前目录，然后尝试上级目录的bin文件夹
+    json_config_init(NULL); // NULL表示使用默认路径查找策略
 
+    // 检查配置是否成功加载
     const char *logdata = json_config_get_string("logdata");
+    if (!logdata) {
+        fprintf(stderr, "警告: 无法从配置文件中读取logdata配置项\n");
+        logdata = "../log/server.log"; // 使用默认日志路径
+    }
+    
     // 初始化日志模块
     logger_init(logdata);
     logger_log("Server started");
@@ -444,6 +451,10 @@ int main()
     //filedefault();
 
     int port = json_config_get_int("port");
+    if (port == 0) {
+        fprintf(stderr, "警告: 无法从配置文件中读取端口配置，使用默认端口8443\n");
+        port = 8443; // 默认端口
+    }
 
     // 创建SSL上下文
     global_ctx = create_ssl_context();

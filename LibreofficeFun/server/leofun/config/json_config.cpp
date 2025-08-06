@@ -4,10 +4,17 @@
 static cJSON* config_json = NULL;
 
 void json_config_init(const char* config_file_path) {
-    FILE* fp = fopen(config_file_path, "rb");
+    // 如果没有提供配置文件路径，则使用默认路径
+    const char* config_path = config_file_path ? config_file_path : "config.json";
+    
+    FILE* fp = fopen(config_path, "rb");
     if (!fp) {
-        perror("配置文件打开失败");
-        return;
+        // 尝试在上级目录中查找配置文件
+        fp = fopen("../bin/config.json", "rb");
+        if (!fp) {
+            perror("配置文件打开失败");
+            return;
+        }
     }
 
     fseek(fp, 0, SEEK_END);
@@ -36,8 +43,9 @@ const char* json_config_get_string(const char* key) {
     if (!config_json) return NULL;
     
     cJSON* item = cJSON_GetObjectItem(config_json, key);
-    char* value = cJSON_Print(item);
-    printf("key:%s,value:%s\n",key,value);
+    if (!item || !cJSON_IsString(item)) {
+        return NULL;
+    }
     return item->valuestring;
 }
 
