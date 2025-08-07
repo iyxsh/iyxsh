@@ -1,5 +1,5 @@
-#ifndef FILEMANAGER_H
-#define FILEMANAGER_H
+#ifndef SPREADSHEET_H
+#define SPREADSHEET_H
 
 #include <com/sun/star/uno/Exception.hpp>
 #include <com/sun/star/uno/Any.hxx>
@@ -17,46 +17,23 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
-#include <com/sun/star/bridge/UnoUrlResolver.hpp>
-#include <cppuhelper/bootstrap.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <string>
 #include <memory>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
+
 // cJSON
 #include "../cJSON/cJSON.h"
 #include "../logger/logger.h"
 // 配置文件
 #include "../config/json_config.h"
-// UNO C++ 头文件
-#include <com/sun/star/uno/Reference.hxx>
-#include <rtl/ustring.hxx>
-using namespace com::sun::star;
+#include "utils.h"
+#include "cache.h"
 
-namespace com
-{
-    namespace sun
-    {
-        namespace star
-        {
-            namespace uno
-            {
-                class XInterface;
-                class XComponentContext;
-            }
-            namespace frame
-            {
-                class XComponentLoader;
-            }
-            namespace sheet
-            {
-                class XSpreadsheet;
-                class XSpreadsheetDocument;
-            }
-        }
-    }
-}
+using namespace com::sun::star;
 
 namespace filemanager
 {
@@ -94,56 +71,15 @@ namespace filemanager
         const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &document,
         const rtl::OUString &sheetName);
 
-    // 连接管理器类
-    // LibreOffice连接管理器实现
-    class LibreOfficeConnectionManager
-    {
-    public:
-        static bool initialize();
-        static void release();
-        static uno::Reference<frame::XComponentLoader> getComponentLoader();
-        static uno::Reference<uno::XComponentContext> getContext();
-
-    private:
-        static uno::Reference<uno::XComponentContext> mContext;
-        static uno::Reference<frame::XComponentLoader> mLoader;
-        static bool mIsConnected;
-    };
-
-    void newfileCreate(cJSON *results, const char *body);
-    void updatefile(cJSON *results, const char *body);
-    void editfile(cJSON *results, const char *body);
-    void findInSheet(cJSON *results, const char *body);
-    void readSheetContents(cJSON *results, const char *body);
-
-    // 内部辅助函数
-    cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
-    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
-    cJSON *getCachedSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
-    rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData);
-    void preloadTemplateData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
-    void initializeTemplateCache();
-    void startFileMonitoring();  // 添加文件监控函数声明
-
-    // 静态缓存变量
-    extern std::unordered_map<std::string, cJSON *> templateCache;
-    extern std::unordered_map<std::string, cJSON *> templateDataCache;
-    extern std::unordered_map<std::string, time_t> templateFileTimestamps;
-    // 缓存预加载状态
-    extern std::unordered_map<std::string, bool> templateDataCacheLoading;
-    // 缓存限制
-    const size_t MAX_TEMPLATE_CACHE_SIZE = 100;
-    const size_t MAX_SHEET_DATA_CACHE_SIZE = 50;
-
     // 批量更新函数
     cJSON *batchUpdateSpreadsheetContent(const rtl::OUString &filePath,
                                          const rtl::OUString &sheetName,
                                          const cJSON *updateData);
 
-    // 缓存相关函数
-    cJSON *getCachedTemplate(const std::string &templateKey);
-    void cacheTemplate(const std::string &templateKey, cJSON *templateData);
-    void clearTemplateCache();
-    void clearSheetDataCache();
+    // 内部辅助函数
+    cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
+    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+    rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData);
 } // namespace filemanager
-#endif // FILEMANAGER_H
+
+#endif // SPREADSHEET_H

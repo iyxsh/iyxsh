@@ -46,4 +46,6 @@ void deal_updatefile_request(RequestBody requestbody,ResponseBody *responsebody)
 void deal_editfile_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_filelist_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_filestatus_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_opendata_request(RequestBody requestbody,ResponseBody *responsebody);
 #endif

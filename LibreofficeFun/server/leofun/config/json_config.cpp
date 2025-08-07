@@ -3,7 +3,7 @@
 #include <stdlib.h>
 static cJSON* config_json = NULL;
 
-void json_config_init(const char* config_file_path) {
+int json_config_init(const char* config_file_path) {
     // 如果没有提供配置文件路径，则使用默认路径
     const char* config_path = config_file_path ? config_file_path : "config.json";
     
@@ -13,7 +13,7 @@ void json_config_init(const char* config_file_path) {
         fp = fopen("../bin/config.json", "rb");
         if (!fp) {
             perror("配置文件打开失败");
-            return;
+            return -1;
         }
     }
 
@@ -24,7 +24,7 @@ void json_config_init(const char* config_file_path) {
     char* buffer = (char*)malloc(length + 1);
     if (!buffer) {
         fclose(fp);
-        return;
+        return -1;
     }
 
     fread(buffer, 1, length, fp);
@@ -37,6 +37,8 @@ void json_config_init(const char* config_file_path) {
     if (!config_json) {
         fprintf(stderr, "JSON解析错误: %s\n", cJSON_GetErrorPtr());
     }
+    
+    return 0;
 }
 
 const char* json_config_get_string(const char* key) {

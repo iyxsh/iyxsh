@@ -6,6 +6,8 @@
     "defaultname": "default.xlsx",
     "logdata": "../log/server.log",
     "WordsSheet": "WordsSheet",
+    "maxCols": 200,
+    "maxRows": 20000,
     "log_max_size": 10,
     "log_max_backups": 30,
     "gridcircle": [

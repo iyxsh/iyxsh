@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 project(libreofficefun VERSION 0.1)
 
 # 设置C++标准
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 设置默认构建类型（单配置生成器）
@@ -39,7 +39,13 @@ endif()
 # 源文件
 set(SOURCES
     ./leofun/leofun.cpp
-    ./leofun/filemanager/filemanager.cpp
+    ./leofun/filemanager/filequeue.cpp
+    ./leofun/filemanager/fileops.cpp
+    ./leofun/filemanager/filehandlers.cpp
+    ./leofun/filemanager/lofficeconn.cpp
+    ./leofun/filemanager/spreadsheet.cpp
+    ./leofun/filemanager/utils.cpp
+    ./leofun/filemanager/cache.cpp
     ./leofun/apihandle/handle.cpp
     ./leofun/cJSON/cJSON.c
     ./leofun/logger/logger.cpp
@@ -48,7 +54,13 @@ set(SOURCES
 
 # 头文件
 set(HEADERS
-    ./leofun/filemanager/filemanager.h
+    ./leofun/filemanager/filequeue.h
+    ./leofun/filemanager/fileops.h
+    ./leofun/filemanager/filehandlers.h
+    ./leofun/filemanager/lofficeconn.h
+    ./leofun/filemanager/spreadsheet.h
+    ./leofun/filemanager/utils.h
+    ./leofun/filemanager/cache.h
     ./leofun/apihandle/handle.h
     ./leofun/cJSON/cJSON.h
     ./leofun/logger/logger.h

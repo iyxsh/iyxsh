@@ -1,13 +1,18 @@
-#include <sys/socket.h>
+ #include <sys/socket.h>
 #include <netinet/in.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
 #include "./apihandle/handle.h"
-#include "./filemanager/filemanager.h"
 #include "./logger/logger.h"
 #include "./config/json_config.h"
-#include "filemanager/filemanager.h"
+#include "./filemanager/filequeue.h"
+#include "./filemanager/lofficeconn.h"
+#include "./filemanager/cache.h"
+
+// 新增外部声明
+extern void deal_filestatus_request(RequestBody requestbody, ResponseBody *responsebody);
+extern void deal_opendata_request(RequestBody requestbody, ResponseBody *responsebody);
 #include <iostream>
 /* ======= dbmanager.c  ======= */
 //extern GridCircle *gridcircldata; // json文件默认配置读取
@@ -178,6 +183,23 @@ void handle_filedata_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
+// 新增接口处理函数
+void handle_opendata_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_opendata_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
+void handle_filestatus_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_filestatus_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
 void handle_filelist_request(SSL *ssl, RequestBody requestbody)
 {
     ResponseBody responsebody;
@@ -194,6 +216,8 @@ struct Route routes[] = {
     {"POST", "/api/updatefile", handle_updatefile_request},
     {"POST", "/api/editfile", handle_editfile_request},
     {"POST", "/api/filedata", handle_filedata_request},
+    {"GET", "/api/opendata", handle_opendata_request},  // 新增GET接口
+    {"POST", "/api/filestatus", handle_filestatus_request},  // 新增POST接口
     {NULL, NULL, NULL}};
 
 void handle_request(SSL *ssl, int client_socket)
@@ -423,6 +447,17 @@ void cleanup_resources(int sig)
 
     // 释放配置资源
     json_config_free();
+    
+    // 添加更多资源清理
+    // 停止文件队列管理器的任务处理器
+    filemanager::FileQueueManager::getInstance().stopTaskProcessor();
+    
+    // 释放 LibreOffice 连接
+    filemanager::LibreOfficeConnectionManager::release();
+    
+    // 清理缓存
+    filemanager::clearTemplateCache();
+    filemanager::clearSheetDataCache();
 
     exit(EXIT_FAILURE);
 }
@@ -435,50 +470,50 @@ int main()
     signal(SIGTERM, cleanup_resources);
     signal(SIGSEGV, cleanup_resources);
 
-    // 初始化配置系统，先尝试当前目录，然后尝试上级目录的bin文件夹
-    json_config_init(NULL); // NULL表示使用默认路径查找策略
-
-    // 检查配置是否成功加载
-    const char *logdata = json_config_get_string("logdata");
-    if (!logdata) {
-        fprintf(stderr, "警告: 无法从配置文件中读取logdata配置项\n");
-        logdata = "../log/server.log"; // 使用默认日志路径
+    // 初始化日志
+    logger_init("../log/server.log");
+    
+    // 初始化配置
+    if (json_config_init(NULL) != 0) {
+        fprintf(stderr, "Failed to initialize configuration\n");
+        return 1;
     }
     
-    // 初始化日志模块
-    logger_init(logdata);
-    logger_log("Server started");
-    // 默认设置 单独一个文件存放
-    //filedefault();
-
-    int port = json_config_get_int("port");
-    if (port == 0) {
-        fprintf(stderr, "警告: 无法从配置文件中读取端口配置，使用默认端口8443\n");
-        port = 8443; // 默认端口
-    }
-
-    // 初始化文件管理器模板缓存
-    filemanager::initializeTemplateCache();
-
     // 初始化 LibreOffice 连接
     std::cout << "Attempting to initialize LibreOffice connection..." << std::endl;
     if (!filemanager::LibreOfficeConnectionManager::initialize())
     {
-        std::cerr << "========================================" << std::endl;
-        std::cerr << "WARNING: Failed to initialize LibreOffice connection!" << std::endl;
-        std::cerr << "This may be caused by:" << std::endl;
-        std::cerr << "1. LibreOffice is not running in headless mode" << std::endl;
-        std::cerr << "2. LibreOffice is not accepting connections on port 2002" << std::endl;
-        std::cerr << "3. URE_BOOTSTRAP environment variable is not set correctly" << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "To start LibreOffice in headless mode, run:" << std::endl;
-        std::cerr << "soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard" << std::endl;
-        std::cerr << "========================================" << std::endl;
+        // 记录详细的错误信息到日志
+        logger_log("========================================");
+        logger_log("WARNING: Failed to initialize LibreOffice connection!");
+        logger_log("This may be caused by:");
+        logger_log("1. LibreOffice is not running in headless mode");
+        logger_log("2. LibreOffice is not accepting connections on port 2002");
+        logger_log("3. URE_BOOTSTRAP environment variable is not set correctly");
+        logger_log("");
+        logger_log("To start LibreOffice in headless mode, run:");
+        logger_log("soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard");
+        logger_log("========================================");
         
         // 继续运行服务，但会有一些功能受限
-        std::cout << "Service will continue to run, but LibreOffice-related features will not work until connection is established." << std::endl;
-    } else {
-        std::cout << "LibreOffice connection initialized successfully." << std::endl;
+        logger_log("Service will continue to run, but LibreOffice-related features will not work until connection is established.");
+    }
+    else {
+        logger_log("LibreOffice connection initialized successfully.");
+    }
+
+    // 初始化文件队列管理器并启动任务处理器
+    filemanager::FileQueueManager::getInstance().startTaskProcessor();
+    logger_log("File queue manager started");
+
+    // 初始化文件管理器模板缓存
+    filemanager::initializeTemplateCache();
+
+    // 启动服务
+    int port = json_config_get_int("port");
+    if (port == 0) {
+        fprintf(stderr, "警告: 无法从配置文件中读取端口配置，使用默认端口8443\n");
+        port = 8443; // 默认端口
     }
 
     // 创建SSL上下文
@@ -486,13 +521,36 @@ int main()
 
     // 创建TCP套接字
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0)
+    {
+        perror("socket creation failed");
+        cleanup_resources(0);
+        return 1;
+    }
+    
+    // 设置套接字选项
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(port),
         .sin_addr = {INADDR_ANY}};
 
-    bind(server_fd, (struct sockaddr *)&addr, sizeof(addr));
-    listen(server_fd, 10);
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+    {
+        perror("bind failed");
+        cleanup_resources(0);
+        return 1;
+    }
+    
+    if (listen(server_fd, 10) < 0)
+    {
+        perror("listen failed");
+        cleanup_resources(0);
+        return 1;
+    }
+    
     printf("HTTPS服务器运行在端口 %d...\n", port);
 
     while (1)
@@ -501,7 +559,20 @@ int main()
         socklen_t len = sizeof(client_addr);
 
         int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &len);
+        if (client_fd < 0)
+        {
+            perror("accept failed");
+            continue;
+        }
+        
         SSL *ssl = SSL_new(global_ctx);
+        if (!ssl)
+        {
+            fprintf(stderr, "SSL_new failed\n");
+            close(client_fd);
+            continue;
+        }
+        
         SSL_set_fd(ssl, client_fd);
 
         if (SSL_accept(ssl) <= 0)
@@ -514,13 +585,42 @@ int main()
         else
         {
             pthread_t tid;
-            pthread_create(&tid, NULL, client_thread, ssl);
-            pthread_detach(tid);
+            if (pthread_create(&tid, NULL, client_thread, ssl) != 0)
+            {
+                perror("pthread_create failed");
+                SSL_free(ssl);
+                close(client_fd);
+            }
+            else
+            {
+                pthread_detach(tid);
+            }
         }
     }
 
     // 正常退出时的清理
     cleanup_resources(0);
-    //freepointer();
     return 0;
+}
+
+// ... existing code ...
+
+extern "C" void cleanup(int sig) {
+    logger_log("Cleaning up resources...");
+    
+    // 停止文件队列管理器的任务处理器
+    filemanager::FileQueueManager::getInstance().stopTaskProcessor();
+    
+    // 释放 LibreOffice 连接
+    filemanager::LibreOfficeConnectionManager::release();
+    
+    // 清理配置
+    json_config_free();
+    
+    // 清理缓存
+    filemanager::clearTemplateCache();
+    filemanager::clearSheetDataCache();
+    
+    logger_log("Cleanup completed");
+    exit(0);
 }
