@@ -220,7 +220,7 @@ namespace filemanager
                 
                 // 读取数据
                 cJSON *data = readSheetData(filePath, sheetName);
-                logger_log("data: %s", cJSON_PrintUnformatted(data));
+                logger_log_info("data: %s", cJSON_PrintUnformatted(data));
                 if (data) {
                     {
                         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -457,7 +457,7 @@ namespace filemanager
     
     // 更新所有文件的模板数据
     void TemplateCacheManager::updateAllFilesWithTemplateData(const cJSON* templateData) {
-        logger_log("Starting update of all files with template data");
+        logger_log_info("Starting update of all files with template data");
         
         try {
             // 获取WordsSheet名称
@@ -476,7 +476,7 @@ namespace filemanager
 
                 // 只处理就绪状态的文件
                 if (fileInfo.status == FILE_STATUS_READY) {
-                    logger_log("Updating WordsSheet for file: %s", filename.c_str());
+                    logger_log_info("Updating WordsSheet for file: %s", filename.c_str());
                     
                     try {
                         // 更新文件中的WordsSheet
@@ -484,30 +484,30 @@ namespace filemanager
                         cJSON* result = batchUpdateSpreadsheetContent(fileNameOUString, wordsSheetOUString, templateData);
                         
                         if (!result) {
-                            logger_log("Failed to update WordsSheet for file: %s", filename.c_str());
+                            logger_log_warn("Failed to update WordsSheet for file: %s", filename.c_str());
                         } else {
                             cJSON_Delete(result); // 清理返回的结果对象
                         }
                     } catch (const uno::Exception& e) {
-                        logger_log("UNO Exception updating WordsSheet for file %s: %s", 
+                        logger_log_error("UNO Exception updating WordsSheet for file %s: %s", 
                                   filename.c_str(), 
                                   rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
                     } catch (const std::exception& e) {
-                        logger_log("Exception updating WordsSheet for file %s: %s", 
+                        logger_log_error("Exception updating WordsSheet for file %s: %s", 
                                   filename.c_str(), 
                                   e.what());
                     } catch (...) {
-                        logger_log("Unknown exception updating WordsSheet for file: %s", filename.c_str());
+                        logger_log_error("Unknown exception updating WordsSheet for file: %s", filename.c_str());
                     }
                 }
             }
         } catch (const std::exception& e) {
-            logger_log("Exception in updateAllFilesWithTemplateData: %s", e.what());
+            logger_log_error("Exception in updateAllFilesWithTemplateData: %s", e.what());
         } catch (...) {
-            logger_log("Unknown exception in updateAllFilesWithTemplateData");
+            logger_log_error("Unknown exception in updateAllFilesWithTemplateData");
         }
         
-        logger_log("Completed update of all files with template data");
+        logger_log_info("Completed update of all files with template data");
     }
     
     // 清理模板缓存

@@ -484,27 +484,27 @@ int main()
     if (!filemanager::LibreOfficeConnectionManager::initialize())
     {
         // 记录详细的错误信息到日志
-        logger_log("========================================");
-        logger_log("WARNING: Failed to initialize LibreOffice connection!");
-        logger_log("This may be caused by:");
-        logger_log("1. LibreOffice is not running in headless mode");
-        logger_log("2. LibreOffice is not accepting connections on port 2002");
-        logger_log("3. URE_BOOTSTRAP environment variable is not set correctly");
-        logger_log("");
-        logger_log("To start LibreOffice in headless mode, run:");
-        logger_log("soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard");
-        logger_log("========================================");
+        logger_log_warn("========================================");
+        logger_log_warn("WARNING: Failed to initialize LibreOffice connection!");
+        logger_log_warn("This may be caused by:");
+        logger_log_warn("1. LibreOffice is not running in headless mode");
+        logger_log_warn("2. LibreOffice is not accepting connections on port 2002");
+        logger_log_warn("3. URE_BOOTSTRAP environment variable is not set correctly");
+        logger_log_warn("");
+        logger_log_warn("To start LibreOffice in headless mode, run:");
+        logger_log_warn("soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard");
+        logger_log_warn("========================================");
         
         // 继续运行服务，但会有一些功能受限
-        logger_log("Service will continue to run, but LibreOffice-related features will not work until connection is established.");
+        logger_log_warn("Service will continue to run, but LibreOffice-related features will not work until connection is established.");
     }
     else {
-        logger_log("LibreOffice connection initialized successfully.");
+        logger_log_info("LibreOffice connection initialized successfully.");
     }
 
     // 初始化文件队列管理器并启动任务处理器
     filemanager::FileQueueManager::getInstance().startTaskProcessor();
-    logger_log("File queue manager started");
+    logger_log_info("File queue manager started");
 
     // 初始化文件管理器模板缓存
     filemanager::initializeTemplateCache();
@@ -512,7 +512,7 @@ int main()
     // 启动服务
     int port = json_config_get_int("port");
     if (port == 0) {
-        fprintf(stderr, "警告: 无法从配置文件中读取端口配置，使用默认端口8443\n");
+        logger_log_warn("警告: 无法从配置文件中读取端口配置，使用默认端口8443");
         port = 8443; // 默认端口
     }
 
@@ -523,6 +523,7 @@ int main()
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0)
     {
+        logger_log_error("Socket creation failed");
         perror("socket creation failed");
         cleanup_resources(0);
         return 1;
@@ -537,21 +538,25 @@ int main()
         .sin_port = htons(port),
         .sin_addr = {INADDR_ANY}};
 
+    // 绑定地址
     if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
+        logger_log_error("Bind failed");
         perror("bind failed");
         cleanup_resources(0);
         return 1;
     }
-    
+
+    // 监听连接
     if (listen(server_fd, 10) < 0)
     {
+        logger_log_error("Listen failed");
         perror("listen failed");
         cleanup_resources(0);
         return 1;
     }
-    
-    printf("HTTPS服务器运行在端口 %d...\n", port);
+
+    logger_log_info("Server listening on port %d", port);
 
     while (1)
     {
@@ -587,6 +592,7 @@ int main()
             pthread_t tid;
             if (pthread_create(&tid, NULL, client_thread, ssl) != 0)
             {
+                logger_log_error("Failed to create client thread");
                 perror("pthread_create failed");
                 SSL_free(ssl);
                 close(client_fd);
@@ -606,7 +612,7 @@ int main()
 // ... existing code ...
 
 extern "C" void cleanup(int sig) {
-    logger_log("Cleaning up resources...");
+    logger_log_info("Cleaning up resources due to signal: %d", sig);
     
     // 停止文件队列管理器的任务处理器
     filemanager::FileQueueManager::getInstance().stopTaskProcessor();
@@ -621,6 +627,6 @@ extern "C" void cleanup(int sig) {
     filemanager::clearTemplateCache();
     filemanager::clearSheetDataCache();
     
-    logger_log("Cleanup completed");
+    logger_log_info("Cleanup completed");
     exit(0);
 }

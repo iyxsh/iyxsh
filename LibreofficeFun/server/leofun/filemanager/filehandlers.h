@@ -9,7 +9,7 @@
 namespace filemanager
 {
     int createfile(std::string& filename);
-    int updatefile(cJSON *root);
+    int fileupdate(cJSON *root);
     void findInSheet(cJSON *results, const char *body);
     void readSheetContents(cJSON *results, const char *body);
 } // namespace filemanager

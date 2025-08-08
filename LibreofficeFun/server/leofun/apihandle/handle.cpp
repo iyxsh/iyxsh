@@ -196,7 +196,7 @@ void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody)
 
 void deal_filelist_request(RequestBody requestbody,ResponseBody *responsebody)
 {
-    if (strcmp(requestbody.method, "GET")!= 0 && strcmp(requestbody.path, "/api/filelist")!= 0) {
+    if (strcmp(requestbody.method, "GET")!= 0 && strcmp(requestbody.path, "/filelist")!= 0) {
         responsebody->status = STATUS_METHOD_NOT_ALLOWED;
         memset(responsebody->content_type, 0, sizeof(responsebody->content_type));
         sprintf(responsebody->content_type, "application/json");

@@ -16,7 +16,7 @@ namespace filemanager
     int createfile(std::string& filename)
     {
         // 实现创建文件的函数
-        logger_log("Creating file: %s", filename.c_str());
+        logger_log_info("Creating file: %s", filename.c_str());
         
         // 从配置中获取数据路径
         const char *datapath = json_config_get_string("datapath");
@@ -34,11 +34,11 @@ namespace filemanager
         
         // 构造完整文件路径
         std::string filePathStr = std::string(datapath) + "/" + filename;
-        logger_log("Full file path: %s", filePathStr.c_str());
+        logger_log_info("Full file path: %s", filePathStr.c_str());
         
         // 构造默认模板文件路径
         std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
-        logger_log("Default template file path: %s", defaultFilePathStr.c_str());
+        logger_log_info("Default template file path: %s", defaultFilePathStr.c_str());
         
         // 转换为绝对路径
         std::string absolutePath = convertToAbsolutePath(filePathStr);
@@ -65,31 +65,32 @@ namespace filemanager
         if (result)
         {
             cJSON_Delete(result);
-            logger_log("File %s created successfully", filename.c_str());
+            logger_log_info("File %s created successfully", filename.c_str());
             return 0;
         }
         else
         {
-            logger_log("Failed to create file %s", filename.c_str());
+            logger_log_error("Failed to create file %s", filename.c_str());
             return -1;
         }
+        return 0;
     }
 
-    int updatefile(cJSON *root)
+    int fileupdate(cJSON *root)
     {
         // 实现更新文件的函数
-        logger_log("Updating file with data");
+        logger_log_info("Updating file with data");
         
         if (!root)
         {
-            logger_log("Error: Empty root data");
+            logger_log_error("Error: Empty root data");
             return -1;
         }
         
         // 使用LibreOffice连接管理器
         if (!LibreOfficeConnectionManager::initialize())
         {
-            logger_log("Error: Failed to initialize LibreOffice connection");
+            logger_log_error("Error: Failed to initialize LibreOffice connection");
             return -1;
         }
         
@@ -103,7 +104,7 @@ namespace filemanager
                 cJSON *firstItem = cJSON_GetArrayItem(root, 0);
                 if (!firstItem || !cJSON_IsObject(firstItem))
                 {
-                    logger_log("Error: Empty or invalid batch update data");
+                    logger_log_error("Error: Empty or invalid batch update data");
                     return -1;
                 }
 
@@ -112,7 +113,7 @@ namespace filemanager
 
                 if (!filenameItem || !sheetnameItem || !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem))
                 {
-                    logger_log("Error: Missing filename or sheetname in batch data");
+                    logger_log_error("Error: Missing filename or sheetname in batch data");
                     return -1;
                 }
                 
@@ -125,12 +126,12 @@ namespace filemanager
                 if (result)
                 {
                     cJSON_Delete(result);
-                    logger_log("Batch update completed successfully");
+                    logger_log_info("Batch update completed successfully");
                     return 0;
                 }
                 else
                 {
-                    logger_log("Error: Batch update failed");
+                    logger_log_error("Error: Batch update failed");
                     return -1;
                 }
             }
@@ -147,7 +148,7 @@ namespace filemanager
                     !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem) || 
                     !cJSON_IsString(celladdrItem) || !cJSON_IsString(valueItem))
                 {
-                    logger_log("Error: Missing required fields in update data");
+                    logger_log_error("Error: Missing required fields in update data");
                     return -1;
                 }
 
@@ -164,40 +165,84 @@ namespace filemanager
                 cJSON *result = updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
                 if (result)
                 {
-                    cJSON_Delete(result);
-                    logger_log("Single update completed successfully");
-                    return 0;
+                    if(strcmp(result->valuestring, "success") == 0) {
+                        logger_log_info("Single update completed successfully");
+                        return 0;
+                    } else {
+                        logger_log_error("Error: Single update failed with error: %s", result->valuestring);
+                        return -1;
+                    }
                 }
                 else
                 {
-                    logger_log("Error: Single update failed");
+                    logger_log_error("Error: Single update failed");
                     return -1;
                 }
             }
             else
             {
-                logger_log("Error: Invalid JSON structure");
+                logger_log_error("Error: Invalid JSON structure");
                 return -1;
             }
         }
         catch (const std::exception &e)
         {
             std::cerr << "updatefile std exception: " << e.what() << std::endl;
-            logger_log("Error: Update failed with exception: %s", e.what());
+            logger_log_error("Error: Update failed with exception: %s", e.what());
             return -1;
         }
         catch (...)
         {
             std::cerr << "updatefile unknown exception occurred" << std::endl;
-            logger_log("Error: Update failed with unknown exception");
+            logger_log_error("Error: Update failed with unknown exception");
             return -1;
         }
+        return 0;
+    }
+
+    int readfile(cJSON *root)
+    {
+        logger_log_info("Reading file data");
+
+        if (!root)
+        {
+            logger_log_error("Error: Empty root data");
+            return -1;
+        }
+
+        cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
+
+        if (!filenameItem || !cJSON_IsString(filenameItem) ||
+            !sheetnameItem || !cJSON_IsString(sheetnameItem))
+        {
+            logger_log_error("Error: Missing filename or sheetname");
+            return -1;
+        }
+
+        // 使用UTF-8编码处理文件名和sheet名
+        rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+        rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+
+        cJSON *result = readSheetData(filePath, sheetName);
+        if (result)
+        {
+            cJSON_Delete(result);
+            logger_log_info("File read successfully");
+            return 0;
+        }
+        else
+        {
+            logger_log_error("Error: Failed to read file");
+            return -1;
+        }
+        return 0;
     }
 
     void findInSheet(cJSON *results, const char *body)
     {
         // 实现查找工作表内容的函数
-        logger_log("Finding content in sheet");
+        logger_log_info("Finding content in sheet");
         
         if (!body)
         {
@@ -246,7 +291,7 @@ namespace filemanager
     void readSheetContents(cJSON *results, const char *body)
     {
         // 实现读取工作表内容的函数
-        logger_log("Reading sheet contents");
+        logger_log_info("Reading sheet contents");
         
         if (!body)
         {

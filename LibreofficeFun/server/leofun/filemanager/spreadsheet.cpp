@@ -49,7 +49,7 @@ namespace filemanager
     }
 
     /// @brief 保存文档到指定路径
-    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface, 
+    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface,
                       const rtl::OUString &filePath)
     {
         try
@@ -119,7 +119,7 @@ namespace filemanager
         {
             com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComp(docIface, com::sun::star::uno::UNO_QUERY);
             if (xComp.is())
-    {
+            {
                 xComp->dispose();
                 std::cerr << "closeDocument: Document closed successfully" << std::endl;
             }
@@ -281,6 +281,8 @@ namespace filemanager
             }
             return nullptr;
         }
+        return cJSON_CreateString("success");
+        ;
     }
 
     /// @brief 创建新电子表格文件
@@ -446,7 +448,7 @@ namespace filemanager
                                 // 对象类型，可能包含类型信息
                                 cJSON *type = cJSON_GetObjectItem(cellItem, "type");
                                 cJSON *value = cJSON_GetObjectItem(cellItem, "value");
-                                
+
                                 if (type && value && cJSON_IsString(type))
                                 {
                                     const char *typeStr = type->valuestring;
@@ -546,6 +548,7 @@ namespace filemanager
             }
             return nullptr;
         }
+        return cJSON_CreateString("success");
     }
 
     /// @brief 更新电子表格内容
@@ -566,9 +569,46 @@ namespace filemanager
                 return cJSON_CreateString("Failed to get component loader");
             }
 
+            logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_info("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
+            // 从配置文件中获取数据路径和默认文件名
+            const char *datapath = json_config_get_string("datapath");
+            const char *defaultname = json_config_get_string("defaultname");
+            const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
+
+            if (!datapath)
+                datapath = "../data"; // 默认数据路径
+            if (!defaultname)
+                defaultname = "default.xlsx"; // 默认文件名
+
+            // 默认工作表名
+            const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
+
+            // 构建默认文件的完整路径
+            std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
+
+            // 处理相对路径，转换为绝对路径
+            std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
+
+            rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
+            rtl::OUString defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
+            rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+            logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
+
+            // 构建默认文件的完整路径
+            std::string FilePathStr = std::string(datapath) + "/" + rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
+
+            // 处理相对路径，转换为绝对路径
+            std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
+
+            rtl::OString absoluteFilePathOStr = rtl::OString(absoluteFilePathStr.c_str());
+            rtl::OUString curFilePath = rtl::OStringToOUString(absoluteFilePathOStr, RTL_TEXTENCODING_UTF8);
+
             // 构造文件URL
-            rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
-            
+            rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + curFilePath.replaceAll("\\", "/");
+            logger_log_info("FilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
             xComp = uno::Reference<lang::XComponent>(xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
@@ -607,32 +647,28 @@ namespace filemanager
                 closeDocument(xComp);
                 return cJSON_CreateString("Cannot get cell");
             }
-
+            cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
+            logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
             // 根据单元格类型设置值
-            if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
+            // if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
+            // 直接默认设置为公式
+            if (cachedSheetData)
             {
-                cell->setFormula(newValue);
-            }
-            else if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("string")))
-            {
-                uno::Reference<beans::XPropertySet> xCellProps(cell, uno::UNO_QUERY);
-                if (xCellProps.is())
-                {
-                    xCellProps->setPropertyValue(rtl::OUString::createFromAscii("CharColor"), uno::makeAny(static_cast<sal_Int32>(0xFF0000)));
-                }
-                cell->setFormula(newValue);
+                rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                cell->setFormula(tmp);
             }
             else
             {
-                // 默认作为数值处理
-                double value = newValue.toDouble();
-                cell->setValue(value);
+                std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                closeDocument(xComp); // 确保在出错时关闭文档
+                return nullptr;
             }
 
             // 保存文档
-            saveDocument(xDoc, filePath);
+            saveDocument(xDoc, curFilePath);
             closeDocument(xComp);
-            
+
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
@@ -662,6 +698,7 @@ namespace filemanager
             }
             return cJSON_CreateString("Unknown error occurred");
         }
+        return cJSON_CreateString("success");
     }
 
     /// @brief 获取工作表
@@ -699,7 +736,7 @@ namespace filemanager
 
             // 构造文件URL
             rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
-            
+
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
             xComp = uno::Reference<lang::XComponent>(xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
@@ -727,10 +764,10 @@ namespace filemanager
             }
 
             // 处理批量更新数据
-            if (updateData && cJSON_IsArray(const_cast<cJSON*>(updateData)))
+            if (updateData && cJSON_IsArray(const_cast<cJSON *>(updateData)))
             {
                 cJSON *item = nullptr;
-                cJSON_ArrayForEach(item, const_cast<cJSON*>(updateData))
+                cJSON_ArrayForEach(item, const_cast<cJSON *>(updateData))
                 {
                     if (cJSON_IsObject(item))
                     {
@@ -742,9 +779,7 @@ namespace filemanager
                         {
                             rtl::OUString cellAddr = convertStringToOUString(celladdrItem->valuestring);
                             rtl::OUString value = convertStringToOUString(valueItem->valuestring);
-                            rtl::OUString type = typeItem && cJSON_IsString(typeItem) ? 
-                                                convertStringToOUString(typeItem->valuestring) : 
-                                                rtl::OUString::createFromAscii("string");
+                            rtl::OUString type = typeItem && cJSON_IsString(typeItem) ? convertStringToOUString(typeItem->valuestring) : rtl::OUString::createFromAscii("string");
 
                             // 解析单元格地址
                             sal_Int32 col = 0, row = 0;
@@ -787,7 +822,7 @@ namespace filemanager
             // 保存文档
             saveDocument(xDoc, filePath);
             closeDocument(xComp);
-            
+
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
@@ -817,6 +852,7 @@ namespace filemanager
             }
             return cJSON_CreateString("Unknown error occurred");
         }
+        return cJSON_CreateString("success");
     }
 
     // 内部辅助函数
@@ -825,12 +861,12 @@ namespace filemanager
         // 实现查找值的函数
         return nullptr;
     }
-    
+
     cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
     {
         // 减少日志输出以提高性能
-        // logger_log("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-        // logger_log("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log_info("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
         try
         {
             // 获取ComponentLoader
@@ -844,11 +880,12 @@ namespace filemanager
             rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
-            if (!xComp.is()) {
+            if (!xComp.is())
+            {
                 std::cerr << "readSheetData: Cannot load document!" << std::endl;
                 return nullptr;
             }
-            
+
             uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
             if (!xDoc.is())
             {
@@ -876,8 +913,8 @@ namespace filemanager
             // 从配置文件读取最大列数和行数限制
             int maxCols = json_config_get_int("maxCols");
             int maxRows = json_config_get_int("maxRows");
-            logger_log("maxRows: %d", maxRows);
-            logger_log("maxCols: %d", maxCols);
+            logger_log_info("maxRows: %d", maxRows);
+            logger_log_info("maxCols: %d", maxCols);
             // 循环处理每一列
             while (col < maxCols)
             {
@@ -950,7 +987,6 @@ namespace filemanager
                         column = (column / 26) - 1;
                     } while (column >= 0);
 
-
                     // 计算行号 (1-based)
                     int rowNumber = row + 1;
 
@@ -994,7 +1030,9 @@ namespace filemanager
             std::cerr << "readSheetData unknown exception occurred" << std::endl;
             return nullptr;
         }
+        return cJSON_CreateString("success");
     }
+
     rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData)
     {
         // 创建一个OUStringBuffer来构建结果字符串
@@ -1008,26 +1046,40 @@ namespace filemanager
             // 将字符转换为UTF8字符串用于在sheetData中查找
             std::string charStdStr = rtl::OUStringToOString(charStr, RTL_TEXTENCODING_UTF8).getStr();
 
-            // 在sheetData中查找该字符的位置
+            // 在sheetData中查找该字符
             cJSON *positionItem = cJSON_GetObjectItem(sheetData, charStdStr.c_str());
-            if (positionItem && cJSON_IsString(positionItem))
+
+            if (positionItem && positionItem->valuestring)
             {
-                // 如果找到，添加位置到结果中
-                rtl::OUString positionStr = rtl::OStringToOUString(
-                    rtl::OString(positionItem->valuestring),
-                    RTL_TEXTENCODING_UTF8);
-                resultBuffer.append(positionStr);
+                // 如果找到位置信息，添加到结果中
+                if (i > 0)
+                {
+                    // 除了第一个字符外，其他字符前面都加&
+                    resultBuffer.append(rtl::OUString::createFromAscii("&"));
+                }
+                else
+                {
+                    resultBuffer.append(rtl::OUString::createFromAscii("="));
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii("$"));
+                // 从配置中获取默认工作表名
+                const char *defaultSheetName = json_config_get_string("WordsSheet");
+                if (!defaultSheetName)
+                {
+                    defaultSheetName = "WordsSheet"; // 默认值
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii(defaultSheetName));
+                resultBuffer.append(rtl::OUString::createFromAscii("."));
+                resultBuffer.append(rtl::OUString::createFromAscii(positionItem->valuestring));
             }
             else
             {
-                // 如果未找到，添加原始字符
-                resultBuffer.append(charStr);
-            }
-
-            // 如果不是最后一个字符，添加空格分隔符
-            if (i < newValue.getLength() - 1)
-            {
-                resultBuffer.append(sal_Unicode(' '));
+                // 如果未找到字符位置，可以添加一个占位符或跳过
+                if (i > 0)
+                {
+                    resultBuffer.append(rtl::OUString::createFromAscii(""));
+                }
+                resultBuffer.append(rtl::OUString::createFromAscii("N/A"));
             }
         }
 
