@@ -465,8 +465,6 @@ namespace filemanager
 
                     if (character && position)
                     {
-                        printf("Writing character '%s' to position %s\n", character, position);
-
                         // 解析位置字符串，如"A1" -> 列=0 (A), 行=0 (1-based, 实际是0)
                         sal_Int32 col = 0, row = 0;
                         parseCellAddress(rtl::OUString::createFromAscii(position), col, row);

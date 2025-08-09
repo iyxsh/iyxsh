@@ -1,5 +1,6 @@
 #include "handle.h"
 #include "../filemanager/fileops.h"
+#include "../filemanager/filequeue.h"  // 添加文件队列管理器头文件
 #include "../cJSON/cJSON.h"
 #include <stdbool.h>
 
@@ -8,6 +9,22 @@ extern char* defaultname;
 
 // 函数指针类型定义
 typedef void (*file_operation_func)(cJSON *results, const char *body);
+
+// 添加检查模板加载状态的函数
+static bool checkTemplateLoading(ResponseBody *responsebody) {
+    if (filemanager::FileQueueManager::getInstance().isTemplateLoading()) {
+        responsebody->status = STATUS_SERVICE_UNAVAILABLE;
+        strcpy(responsebody->content_type, "application/json");
+        cJSON *error_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(error_obj, "error", "System is updating template files, please try again later");
+        char *error_str = cJSON_Print(error_obj);
+        strcpy(responsebody->body, error_str);
+        cJSON_Delete(error_obj);
+        free(error_str);
+        return true;
+    }
+    return false;
+}
 
 void RequestBodyInit(RequestBody *request)
 {
@@ -35,6 +52,11 @@ void ResponseBodyInit(ResponseBody* response)
 static bool validate_request(RequestBody requestbody, ResponseBody *responsebody, 
                             const char *expected_method, const char *expected_path) 
 {
+    // 在处理请求前检查模板加载状态
+    if (checkTemplateLoading(responsebody)) {
+        return false;
+    }
+    
     printf("method: %s, path: %s", requestbody.method, requestbody.path);
     if (strcmp(requestbody.method, expected_method) != 0 || strcmp(requestbody.path, expected_path) != 0) {
         responsebody->status = STATUS_METHOD_NOT_ALLOWED;
