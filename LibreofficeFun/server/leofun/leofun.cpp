@@ -208,6 +208,30 @@ void handle_filelist_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
+void handle_deletefile_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_deletefile_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
+void handle_addworksheet_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_addworksheet_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
+void handle_removeworksheet_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_removeworksheet_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
 // 接口路由
 struct Route routes[] = {
     {"GET", "/api/filelist", handle_filelist_request},
@@ -218,6 +242,9 @@ struct Route routes[] = {
     {"POST", "/api/filedata", handle_filedata_request},
     {"GET", "/api/opendata", handle_opendata_request},  // 新增GET接口
     {"POST", "/api/filestatus", handle_filestatus_request},  // 新增POST接口
+    {"POST", "/api/deletefile", handle_deletefile_request},
+    {"POST", "/api/addworksheet", handle_addworksheet_request},
+    {"POST", "/api/removeworksheet", handle_removeworksheet_request},
     {NULL, NULL, NULL}};
 
 void handle_request(SSL *ssl, int client_socket)

@@ -48,4 +48,7 @@ void deal_filedata_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_filelist_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_filestatus_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_opendata_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_deletefile_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_addworksheet_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_removeworksheet_request(RequestBody requestbody,ResponseBody *responsebody);
 #endif

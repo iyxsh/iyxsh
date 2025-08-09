@@ -245,7 +245,7 @@ namespace filemanager
                     updateTemplateTask.filename = "template_update";
                     updateTemplateTask.data = cacheKey;
                     updateTemplateTask.createTime = std::time(nullptr);
-                    updateTemplateTask.taskData = data;
+                    updateTemplateTask.taskData = cJSON_Duplicate(data, cJSON_True); // 创建副本以避免内存问题
                     
                     try {
                         FileQueueManager::getInstance().addFileTask(updateTemplateTask);

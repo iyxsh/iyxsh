@@ -80,6 +80,10 @@ namespace filemanager
     cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
     cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
     rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData);
+    
+    // 公共函数用于加载文档
+    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> 
+    loadSpreadsheetDocument(const rtl::OUString& filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent>& xComp);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H

@@ -26,6 +26,74 @@
 
 namespace filemanager
 {
+    // 提取公共函数用于加载文档
+    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> 
+    loadSpreadsheetDocument(const rtl::OUString& filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent>& xComp) {
+        try {
+            rtl::OUString filePath;
+            getAbsolutePath(filename, filePath);
+
+            // 使用LibreOffice连接管理器
+            if (!LibreOfficeConnectionManager::initialize()) {
+                logger_log_error("Failed to initialize LibreOffice connection");
+                return nullptr;
+            }
+
+            // 获取ComponentLoader
+            com::sun::star::uno::Reference<com::sun::star::frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
+            if (!xLoader.is()) {
+                logger_log_error("Failed to get LibreOffice component loader");
+                return nullptr;
+            }
+
+            // 加载文档
+            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> args(0);
+            com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComponent = xLoader->loadComponentFromURL(
+                url, rtl::OUString::createFromAscii("_blank"), 0, args);
+            xComp = xComponent;
+
+            if (!xComp.is()) {
+                logger_log_error("Cannot load document: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
+                return nullptr;
+            }
+
+            com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> xDoc(xComp, com::sun::star::uno::UNO_QUERY);
+            if (!xDoc.is()) {
+                logger_log_error("Cannot open spreadsheet: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
+                closeDocument(xComp);
+                return nullptr;
+            }
+
+            return xDoc;
+        }
+        catch (const com::sun::star::uno::Exception &e) {
+            logger_log_error("UNO exception in loadSpreadsheetDocument: %s", 
+                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            // 确保在异常情况下关闭文档
+            if (xComp.is()) {
+                closeDocument(xComp);
+            }
+            return nullptr;
+        }
+        catch (const std::exception &e) {
+            logger_log_error("Exception in loadSpreadsheetDocument: %s", e.what());
+            // 确保在异常情况下关闭文档
+            if (xComp.is()) {
+                closeDocument(xComp);
+            }
+            return nullptr;
+        }
+        catch (...) {
+            logger_log_error("Unknown exception in loadSpreadsheetDocument");
+            // 确保在异常情况下关闭文档
+            if (xComp.is()) {
+                closeDocument(xComp);
+            }
+            return nullptr;
+        }
+    }
+
     // 列索引与Excel列名转换
     std::string columnIndexToName(int columnIndex)
     {
@@ -57,27 +125,27 @@ namespace filemanager
             com::sun::star::uno::Reference<com::sun::star::frame::XStorable> xStorable(docIface, com::sun::star::uno::UNO_QUERY);
             if (!xStorable.is())
             {
-                std::cerr << "saveDocument error: Invalid storable interface" << std::endl;
+                logger_log_error("saveDocument error: Invalid storable interface");
                 return;
             }
 
             // 规范路径，自动创建父目录
             std::string nativePath = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-            std::cerr << "saveDocument: Saving to native path: " << nativePath << std::endl;
+            logger_log_info("saveDocument: Saving to native path: %s", nativePath.c_str());
 
             // 标准化路径分隔符
             std::replace(nativePath.begin(), nativePath.end(), '\\', '/');
 
             // 处理相对路径
             std::string absolutePath = convertToAbsolutePath(nativePath);
-            std::cerr << "saveDocument: Absolute path: " << absolutePath << std::endl;
+            logger_log_info("saveDocument: Absolute path: %s", absolutePath.c_str());
 
             // 创建父目录
             size_t lastSlash = absolutePath.find_last_of('/');
             if (lastSlash != std::string::npos)
             {
                 std::string dir = absolutePath.substr(0, lastSlash);
-                std::cerr << "saveDocument: Creating directories for: " << dir << std::endl;
+                logger_log_info("saveDocument: Creating directories for: %s", dir.c_str());
                 make_dirs(dir);
             }
 
@@ -86,29 +154,30 @@ namespace filemanager
 #else
             std::string urlPath = absolutePath;
 #endif
-            std::cerr << "saveDocument: URL path: " << urlPath << std::endl;
+            logger_log_info("saveDocument: URL path: %s", urlPath.c_str());
 
             rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(urlPath.c_str());
-            std::cerr << "saveDocument: Full URL: " << rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);
             props[0].Name = rtl::OUString::createFromAscii("Overwrite");
             props[0].Value <<= true;
 
             xStorable->storeAsURL(url, props);
-            std::cerr << "saveDocument: Successfully saved to: " << rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_info("saveDocument: Successfully saved to: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const com::sun::star::uno::Exception &e)
         {
-            std::cerr << "saveDocument UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_error("saveDocument UNO exception: %s", 
+                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
-            std::cerr << "saveDocument std exception: " << e.what() << std::endl;
+            logger_log_error("saveDocument std exception: %s", e.what());
         }
         catch (...)
         {
-            std::cerr << "saveDocument unknown exception occurred" << std::endl;
+            logger_log_error("saveDocument unknown exception occurred");
         }
     }
 
@@ -121,24 +190,25 @@ namespace filemanager
             if (xComp.is())
             {
                 xComp->dispose();
-                std::cerr << "closeDocument: Document closed successfully" << std::endl;
+                logger_log_info("closeDocument: Document closed successfully");
             }
             else
             {
-                std::cerr << "closeDocument: Invalid component interface" << std::endl;
+                logger_log_error("closeDocument: Invalid component interface");
             }
         }
         catch (const com::sun::star::uno::Exception &e)
         {
-            std::cerr << "closeDocument UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_error("closeDocument UNO exception: %s", 
+                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
-            std::cerr << "closeDocument std exception: " << e.what() << std::endl;
+            logger_log_error("closeDocument std exception: %s", e.what());
         }
         catch (...)
         {
-            std::cerr << "closeDocument unknown exception occurred" << std::endl;
+            logger_log_error("closeDocument unknown exception occurred");
         }
     }
 
@@ -167,7 +237,8 @@ namespace filemanager
             std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
 
             uno::Sequence<beans::PropertyValue> args(0);
-            xComp = uno::Reference<lang::XComponent>(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args);
+            xComp = xComponent;
             if (!xComp.is())
             {
                 std::cerr << "readSpreadsheetFile: Failed to load component from URL" << std::endl;
@@ -580,7 +651,8 @@ namespace filemanager
             logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
-            xComp = uno::Reference<lang::XComponent>(xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
+            xComp = xComponent;
             if (!xComp.is())
             {
                 std::cerr << "updateSpreadsheetContent: Failed to load document" << std::endl;
@@ -709,13 +781,14 @@ namespace filemanager
             rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
 
             // 加载文档
-            uno::Sequence<beans::PropertyValue> args(0);
-            xComp = uno::Reference<lang::XComponent>(xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
-            if (!xComp.is())
-            {
-                std::cerr << "batchUpdateSpreadsheetContent: Failed to load document" << std::endl;
-                return cJSON_CreateString("Failed to load document");
-            }
+                uno::Sequence<beans::PropertyValue> args(0);
+                uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
+                xComp = xComponent;
+                if (!xComp.is())
+                {
+                    std::cerr << "batchUpdateSpreadsheetContent: Failed to load document" << std::endl;
+                    return cJSON_CreateString("Failed to load document");
+                }
 
             // 获取文档和工作表
             uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
@@ -841,6 +914,7 @@ namespace filemanager
         // 减少日志输出以提高性能
         // logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
         // logger_log_info("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
+        uno::Reference<lang::XComponent> xComp; // 在函数作用域内声明，确保在任何情况下都能正确关闭
         try
         {
             // 获取ComponentLoader
@@ -853,7 +927,8 @@ namespace filemanager
 
             rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComp(xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args), uno::UNO_QUERY);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args);
+            xComp = xComponent;
             if (!xComp.is())
             {
                 std::cerr << "readSheetData: Cannot load document!" << std::endl;

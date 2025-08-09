@@ -284,6 +284,12 @@ namespace filemanager
                 case TASK_UPDATE_TEMPLATE:
                     processUpdateTemplateTask(task);
                     break;
+                case TASK_ADD_WORKSHEET:
+                    processAddWorksheetTask(task);
+                    break;
+                case TASK_REMOVE_WORKSHEET:
+                    processRemoveWorksheetTask(task);
+                    break;
                 default:
                     logger_log_warn("Unknown task type: %d", task.type);
                     break;
@@ -370,10 +376,8 @@ namespace filemanager
             // 更新文件状态为处理中
             updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
 
-            // 使用智能指针管理内存，确保自动释放
-            std::unique_ptr<cJSON> taskDataPtr(task.taskData);
-
-            int res = fileupdate(taskDataPtr.get());
+            // 注意：不要使用std::unique_ptr包装task.taskData，因为调用方负责内存管理
+            int res = fileupdate(task.taskData);
             if (res == 0)
             {
                 // 更新文件状态为就绪
@@ -549,5 +553,99 @@ namespace filemanager
         }
         
         return false;
+    }
+    
+    // 处理新增工作表任务
+    void FileQueueManager::processAddWorksheetTask(const FileTask &task)
+    {
+        logger_log_info("Processing add worksheet task: %s", task.filename.c_str());
+
+        // 更新文件状态为处理中
+        updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
+
+        try
+        {
+            // 确保taskData不为空
+            if (!task.taskData)
+            {
+                logger_log_error("Add worksheet task has no data");
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Add worksheet task has no data");
+                return;
+            }
+
+            // 调用filehandlers中的处理函数
+            int res = filemanager::worksheetAdd(task.taskData);
+            if (res == 0)
+            {
+                // 更新文件状态为就绪
+                updateFileStatus(task.filename, FILE_STATUS_READY);
+                logger_log_info("Successfully added worksheet for file: %s", task.filename.c_str());
+            }
+            else
+            {
+                // 更新文件状态为错误
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to add worksheet");
+                logger_log_error("Failed to add worksheet for file: %s", task.filename.c_str());
+            }
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in processAddWorksheetTask for %s: %s", task.filename.c_str(), e.what());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in processAddWorksheetTask for %s", task.filename.c_str());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
+        }
+
+        logger_log_info("Finished processing add worksheet task: %s", task.filename.c_str());
+    }
+    
+    // 处理删除工作表任务
+    void FileQueueManager::processRemoveWorksheetTask(const FileTask &task)
+    {
+        logger_log_info("Processing remove worksheet task: %s", task.filename.c_str());
+
+        // 更新文件状态为处理中
+        updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
+
+        try
+        {
+            // 确保taskData不为空
+            if (!task.taskData)
+            {
+                logger_log_error("Remove worksheet task has no data");
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Remove worksheet task has no data");
+                return;
+            }
+
+            // 调用filehandlers中的处理函数
+            int res = filemanager::worksheetRemove(task.taskData);
+            if (res == 0)
+            {
+                // 更新文件状态为就绪
+                updateFileStatus(task.filename, FILE_STATUS_READY);
+                logger_log_info("Successfully removed worksheet for file: %s", task.filename.c_str());
+            }
+            else
+            {
+                // 更新文件状态为错误
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to remove worksheet");
+                logger_log_error("Failed to remove worksheet for file: %s", task.filename.c_str());
+            }
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in processRemoveWorksheetTask for %s: %s", task.filename.c_str(), e.what());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in processRemoveWorksheetTask for %s", task.filename.c_str());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
+        }
+
+        logger_log_info("Finished processing remove worksheet task: %s", task.filename.c_str());
     }
 } // namespace filemanager
