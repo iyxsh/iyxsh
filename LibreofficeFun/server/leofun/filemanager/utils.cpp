@@ -60,6 +60,13 @@ namespace filemanager
         return rtl::OStringToOUString(oStr, RTL_TEXTENCODING_UTF8);
     }
 
+    // 将OUString转换为std::string，使用UTF-8编码
+    std::string convertOUStringToString(const rtl::OUString &oustr)
+    {
+        rtl::OString oStr = rtl::OUStringToOString(oustr, RTL_TEXTENCODING_UTF8);
+        return std::string(oStr.getStr());
+    }
+
     void make_dirs(const std::string &path)
     {
 #if __cplusplus >= 201703L

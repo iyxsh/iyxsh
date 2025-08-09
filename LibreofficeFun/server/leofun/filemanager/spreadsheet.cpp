@@ -27,21 +27,25 @@
 namespace filemanager
 {
     // 提取公共函数用于加载文档
-    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> 
-    loadSpreadsheetDocument(const rtl::OUString& filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent>& xComp) {
-        try {
+    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
+    loadSpreadsheetDocument(const rtl::OUString &filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp)
+    {
+        try
+        {
             rtl::OUString filePath;
             getAbsolutePath(filename, filePath);
 
             // 使用LibreOffice连接管理器
-            if (!LibreOfficeConnectionManager::initialize()) {
+            if (!LibreOfficeConnectionManager::initialize())
+            {
                 logger_log_error("Failed to initialize LibreOffice connection");
                 return nullptr;
             }
 
             // 获取ComponentLoader
             com::sun::star::uno::Reference<com::sun::star::frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
-            if (!xLoader.is()) {
+            if (!xLoader.is())
+            {
                 logger_log_error("Failed to get LibreOffice component loader");
                 return nullptr;
             }
@@ -53,13 +57,15 @@ namespace filemanager
                 url, rtl::OUString::createFromAscii("_blank"), 0, args);
             xComp = xComponent;
 
-            if (!xComp.is()) {
+            if (!xComp.is())
+            {
                 logger_log_error("Cannot load document: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
                 return nullptr;
             }
 
             com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> xDoc(xComp, com::sun::star::uno::UNO_QUERY);
-            if (!xDoc.is()) {
+            if (!xDoc.is())
+            {
                 logger_log_error("Cannot open spreadsheet: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
                 closeDocument(xComp);
                 return nullptr;
@@ -67,27 +73,33 @@ namespace filemanager
 
             return xDoc;
         }
-        catch (const com::sun::star::uno::Exception &e) {
-            logger_log_error("UNO exception in loadSpreadsheetDocument: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        catch (const com::sun::star::uno::Exception &e)
+        {
+            logger_log_error("UNO exception in loadSpreadsheetDocument: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             // 确保在异常情况下关闭文档
-            if (xComp.is()) {
+            if (xComp.is())
+            {
                 closeDocument(xComp);
             }
             return nullptr;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             logger_log_error("Exception in loadSpreadsheetDocument: %s", e.what());
             // 确保在异常情况下关闭文档
-            if (xComp.is()) {
+            if (xComp.is())
+            {
                 closeDocument(xComp);
             }
             return nullptr;
         }
-        catch (...) {
+        catch (...)
+        {
             logger_log_error("Unknown exception in loadSpreadsheetDocument");
             // 确保在异常情况下关闭文档
-            if (xComp.is()) {
+            if (xComp.is())
+            {
                 closeDocument(xComp);
             }
             return nullptr;
@@ -168,8 +180,8 @@ namespace filemanager
         }
         catch (const com::sun::star::uno::Exception &e)
         {
-            logger_log_error("saveDocument UNO exception: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("saveDocument UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
@@ -199,8 +211,8 @@ namespace filemanager
         }
         catch (const com::sun::star::uno::Exception &e)
         {
-            logger_log_error("closeDocument UNO exception: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("closeDocument UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
@@ -695,17 +707,25 @@ namespace filemanager
             // 根据单元格类型设置值
             // if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
             // 直接默认设置为公式
-            if (cachedSheetData)
+            if (sheetName == wordsSheetName)
             {
-                rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                cell->setFormula(tmp);
+                // 直接默认覆盖值
+                cell->setFormula(newValue);
             }
             else
             {
-                std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                closeDocument(xComp); // 确保在出错时关闭文档
-                return nullptr;
+                if (cachedSheetData)
+                {
+                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                    logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                    cell->setFormula(tmp);
+                }
+                else
+                {
+                    std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                    closeDocument(xComp); // 确保在出错时关闭文档
+                    return nullptr;
+                }
             }
 
             // 保存文档
@@ -764,7 +784,7 @@ namespace filemanager
     // 批量更新函数
     cJSON *batchUpdateSpreadsheetContent(const rtl::OUString &filePath,
                                          const rtl::OUString &sheetName,
-                                         const cJSON *updateData)
+                                         const cJSON *updatecells)
     {
         uno::Reference<lang::XComponent> xComp;
         try
@@ -781,14 +801,14 @@ namespace filemanager
             rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
 
             // 加载文档
-                uno::Sequence<beans::PropertyValue> args(0);
-                uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
-                xComp = xComponent;
-                if (!xComp.is())
-                {
-                    std::cerr << "batchUpdateSpreadsheetContent: Failed to load document" << std::endl;
-                    return cJSON_CreateString("Failed to load document");
-                }
+            uno::Sequence<beans::PropertyValue> args(0);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
+            xComp = xComponent;
+            if (!xComp.is())
+            {
+                std::cerr << "batchUpdateSpreadsheetContent: Failed to load document" << std::endl;
+                return cJSON_CreateString("Failed to load document");
+            }
 
             // 获取文档和工作表
             uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
@@ -808,10 +828,18 @@ namespace filemanager
             }
 
             // 处理批量更新数据
-            if (updateData && cJSON_IsArray(const_cast<cJSON *>(updateData)))
+            // 支持两种格式：
+            // 1. 原来的数组格式
+            // 2. 新的对象格式 {"value": "cellAddress", ...}
+            if (updatecells && cJSON_IsArray(const_cast<cJSON *>(updatecells)))
             {
+                // 原来的数组格式处理
                 cJSON *item = nullptr;
-                cJSON_ArrayForEach(item, const_cast<cJSON *>(updateData))
+                rtl::OUString defaultFilePath, wordsSheetName;
+                getDefaultData(defaultFilePath, wordsSheetName);
+                cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
+                logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
+                cJSON_ArrayForEach(item, const_cast<cJSON *>(updatecells))
                 {
                     if (cJSON_IsObject(item))
                     {
@@ -837,23 +865,75 @@ namespace filemanager
                                 closeDocument(xComp);
                                 return cJSON_CreateString("Cannot get cell");
                             }
-                            rtl::OUString defaultFilePath, wordsSheetName;
-                            getDefaultData(defaultFilePath, wordsSheetName);
-                            cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
-                            logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
-                            // 根据单元格类型设置值
-                            // if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
-                            // 直接默认设置为公式
+                            if (sheetName == wordsSheetName)
+                            {
+                                // 直接设置字符串值
+                                cell->setFormula(newValue);
+                            }
+                            else
+                            {
+                                if (cachedSheetData)
+                                {
+                                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                                    logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                                    cell->setFormula(tmp);
+                                }
+                                else
+                                {
+                                    std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                                    closeDocument(xComp); // 确保在出错时关闭文档
+                                    return nullptr;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            else if (updatecells && cJSON_IsObject(const_cast<cJSON *>(updatecells)))
+            {
+                // 新的对象格式处理 {"value": "cellAddress", ...}
+                cJSON *item = nullptr;
+                rtl::OUString defaultFilePath, wordsSheetName;
+                getDefaultData(defaultFilePath, wordsSheetName);
+                cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
+                logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
+                cJSON_ArrayForEach(item, const_cast<cJSON *>(updatecells))
+                {
+                    // item->string 是键（值），item->valuestring 是值（单元格地址）
+                    if (cJSON_IsString(item) && item->string)
+                    {
+                        rtl::OUString newValue = convertStringToOUString(item->string);
+                        rtl::OUString cellAddr = convertStringToOUString(item->valuestring);
+
+                        // 解析单元格地址
+                        sal_Int32 col = 0, row = 0;
+                        parseCellAddress(cellAddr, col, row);
+
+                        // 获取单元格
+                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                        if (!cell.is())
+                        {
+                            std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
+                            closeDocument(xComp);
+                            return cJSON_CreateString("Cannot get cell");
+                        }
+                        if (sheetName == wordsSheetName)
+                        {
+                            // 直接默认覆盖值
+                            cell->setFormula(newValue);
+                        }
+                        else
+                        {
                             if (cachedSheetData)
                             {
                                 rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                                logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                                logger_log_info("batchUpdateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
                                 cell->setFormula(tmp);
                             }
                             else
                             {
-                                std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                                closeDocument(xComp); // 确保在出错时关闭文档
+                                std::cerr << "batchUpdateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                                closeDocument(xComp);
                                 return nullptr;
                             }
                         }
@@ -899,7 +979,6 @@ namespace filemanager
             }
             return cJSON_CreateString("Unknown error occurred");
         }
-        return cJSON_CreateString("success");
     }
 
     // 内部辅助函数

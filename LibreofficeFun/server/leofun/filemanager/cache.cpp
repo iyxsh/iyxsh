@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "../logger/logger.h"
 #include "../config/json_config.h"
+#include "../cJSON/cJSON.h"
 #include <stdexcept>
 #include <iostream>
 #include <cstdlib>
@@ -166,20 +167,19 @@ namespace filemanager
     
     // 预加载模板数据
     void TemplateCacheManager::preloadTemplateData(const rtl::OUString &filePath, const rtl::OUString &sheetName) {
+        std::cerr << "Preloading template data for " << convertOUStringToString(filePath) << std::endl;
+        std::cerr << "Sheet name: " << convertOUStringToString(sheetName) << std::endl;
         std::string cacheKey = buildCacheKey(filePath, sheetName);
         
-        // 检查是否已经在加载或已加载
+        // 检查是否已经在加载
         {
             std::lock_guard<std::mutex> lock(cacheMutex);
             auto statusIt = templateDataCacheStatus.find(cacheKey);
-            if (statusIt != templateDataCacheStatus.end()) {
-                if (statusIt->second == CacheLoadStatus::LOADING) {
-                    // 已经在加载中
-                    return;
-                } else if (statusIt->second == CacheLoadStatus::LOADED && !isCacheEntryExpired(cacheKey)) {
-                    // 已加载且未过期
-                    return;
-                }
+            if (statusIt != templateDataCacheStatus.end() && 
+                statusIt->second == CacheLoadStatus::LOADING) {
+                std::cerr << "Template is already loading..." << std::endl;
+                // 已经在加载中
+                return;
             }
         }
         
@@ -233,6 +233,12 @@ namespace filemanager
                         
                         // 缓存新数据
                         time_t currentTime = std::time(nullptr);
+                        // 如果已有旧缓存状态，更新时间戳
+                        auto statusIt = templateDataCacheStatus.find(cacheKey);
+                        if (statusIt != templateDataCacheStatus.end()) {
+                            statusIt->second = CacheLoadStatus::LOADED;
+                        }
+                        
                         templateDataCache[cacheKey] = std::make_unique<CacheEntry>(data, currentTime);
                     }
                     
@@ -255,14 +261,18 @@ namespace filemanager
                         std::cerr << "preloadTemplateData: Exception when adding template update task: " << e.what() << std::endl;
                         // 清理已分配的内存
                         cJSON_Delete(data);
-                        updateTemplateTask.taskData = nullptr; // 防止后续访问已删除的内存
+                        if (updateTemplateTask.taskData) {
+                            cJSON_Delete(static_cast<cJSON*>(updateTemplateTask.taskData));
+                        }
                         finishLoading(cacheKey, false);
                         loadingSuccess = false;
                     } catch (...) {
                         std::cerr << "preloadTemplateData: Unknown exception when adding template update task" << std::endl;
                         // 清理已分配的内存
                         cJSON_Delete(data);
-                        updateTemplateTask.taskData = nullptr; // 防止后续访问已删除的内存
+                        if (updateTemplateTask.taskData) {
+                            cJSON_Delete(static_cast<cJSON*>(updateTemplateTask.taskData));
+                        }
                         finishLoading(cacheKey, false);
                         loadingSuccess = false;
                     }
@@ -395,20 +405,35 @@ namespace filemanager
                             std::string cacheKey = buildCacheKey(g_defaultFilePath, g_wordsSheetName);
                             
                             // 检查缓存中的时间戳
+                            bool needUpdate = false;
                             {
                                 std::lock_guard<std::mutex> lock(cacheMutex);
                                 auto it = templateDataCache.find(cacheKey);
-                                if (it != templateDataCache.end() && it->second->timestamp < lastModified) {
-                                    // 文件已修改，需要更新缓存
-                                    std::cout << "Template file changed, updating cache: " << g_defaultFilePathStr << std::endl;
-                                    // 通过作用域结束自动解锁
+                                if (it != templateDataCache.end()) {
+                                    std::cout << "File modification time: " << lastModified 
+                                              << ", Cache timestamp: " << it->second->timestamp << std::endl;
+                                    if (it->second->timestamp < lastModified) {
+                                        // 文件已修改，需要更新缓存
+                                        std::cout << "Template file changed, updating cache: " << g_defaultFilePathStr << std::endl;
+                                        needUpdate = true;
+                                        // 更新缓存中的时间戳，避免重复触发更新
+                                        it->second->timestamp = lastModified;
+                                    } else {
+                                        std::cout << "Template file not changed, no update needed" << std::endl;
+                                    }
                                 } else {
-                                    // 不需要更新，直接继续循环
-                                    continue;
+                                    std::cout << "No cache entry found for template file, triggering initial load" << std::endl;
+                                    needUpdate = true;
                                 }
                             }
-                            // 锁已自动释放，可以安全调用preloadTemplateData
-                            preloadTemplateData(g_defaultFilePath, g_wordsSheetName);
+                                                    
+                            // 如果需要更新，则重新加载模板数据
+                            if (needUpdate) {
+                                std::cout << "Triggering preloadTemplateData due to file change or initial load" << std::endl;
+                                preloadTemplateData(g_defaultFilePath, g_wordsSheetName);
+                            }
+                        } else {
+                            std::cerr << "Template file no longer exists: " << g_defaultFilePathStr << std::endl;
                         }
                     }
                     catch (const std::exception &e) {
@@ -460,16 +485,15 @@ namespace filemanager
         logger_log_info("Starting update of all files with template data");
         
         try {
-            // 获取WordsSheet名称
-            const char* wordsSheetName = json_config_get_string("WordsSheet");
-            if (!wordsSheetName) {
-                wordsSheetName = "WordsSheet"; // 默认值
-            }
-            rtl::OUString wordsSheetOUString = rtl::OUString::createFromAscii(wordsSheetName);
+            rtl::OUString defaultFilePath, wordsSheetName;
+            getDefaultData(defaultFilePath, wordsSheetName);
 
             // 遍历所有文件状态并更新就绪状态的文件
             std::unordered_map<std::string, FileInfo> fileStatusMap = FileQueueManager::getInstance().getFileStatusMapCopy();
 
+            int updatedFiles = 0;
+            int failedFiles = 0;
+            
             for (const auto& fileEntry : fileStatusMap) {
                 const std::string& filename = fileEntry.first;
                 const FileInfo& fileInfo = fileEntry.second;
@@ -480,27 +504,42 @@ namespace filemanager
                     
                     try {
                         // 更新文件中的WordsSheet
-                        rtl::OUString fileNameOUString = rtl::OUString::createFromAscii(filename.c_str());
-                        cJSON* result = batchUpdateSpreadsheetContent(fileNameOUString, wordsSheetOUString, templateData);
+                        rtl::OUString fileNameOUString = convertStringToOUString(filename.c_str());
+                        rtl::OUString absoluteFilePath;
+                        getAbsolutePath(fileNameOUString, absoluteFilePath);
+                        if(!cJSON_IsObject(templateData))
+                        {
+                            logger_log_error("templateData is not an object: %s", cJSON_PrintUnformatted(const_cast<cJSON*>(templateData)));
+                            continue;
+                        }
+                        cJSON* result = batchUpdateSpreadsheetContent(absoluteFilePath, wordsSheetName, templateData);
                         
                         if (!result) {
                             logger_log_warn("Failed to update WordsSheet for file: %s", filename.c_str());
+                            failedFiles++;
                         } else {
                             cJSON_Delete(result); // 清理返回的结果对象
+                            updatedFiles++;
                         }
                     } catch (const uno::Exception& e) {
                         logger_log_error("UNO Exception updating WordsSheet for file %s: %s", 
                                   filename.c_str(), 
                                   rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                        failedFiles++;
                     } catch (const std::exception& e) {
                         logger_log_error("Exception updating WordsSheet for file %s: %s", 
                                   filename.c_str(), 
                                   e.what());
+                        failedFiles++;
                     } catch (...) {
                         logger_log_error("Unknown exception updating WordsSheet for file: %s", filename.c_str());
+                        failedFiles++;
                     }
                 }
             }
+            
+            logger_log_info("Completed update of all files with template data. Updated: %d, Failed: %d", 
+                          updatedFiles, failedFiles);
         } catch (const std::exception& e) {
             logger_log_error("Exception in updateAllFilesWithTemplateData: %s", e.what());
         } catch (...) {

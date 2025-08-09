@@ -141,7 +141,7 @@ namespace filemanager
                             sheetnameItem = cJSON_GetObjectItem(item, "sheetName");
                         if (!updatecellsItem)
                             updatecellsItem = cJSON_GetObjectItem(item, "updateCells");
-                        if (!sheetnameItem || !updatecellsItem || !cJSON_IsString(sheetnameItem) || !cJSON_IsArray(updatecellsItem))
+                        if (!sheetnameItem || !updatecellsItem || !cJSON_IsString(sheetnameItem) || !cJSON_IsObject(updatecellsItem))
                         {
                             logger_log_error("Error: Missing sheetname or updatecells in batch data");
                             hasError = true;
@@ -488,6 +488,7 @@ namespace filemanager
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is()) {
+                logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                 return -1;
             }
 

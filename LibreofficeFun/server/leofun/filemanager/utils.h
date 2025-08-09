@@ -9,6 +9,7 @@ namespace filemanager
     // 内部辅助函数声明
     std::string convertToAbsolutePath(const std::string &path);
     rtl::OUString convertStringToOUString(const char *str);
+    std::string convertOUStringToString(const rtl::OUString &oustr);
     void make_dirs(const std::string &path);
     
     // 自动检测文本内容的语言

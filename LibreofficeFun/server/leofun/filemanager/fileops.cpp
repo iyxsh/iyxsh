@@ -107,7 +107,6 @@ namespace filemanager
         filemanager::FileQueueManager::getInstance().addFileTask(task);
 
         // 构造返回结果
-        cJSON *resultItem = cJSON_CreateObject();
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", filename);
         cJSON_AddStringToObject(results, "filestatus", "processing");
@@ -160,10 +159,10 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(createTask);
-        cJSON_Delete(jsonRoot);
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", createTask.filename.c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        cJSON_Delete(jsonRoot);
     }
 
     void editfile(cJSON *results, const char *body)
@@ -211,10 +210,10 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(deleteTask);
-        cJSON_Delete(jsonRoot);
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", deleteTask.filename.c_str());
         cJSON_AddStringToObject(results, "filestatus", "deleted");
+        cJSON_Delete(jsonRoot);
     }
 
     void addworksheet(cJSON *results, const char *body)
@@ -263,11 +262,11 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(addSheetTask);
-        cJSON_Delete(jsonRoot);
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", addSheetTask.filename.c_str());
         cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        cJSON_Delete(jsonRoot);
     }
 
     void removeworksheet(cJSON *results, const char *body)
@@ -306,7 +305,7 @@ namespace filemanager
         }
 
         removeSheetTask.filename = std::string(filenameItem->valuestring);
-
+        std::string sheetName = std::string(sheetnameItem->valuestring);
         // 正确管理cJSON内存
         if (removeSheetTask.taskData)
         {
@@ -316,11 +315,11 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(removeSheetTask);
-        cJSON_Delete(jsonRoot);
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeSheetTask.filename.c_str());
-        cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
+        cJSON_AddStringToObject(results, "sheetname", sheetName.c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        cJSON_Delete(jsonRoot);
     }
 
 } // namespace filemanager
