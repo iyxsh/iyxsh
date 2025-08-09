@@ -138,10 +138,11 @@ namespace filemanager
         }
 
         cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
-        if (!filenameItem)
+        cJSON *updatedataItem = cJSON_GetObjectItem(jsonRoot, "updatedata");
+        if (!filenameItem || !updatedataItem)
         {
-            logger_log_error("error Missing filename or sheetname in batch data");
-            cJSON_AddStringToObject(results, "error", "Missing filename or sheetname in update data");
+            logger_log_error("error Missing filename or updatedata in updatefile data");
+            cJSON_AddStringToObject(results, "error", "Missing filename or updatedata in updatefile data");
 
             // 使用智能指针后需要正确清理
             cJSON_Delete(jsonRoot);
@@ -155,17 +156,13 @@ namespace filemanager
         {
             cJSON_Delete(createTask.taskData);
         }
-        createTask.taskData = cJSON_Parse(body);
-
-        // 添加文件状态
-        filemanager::FileQueueManager::getInstance().addFileStatus(
-            createTask.filename,
-            filemanager::FILE_STATUS_PROCESSING);
+        createTask.taskData = cJSON_Duplicate(jsonRoot, cJSON_True);
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(createTask);
         cJSON_Delete(jsonRoot);
         cJSON_AddStringToObject(results, "result", "success");
+        cJSON_AddStringToObject(results, "filename", createTask.filename.c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
     }
 

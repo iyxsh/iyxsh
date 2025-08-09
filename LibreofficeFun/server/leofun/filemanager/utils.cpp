@@ -4,6 +4,8 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "../config/json_config.h"
+#include "../logger/logger.h"
 
 namespace filemanager
 {
@@ -80,7 +82,7 @@ namespace filemanager
         } while (pos != std::string::npos);
 #endif
     }
-    
+
     // 自动检测文本内容的语言
     std::string detectLanguage(const rtl::OUString &text)
     {
@@ -166,7 +168,7 @@ namespace filemanager
             return "other"; // 其他混合或无法识别的语言
         }
     }
-    
+
     void parseCellAddress(const rtl::OUString &cellAddress, sal_Int32 &col, sal_Int32 &row)
     {
         col = 0;
@@ -183,5 +185,49 @@ namespace filemanager
         // 解析行
         rtl::OUString rowStr = cellAddress.copy(i);
         row = rowStr.toInt32() - 1; // 转换为0基索引
+    }
+
+    void getAbsolutePath(const rtl::OUString &fileName, rtl::OUString &absoluteFilePath)
+    {
+        // 从配置文件中获取数据路径和默认文件名
+        const char *datapath = json_config_get_string("datapath");
+        if (!datapath)
+            datapath = "../data"; // 默认数据路径
+                                  // 构建默认文件的完整路径
+        std::string FilePathStr = std::string(datapath) + "/" + rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr();
+
+        // 处理相对路径，转换为绝对路径
+        std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
+
+        rtl::OString absoluteFilePathOStr = rtl::OString(absoluteFilePathStr.c_str());
+        absoluteFilePath = rtl::OStringToOUString(absoluteFilePathOStr, RTL_TEXTENCODING_UTF8);
+        logger_log_info("absoluteFilePath: %s", rtl::OUStringToOString(absoluteFilePath, RTL_TEXTENCODING_UTF8).getStr());
+    }
+    void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &wordsSheetName)
+    {
+        // 从配置文件中获取数据路径和默认文件名
+        const char *datapath = json_config_get_string("datapath");
+        const char *defaultname = json_config_get_string("defaultname");
+        const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
+
+        if (!datapath)
+            datapath = "../data"; // 默认数据路径
+        if (!defaultname)
+            defaultname = "default.xlsx"; // 默认文件名
+
+        // 默认工作表名
+        const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
+
+        // 构建默认文件的完整路径
+        std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
+
+        // 处理相对路径，转换为绝对路径
+        std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
+
+        rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
+        defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
+        wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+        logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
+        logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
     }
 }

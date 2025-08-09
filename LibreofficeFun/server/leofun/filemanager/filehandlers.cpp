@@ -13,41 +13,41 @@
 
 namespace filemanager
 {
-    int createfile(std::string& filename)
+    int createfile(std::string &filename)
     {
         // 实现创建文件的函数
         logger_log_info("Creating file: %s", filename.c_str());
-        
+
         // 从配置中获取数据路径
         const char *datapath = json_config_get_string("datapath");
         if (!datapath)
         {
             datapath = "../data"; // 默认数据路径
         }
-        
+
         // 从配置中获取默认文件名
         const char *defaultname = json_config_get_string("defaultname");
         if (!defaultname)
         {
             defaultname = "default.xlsx"; // 默认文件名
         }
-        
+
         // 构造完整文件路径
         std::string filePathStr = std::string(datapath) + "/" + filename;
         logger_log_info("Full file path: %s", filePathStr.c_str());
-        
+
         // 构造默认模板文件路径
         std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
         logger_log_info("Default template file path: %s", defaultFilePathStr.c_str());
-        
+
         // 转换为绝对路径
         std::string absolutePath = convertToAbsolutePath(filePathStr);
         rtl::OUString filePath = convertStringToOUString(absolutePath.c_str());
-        
+
         // 转换默认模板文件为绝对路径
         std::string absoluteDefaultPath = convertToAbsolutePath(defaultFilePathStr);
         rtl::OUString defaultFilePath = convertStringToOUString(absoluteDefaultPath.c_str());
-        
+
         // 获取默认工作表名
         const char *defaultSheetName = json_config_get_string("WordsSheet");
         if (!defaultSheetName)
@@ -55,13 +55,13 @@ namespace filemanager
             defaultSheetName = "WordsSheet"; // 默认值
         }
         rtl::OUString sheetName = convertStringToOUString(defaultSheetName);
-        
+
         // 从默认模板文件获取缓存的表数据
-        cJSON* cachedSheetData = getCachedSheetData(defaultFilePath, sheetName);
-        
+        cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, sheetName);
+
         // 创建新电子表格文件，使用缓存的数据
         cJSON *result = createNewSpreadsheetFile(filePath, sheetName, cachedSheetData);
-        
+
         if (result)
         {
             cJSON_Delete(result);
@@ -80,104 +80,89 @@ namespace filemanager
     {
         // 实现更新文件的函数
         logger_log_info("Updating file with data");
-        
+
         if (!root)
         {
             logger_log_error("Error: Empty root data");
             return -1;
         }
-        
+
         // 使用LibreOffice连接管理器
         if (!LibreOfficeConnectionManager::initialize())
         {
             logger_log_error("Error: Failed to initialize LibreOffice connection");
             return -1;
         }
-        
+
         try
         {
-            // 支持批量：body为数组，或单对象
-            if (cJSON_IsArray(root))
+            // 支持批量：body为数组(单个文件多个工作表多个单元格,常用只更新一个单元格时只给一个对象即可)
+            if (cJSON_IsObject(root))
             {
-                // 对于批量更新，我们使用新的批量更新方法
-                // 提取第一个项目获取文件路径和工作表名
-                cJSON *firstItem = cJSON_GetArrayItem(root, 0);
-                if (!firstItem || !cJSON_IsObject(firstItem))
-                {
-                    logger_log_error("Error: Empty or invalid batch update data");
-                    return -1;
-                }
-
-                cJSON *filenameItem = cJSON_GetObjectItem(firstItem, "filename");
-                cJSON *sheetnameItem = cJSON_GetObjectItem(firstItem, "sheetname");
-
-                if (!filenameItem || !sheetnameItem || !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem))
-                {
-                    logger_log_error("Error: Missing filename or sheetname in batch data");
-                    return -1;
-                }
-                
-                // 使用UTF-8编码处理文件名和sheet名
-                rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
-                rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-                
-                // 执行批量更新
-                cJSON *result = batchUpdateSpreadsheetContent(filePath, sheetName, root);
-                if (result)
-                {
-                    cJSON_Delete(result);
-                    logger_log_info("Batch update completed successfully");
-                    return 0;
-                }
-                else
-                {
-                    logger_log_error("Error: Batch update failed");
-                    return -1;
-                }
-            }
-            else if (cJSON_IsObject(root))
-            {
-                // 单个更新
                 cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
-                cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
-                cJSON *celladdrItem = cJSON_GetObjectItem(root, "celladdr");
-                cJSON *valueItem = cJSON_GetObjectItem(root, "value");
-                cJSON *typeItem = cJSON_GetObjectItem(root, "type");
+                cJSON *updatedataItem = cJSON_GetObjectItem(root, "updatedata");
 
-                if (!filenameItem || !sheetnameItem || !celladdrItem || !valueItem ||
-                    !cJSON_IsString(filenameItem) || !cJSON_IsString(sheetnameItem) || 
-                    !cJSON_IsString(celladdrItem) || !cJSON_IsString(valueItem))
+                // 兼容大小写不敏感的字段名
+                if (!filenameItem)
+                    filenameItem = cJSON_GetObjectItem(root, "fileName");
+                if (!updatedataItem)
+                    updatedataItem = cJSON_GetObjectItem(root, "updateData");
+
+                if (!filenameItem || !updatedataItem || !cJSON_IsString(filenameItem) || !cJSON_IsArray(updatedataItem))
                 {
-                    logger_log_error("Error: Missing required fields in update data");
+                    logger_log_error("Error: Missing filename or updatedata in batch data");
                     return -1;
                 }
-
-                // 使用UTF-8编码处理文件名和sheet名
-                rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
-                rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-                rtl::OUString cellAddr = convertStringToOUString(celladdrItem->valuestring);
-                rtl::OUString value = convertStringToOUString(valueItem->valuestring);
-                rtl::OUString type = typeItem && cJSON_IsString(typeItem) ? 
-                                     convertStringToOUString(typeItem->valuestring) : 
-                                     rtl::OUString::createFromAscii("string");
-
-                // 执行更新
-                cJSON *result = updateSpreadsheetContent(filePath, sheetName, cellAddr, value, type);
-                if (result)
+                cJSON *item = nullptr;
+                bool hasError = false;
+                cJSON_ArrayForEach(item, updatedataItem)
                 {
-                    if(strcmp(result->valuestring, "success") == 0) {
-                        logger_log_info("Single update completed successfully");
-                        return 0;
-                    } else {
-                        logger_log_error("Error: Single update failed with error: %s", result->valuestring);
-                        return -1;
+                    if (cJSON_IsObject(item))
+                    {
+                        cJSON *sheetnameItem = cJSON_GetObjectItem(item, "sheetname");
+                        cJSON *updatecellsItem = cJSON_GetObjectItem(item, "updatecells");
+                        if (!sheetnameItem)
+                            sheetnameItem = cJSON_GetObjectItem(item, "sheetName");
+                        if (!updatecellsItem)
+                            updatecellsItem = cJSON_GetObjectItem(item, "updateCells");
+                        if (!sheetnameItem || !updatecellsItem || !cJSON_IsString(sheetnameItem) || !cJSON_IsArray(updatecellsItem))
+                        {
+                            logger_log_error("Error: Missing sheetname or updatecells in batch data");
+                            hasError = true;
+                            continue;
+                        }
+                        // 使用UTF-8编码处理文件名和sheet名
+                        rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+                        rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+                        rtl::OUString absoluteFilePath;
+                        getAbsolutePath(filePath,absoluteFilePath);
+                        // 执行批量更新多个单元格内容
+                        cJSON *result = batchUpdateSpreadsheetContent(absoluteFilePath, sheetName, updatecellsItem);
+                        if (!result)
+                        {
+                            logger_log_error("Error: Batch update failed for file: %s", filenameItem->valuestring);
+                            hasError = true;
+                        }
+                        else
+                        {
+                            cJSON_Delete(result);
+                            logger_log_info("Batch update completed successfully for file: %s", filenameItem->valuestring);
+                        }
+                    }
+                    else
+                    {
+                        logger_log_error("Error: Invalid data in batch update");
+                        hasError = true;
                     }
                 }
-                else
+
+                if (hasError)
                 {
-                    logger_log_error("Error: Single update failed");
                     return -1;
                 }
+
+                logger_log_info("All batch updates completed successfully");
+                return 0;
             }
             else
             {
@@ -243,7 +228,7 @@ namespace filemanager
     {
         // 实现查找工作表内容的函数
         logger_log_info("Finding content in sheet");
-        
+
         if (!body)
         {
             cJSON_AddStringToObject(results, "error", "Empty request body");
@@ -292,7 +277,7 @@ namespace filemanager
     {
         // 实现读取工作表内容的函数
         logger_log_info("Reading sheet contents");
-        
+
         if (!body)
         {
             cJSON_AddStringToObject(results, "error", "Empty request body");

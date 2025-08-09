@@ -16,6 +16,10 @@ namespace filemanager
     
     // 解析单元格地址
     void parseCellAddress(const rtl::OUString &cellAddress, sal_Int32 &col, sal_Int32 &row);
+    // 获取文件的绝对路径
+    void getAbsolutePath(const rtl::OUString &fileName, rtl::OUString &absoluteFilePath);
+    // 获取默认数据文件的路径
+    void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &wordsSheetName);
 } // namespace filemanager
 
 #endif // UTILS_H

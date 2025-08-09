@@ -45,22 +45,43 @@ namespace filemanager
     // 更新文件状态
     void FileQueueManager::updateFileStatus(const std::string &filename, FileStatus status, const std::string &errorMsg)
     {
-        std::lock_guard<std::mutex> lock(statusMutex);
-        auto it = fileStatusMap.find(filename);
-        if (it != fileStatusMap.end())
-        {
-            it->second.status = status;
-            it->second.lastModified = std::time(nullptr);
-            if (!errorMsg.empty())
+        try {
+            std::lock_guard<std::mutex> lock(statusMutex);
+            auto it = fileStatusMap.find(filename);
+            if (it != fileStatusMap.end())
             {
-                it->second.errorMessage = errorMsg;
+                it->second.status = status;
+                it->second.lastModified = std::time(nullptr);
+                if (!errorMsg.empty())
+                {
+                    it->second.errorMessage = errorMsg;
+                }
+                logger_log_info("Updated file status: %s - %d", filename.c_str(), status);
             }
-            logger_log_info("Updated file status: %s - %d", filename.c_str(), status);
+            else
+            {
+                // 如果文件不存在，直接添加新条目（避免调用addFileStatus导致死锁）
+                FileInfo info;
+                info.filename = filename;
+                info.status = status;
+                info.lastModified = std::time(nullptr);
+                info.errorMessage = errorMsg;
+                fileStatusMap[filename] = info;
+                logger_log_info("Added file status: %s - %d", filename.c_str(), status);
+            }
+            
+            // 通知等待状态变化的线程
+            statusCondition.notify_all();
         }
-        else
-        {
-            // 如果文件不存在，添加新条目
-            addFileStatus(filename, status, errorMsg);
+        catch (const std::system_error& e) {
+            logger_log_error("System error in updateFileStatus for %s: %s", filename.c_str(), e.what());
+            logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
+        }
+        catch (const std::exception& e) {
+            logger_log_error("Exception in updateFileStatus for %s: %s", filename.c_str(), e.what());
+        }
+        catch (...) {
+            logger_log_error("Unknown exception in updateFileStatus for %s", filename.c_str());
         }
     }
 
@@ -317,33 +338,70 @@ namespace filemanager
     {
         logger_log_info("Processing update file task: %s", task.filename.c_str());
 
-        // 检查文件状态，只有在READY或CLOSED状态下才能执行更新
-        FileStatus currentStatus = getFileStatus(task.filename);
-        while (currentStatus != FILE_STATUS_READY && currentStatus != FILE_STATUS_CLOSED) {
-            logger_log_info("File %s is not ready for update (current status: %d), waiting...", 
-                           task.filename.c_str(), currentStatus);
+        try 
+        {
+            // 确保文件在状态映射表中存在，如果不存在则添加
+            // 这样可以避免在updateFileStatus中出现文件不存在的情况
+            {
+                std::lock_guard<std::mutex> lock(statusMutex);
+                auto it = fileStatusMap.find(task.filename);
+                if (it == fileStatusMap.end()) {
+                    FileInfo info;
+                    info.filename = task.filename;
+                    info.status = FILE_STATUS_CLOSED;  // 初始状态设为CLOSED
+                    info.lastModified = std::time(nullptr);
+                    info.errorMessage = "";
+                    fileStatusMap[task.filename] = info;
+                    logger_log_info("Added initial status for file: %s as CLOSED", task.filename.c_str());
+                }
+            }
             
-            // 等待一段时间再检查
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            currentStatus = getFileStatus(task.filename);
+            // 检查文件状态，只有在READY或CLOSED状态下才能执行更新
+            // 使用条件变量等待而不是轮询，避免死锁
+            logger_log_info("Waiting for file %s to be ready or closed for update", task.filename.c_str());
+            bool statusReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            
+            if (!statusReady) {
+                logger_log_error("File %s is not ready for update, timeout or error occurred", task.filename.c_str());
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
+                return;
+            }
+
+            // 更新文件状态为处理中
+            updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
+
+            // 使用智能指针管理内存，确保自动释放
+            std::unique_ptr<cJSON> taskDataPtr(task.taskData);
+
+            int res = fileupdate(taskDataPtr.get());
+            if (res == 0)
+            {
+                // 更新文件状态为就绪
+                updateFileStatus(task.filename, FILE_STATUS_READY);
+                logger_log_info("Successfully updated file: %s", task.filename.c_str());
+            }
+            else
+            {
+                // 更新文件状态为错误
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to update file");
+                logger_log_error("Failed to update file: %s", task.filename.c_str());
+            }
         }
-
-        // 更新文件状态为处理中
-        updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
-
-        // 使用智能指针管理内存，确保自动释放
-        std::unique_ptr<cJSON> taskDataPtr(task.taskData);
-
-        int res = fileupdate(taskDataPtr.get());
-        if (res == 0)
+        catch (const std::system_error& e)
         {
-            // 更新文件状态为就绪
-            updateFileStatus(task.filename, FILE_STATUS_READY);
+            logger_log_error("System error in processUpdateFileTask for %s: %s", task.filename.c_str(), e.what());
+            logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("System error: ") + e.what());
         }
-        else
+        catch (const std::exception &e)
         {
-            // 更新文件状态为错误
-            updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to update file");
+            logger_log_error("Exception in processUpdateFileTask for %s: %s", task.filename.c_str(), e.what());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in processUpdateFileTask for %s", task.filename.c_str());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
         logger_log_info("Finished processing update file task: %s", task.filename.c_str());
@@ -414,4 +472,82 @@ namespace filemanager
         logger_log_info("Finished processing update template task: %s", task.filename.c_str());
     }
 
+    // 等待文件状态变化
+    bool FileQueueManager::waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds)
+    {
+        try {
+            std::unique_lock<std::mutex> lock(statusMutex);
+            auto now = std::chrono::system_clock::now();
+            auto timeout = now + std::chrono::seconds(timeoutSeconds);
+            
+            // 检查当前状态是否已经符合要求
+            auto it = fileStatusMap.find(filename);
+            if (it != fileStatusMap.end()) {
+                FileStatus currentStatus = it->second.status;
+                if (currentStatus == targetStatus1 || currentStatus == targetStatus2) {
+                    logger_log_info("File %s already in target status %d", filename.c_str(), currentStatus);
+                    return true;
+                }
+            } else {
+                // 文件不存在于状态映射表中，对于更新操作，我们将其视为可以处理的状态
+                // 因为新文件或没有状态记录的文件可以被更新
+                logger_log_info("File %s not found in status map, treating as ready for processing", filename.c_str());
+                return true;
+            }
+            
+            // 等待状态变化或超时
+            while (true) {
+                // 等待条件变量或超时
+                auto cvStatus = statusCondition.wait_until(lock, timeout);
+                
+                // 检查是否超时
+                if (cvStatus == std::cv_status::timeout) {
+                    logger_log_error("Timeout waiting for file %s to reach status %d or %d", 
+                                    filename.c_str(), targetStatus1, targetStatus2);
+                    return false;
+                }
+                
+                // 检查文件状态是否符合要求
+                auto it = fileStatusMap.find(filename);
+                if (it != fileStatusMap.end()) {
+                    FileStatus currentStatus = it->second.status;
+                    if (currentStatus == targetStatus1 || currentStatus == targetStatus2) {
+                        logger_log_info("File %s reached target status %d", filename.c_str(), currentStatus);
+                        return true;
+                    }
+                    
+                    // 如果文件出错，也返回失败
+                    if (currentStatus == FILE_STATUS_ERROR) {
+                        logger_log_info("File %s is in error state, stop waiting for status change", filename.c_str());
+                        return false;
+                    }
+                } else {
+                    // 文件在等待过程中被删除，这种情况很少见，但我们需要处理
+                    logger_log_info("File %s no longer in status map during waiting", filename.c_str());
+                    return true;
+                }
+                
+                // 检查是否应该停止
+                if (shouldStop) {
+                    logger_log_info("Task processor stopping, stop waiting for file status");
+                    return false;
+                }
+            }
+        }
+        catch (const std::system_error& e) {
+            logger_log_error("System error in waitForFileStatus for %s: %s", filename.c_str(), e.what());
+            logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
+            return false;
+        }
+        catch (const std::exception& e) {
+            logger_log_error("Exception in waitForFileStatus for %s: %s", filename.c_str(), e.what());
+            return false;
+        }
+        catch (...) {
+            logger_log_error("Unknown exception in waitForFileStatus for %s", filename.c_str());
+            return false;
+        }
+        
+        return false;
+    }
 } // namespace filemanager

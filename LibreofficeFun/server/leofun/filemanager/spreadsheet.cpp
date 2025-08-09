@@ -571,43 +571,12 @@ namespace filemanager
 
             logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
             logger_log_info("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
-            // 从配置文件中获取数据路径和默认文件名
-            const char *datapath = json_config_get_string("datapath");
-            const char *defaultname = json_config_get_string("defaultname");
-            const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
-
-            if (!datapath)
-                datapath = "../data"; // 默认数据路径
-            if (!defaultname)
-                defaultname = "default.xlsx"; // 默认文件名
-
-            // 默认工作表名
-            const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
-
-            // 构建默认文件的完整路径
-            std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
-
-            // 处理相对路径，转换为绝对路径
-            std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
-
-            rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
-            rtl::OUString defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
-            rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
-            logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
-            logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
-
-            // 构建默认文件的完整路径
-            std::string FilePathStr = std::string(datapath) + "/" + rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
-
-            // 处理相对路径，转换为绝对路径
-            std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
-
-            rtl::OString absoluteFilePathOStr = rtl::OString(absoluteFilePathStr.c_str());
-            rtl::OUString curFilePath = rtl::OStringToOUString(absoluteFilePathOStr, RTL_TEXTENCODING_UTF8);
+            rtl::OUString curFilePath;
+            getAbsolutePath(filePath, curFilePath);
 
             // 构造文件URL
             rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + curFilePath.replaceAll("\\", "/");
-            logger_log_info("FilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_info("curFilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
             logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
@@ -647,6 +616,8 @@ namespace filemanager
                 closeDocument(xComp);
                 return cJSON_CreateString("Cannot get cell");
             }
+            rtl::OUString defaultFilePath, wordsSheetName;
+            getDefaultData(defaultFilePath, wordsSheetName);
             cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
             logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
             // 根据单元格类型设置值
@@ -778,8 +749,8 @@ namespace filemanager
                         if (celladdrItem && valueItem && cJSON_IsString(celladdrItem) && cJSON_IsString(valueItem))
                         {
                             rtl::OUString cellAddr = convertStringToOUString(celladdrItem->valuestring);
-                            rtl::OUString value = convertStringToOUString(valueItem->valuestring);
-                            rtl::OUString type = typeItem && cJSON_IsString(typeItem) ? convertStringToOUString(typeItem->valuestring) : rtl::OUString::createFromAscii("string");
+                            rtl::OUString newValue = convertStringToOUString(valueItem->valuestring);
+                            rtl::OUString celltype = typeItem && cJSON_IsString(typeItem) ? convertStringToOUString(typeItem->valuestring) : rtl::OUString::createFromAscii("string");
 
                             // 解析单元格地址
                             sal_Int32 col = 0, row = 0;
@@ -787,36 +758,39 @@ namespace filemanager
 
                             // 获取单元格
                             uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                            if (cell.is())
+                            if (!cell.is())
                             {
-                                // 根据单元格类型设置值
-                                if (type.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
-                                {
-                                    cell->setFormula(value);
-                                }
-                                else if (type.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("string")))
-                                {
-                                    uno::Reference<beans::XPropertySet> xCellProps(cell, uno::UNO_QUERY);
-                                    if (xCellProps.is())
-                                    {
-                                        xCellProps->setPropertyValue(rtl::OUString::createFromAscii("CharColor"), uno::makeAny(static_cast<sal_Int32>(0xFF0000)));
-                                    }
-                                    cell->setFormula(value);
-                                }
-                                else
-                                {
-                                    // 默认作为数值处理
-                                    double numValue = value.toDouble();
-                                    cell->setValue(numValue);
-                                }
+                                std::cerr << "updateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
+                                closeDocument(xComp);
+                                return cJSON_CreateString("Cannot get cell");
+                            }
+                            rtl::OUString defaultFilePath, wordsSheetName;
+                            getDefaultData(defaultFilePath, wordsSheetName);
+                            cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
+                            logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
+                            // 根据单元格类型设置值
+                            // if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
+                            // 直接默认设置为公式
+                            if (cachedSheetData)
+                            {
+                                rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                                logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                                cell->setFormula(tmp);
                             }
                             else
                             {
-                                std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
+                                std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                                closeDocument(xComp); // 确保在出错时关闭文档
+                                return nullptr;
                             }
                         }
                     }
                 }
+            }
+            else
+            {
+                logger_log_error("Error: Invalid data in batch update");
+                return cJSON_CreateString("Error: Invalid data in batch update");
             }
 
             // 保存文档

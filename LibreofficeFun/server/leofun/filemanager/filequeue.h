@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <thread>
 #include <memory>
+#include <chrono>
 #include "../cJSON/cJSON.h"
 
 namespace filemanager {
@@ -61,20 +62,20 @@ namespace filemanager {
         // 获取文件状态
         FileStatus getFileStatus(const std::string& filename);
         
-        // 获取文件信息
-        FileInfo getFileInfo(const std::string& filename);
-        
-        // 获取所有文件状态（已废弃，不推荐使用）
-        // const std::unordered_map<std::string, FileInfo>& getFileStatusMap() const;
-        
-        // 获取所有文件状态的副本
-        std::unordered_map<std::string, FileInfo> getFileStatusMapCopy() const;
-        
         // 添加文件任务
         void addFileTask(const FileTask& task);
         
         // 获取下一个任务
         bool getNextTask(FileTask& task);
+        
+        // 获取文件信息
+        FileInfo getFileInfo(const std::string& filename);
+        
+        // 获取所有文件状态
+        const std::unordered_map<std::string, FileInfo>& getFileStatusMap() const;
+        
+        // 获取所有文件状态的副本
+        std::unordered_map<std::string, FileInfo> getFileStatusMapCopy() const;
         
         // 启动任务处理线程
         void startTaskProcessor();
@@ -82,8 +83,10 @@ namespace filemanager {
         // 停止任务处理线程
         void stopTaskProcessor();
         
-        // 模板加载状态管理
-        bool isTemplateLoading() const;  // 修复：添加const限定符
+        // 检查模板是否正在加载
+        bool isTemplateLoading() const;
+        
+        // 设置模板加载状态
         void setTemplateLoading(bool loading);
 
     private:
@@ -111,6 +114,9 @@ namespace filemanager {
         
         // 处理更新模板任务
         void processUpdateTemplateTask(const FileTask& task);
+        
+        // 等待文件状态变化
+        bool waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds = 30);
 
         // 文件状态映射表
         std::unordered_map<std::string, FileInfo> fileStatusMap;
@@ -120,9 +126,10 @@ namespace filemanager {
         
         // 互斥锁
         mutable std::mutex statusMutex;
-        mutable std::mutex taskMutex;
+        std::mutex taskMutex;
         
         // 条件变量
+        mutable std::condition_variable statusCondition;
         std::condition_variable taskCondition;
         
         // 任务处理线程
