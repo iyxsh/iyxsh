@@ -419,7 +419,7 @@ namespace filemanager
                                         // 更新缓存中的时间戳，避免重复触发更新
                                         it->second->timestamp = lastModified;
                                     } else {
-                                        std::cout << "Template file not changed, no update needed" << std::endl;
+                                        //std::cout << "Template file not changed, no update needed" << std::endl;
                                     }
                                 } else {
                                     std::cout << "No cache entry found for template file, triggering initial load" << std::endl;
@@ -488,6 +488,13 @@ namespace filemanager
             rtl::OUString defaultFilePath, wordsSheetName;
             getDefaultData(defaultFilePath, wordsSheetName);
 
+            // 获取默认模板文件名
+            const char* defaultTemplateName = json_config_get_string("defaultname");
+            if (!defaultTemplateName) {
+                defaultTemplateName = "default.xlsx"; // 默认模板文件名
+            }
+            std::string defaultTemplateFile(defaultTemplateName);
+
             // 遍历所有文件状态并更新就绪状态的文件
             std::unordered_map<std::string, FileInfo> fileStatusMap = FileQueueManager::getInstance().getFileStatusMapCopy();
 
@@ -498,13 +505,13 @@ namespace filemanager
                 const std::string& filename = fileEntry.first;
                 const FileInfo& fileInfo = fileEntry.second;
 
-                // 只处理就绪状态的文件
-                if (fileInfo.status == FILE_STATUS_READY) {
+                // 只处理就绪状态的文件，并排除默认模板文件
+                if (fileInfo.status == FILE_STATUS_READY && filename != defaultTemplateFile) {
                     logger_log_info("Updating WordsSheet for file: %s", filename.c_str());
                     
                     try {
                         // 更新文件中的WordsSheet
-                        rtl::OUString fileNameOUString = convertStringToOUString(filename.c_str());
+                        rtl::OUString fileNameOUString = convertStringToOUString(ensureXlsxExtension(filename).c_str());
                         rtl::OUString absoluteFilePath;
                         getAbsolutePath(fileNameOUString, absoluteFilePath);
                         if(!cJSON_IsObject(templateData))

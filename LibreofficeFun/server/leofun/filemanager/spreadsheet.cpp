@@ -168,7 +168,7 @@ namespace filemanager
 #endif
             logger_log_info("saveDocument: URL path: %s", urlPath.c_str());
 
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(urlPath.c_str());
+            rtl::OUString url =rtl::OStringToOUString((std::string("file:///") + urlPath).c_str(), RTL_TEXTENCODING_UTF8);
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);

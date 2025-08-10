@@ -196,7 +196,7 @@ void deal_filelist_request(RequestBody requestbody, ResponseBody *responsebody)
     }
     
     cJSON *results = cJSON_CreateArray();
-    //filelist(results);
+    filemanager::filelist(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
 
@@ -293,5 +293,24 @@ void deal_removeworksheet_request(RequestBody requestbody, ResponseBody *respons
     cJSON *results = cJSON_CreateObject();
     printf("request removeworksheet body:%s\n", requestbody.body_start);
     filemanager::removeworksheet(results, requestbody.body_start);
+    send_response(responsebody, results, STATUS_SUCCESS);
+}
+
+/**
+ * 处理重命名文件请求
+ */
+void deal_renamefile_request(RequestBody requestbody, ResponseBody *responsebody)
+{
+    if (!validate_request(requestbody, responsebody, "POST", "/api/renamefile")) {
+        return;
+    }
+
+    if (handle_empty_body(requestbody, responsebody)) {
+        return;
+    }
+
+    cJSON *results = cJSON_CreateObject();
+    printf("request renamefile body:%s\n", requestbody.body_start);
+    filemanager::renamefile(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }

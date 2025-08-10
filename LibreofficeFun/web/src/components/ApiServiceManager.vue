@@ -6,7 +6,7 @@
 
 <script setup>
 import { ref, reactive } from 'vue';
-import apiClient from '../utils/api.js';
+import { advancedCardApi } from '../utils/api.js';
 
 // 定义服务状态
 const serviceState = reactive({
@@ -46,13 +46,45 @@ const processQueue = async () => {
   }
 };
 
+// 创建新文件
+const newFile = async (fileData) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+  
+  try {
+    await advancedCardApi.newFile(fileData);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
+// 删除文件
+const deleteFile = async (filename) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+  
+  try {
+    await advancedCardApi.deleteFile(filename);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
 // 获取卡片组数据
 const getCardGroups = async () => {
   serviceState.isLoading = true;
   serviceState.error = null;
   
   try {
-    const response = await apiClient.get('/card-groups');
+    const response = await advancedCardApi.getCardGroups();
     serviceState.lastSync = new Date();
     return response;
   } catch (error) {
@@ -80,7 +112,7 @@ const saveCardGroups = async (cardGroups) => {
       
       // 创建批量保存任务
       const batchTasks = batches.map((batch, index) => {
-        return () => apiClient.post('/card-groups/batch', {
+        return () => advancedCardApi.saveCardGroupsBatch({
           batch: batch,
           batchIndex: index,
           totalBatches: batches.length
@@ -90,7 +122,7 @@ const saveCardGroups = async (cardGroups) => {
       // 并行执行任务
       await Promise.all(batchTasks.map(task => enqueueTask(task)));
     } else {
-      await apiClient.post('/card-groups', cardGroups);
+      await advancedCardApi.saveCardGroups(cardGroups);
     }
     
     serviceState.lastSync = new Date();
@@ -108,7 +140,7 @@ const getStyleConfig = async () => {
   serviceState.error = null;
   
   try {
-    const response = await apiClient.get('/style-config');
+    const response = await advancedCardApi.getStyleConfig();
     serviceState.lastSync = new Date();
     return response;
   } catch (error) {
@@ -125,7 +157,7 @@ const saveStyleConfig = async (styleConfig) => {
   serviceState.error = null;
   
   try {
-    await apiClient.post('/style-config', styleConfig);
+    await advancedCardApi.saveStyleConfig(styleConfig);
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -160,11 +192,11 @@ const batchOperation = async (operations) => {
         const batchSize = 20;
         for (let i = 0; i < group.length; i += batchSize) {
           const batch = group.slice(i, i + batchSize);
-          await apiClient.post(`/batch/${type}`, batch);
+          await advancedCardApi.batchOperation([{ type, data: batch }]);
         }
       } else {
         // 小批量直接处理
-        await apiClient.post(`/batch/${type}`, group);
+        await advancedCardApi.batchOperation([{ type, data: group }]);
       }
     });
     
@@ -177,6 +209,23 @@ const batchOperation = async (operations) => {
     throw error;
   } finally {
     serviceState.isSaving = false;
+  }
+};
+
+// 获取文件列表
+const getFileList = async () => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+  
+  try {
+    const response = await advancedCardApi.getFileList();
+    serviceState.lastSync = new Date();
+    return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
   }
 };
 
@@ -206,6 +255,9 @@ defineExpose({
   saveStyleConfig,
   batchOperation,
   syncData,
+  getFileList,
+  newFile, // 添加newFile方法
+  deleteFile, // 添加deleteFile方法
   
   // 状态
   serviceState,

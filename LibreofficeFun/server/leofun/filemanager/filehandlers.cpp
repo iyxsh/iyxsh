@@ -13,12 +13,13 @@
 
 namespace filemanager
 {
-    int createfile(std::string &filename)
+    int createfile(std::string filename)
     {
         // 实现创建文件的函数
         logger_log_info("Creating file: %s", filename.c_str());
 
-        try {
+        try
+        {
             // 从配置中获取数据路径
             const char *datapath = json_config_get_string("datapath");
             if (!datapath)
@@ -59,7 +60,8 @@ namespace filemanager
 
             // 从默认模板文件获取缓存的表数据
             cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, sheetName);
-            if (!cachedSheetData) {
+            if (!cachedSheetData)
+            {
                 logger_log_warn("No cached sheet data found for template, creating empty file");
             }
 
@@ -88,7 +90,7 @@ namespace filemanager
             logger_log_error("Unknown exception in createfile for %s", filename.c_str());
             return -1;
         }
-        
+
         return 0;
     }
 
@@ -148,10 +150,10 @@ namespace filemanager
                             continue;
                         }
                         // 使用UTF-8编码处理文件名和sheet名
-                        rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+                        rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
                         rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
                         rtl::OUString absoluteFilePath;
-                        getAbsolutePath(filePath,absoluteFilePath);
+                        getAbsolutePath(filePath, absoluteFilePath);
                         // 执行批量更新多个单元格内容
                         cJSON *result = batchUpdateSpreadsheetContent(absoluteFilePath, sheetName, updatecellsItem);
                         if (!result)
@@ -188,8 +190,8 @@ namespace filemanager
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO exception in fileupdate: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO exception in fileupdate: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return -1;
         }
         catch (const std::exception &e)
@@ -215,7 +217,7 @@ namespace filemanager
             return -1;
         }
 
-        try 
+        try
         {
             cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
             cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
@@ -228,7 +230,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
 
             cJSON *result = readSheetData(filePath, sheetName);
@@ -246,8 +248,8 @@ namespace filemanager
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO exception in readfile: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO exception in readfile: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return -1;
         }
         catch (const std::exception &e)
@@ -260,7 +262,7 @@ namespace filemanager
             logger_log_error("Unknown exception in readfile");
             return -1;
         }
-        
+
         return 0;
     }
 
@@ -298,7 +300,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
             rtl::OUString searchValue = convertStringToOUString(searchValueItem->valuestring);
 
@@ -314,8 +316,8 @@ namespace filemanager
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO exception in findInSheet: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO exception in findInSheet: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             cJSON_AddStringToObject(results, "error", "UNO exception occurred during search");
         }
         catch (const std::exception &e)
@@ -364,7 +366,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
 
             cJSON *contentMap = readSheetData(filePath, sheetName);
@@ -379,8 +381,8 @@ namespace filemanager
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO exception in readSheetContents: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO exception in readSheetContents: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             cJSON_AddStringToObject(results, "error", "UNO exception occurred while reading contents");
         }
         catch (const std::exception &e)
@@ -401,7 +403,8 @@ namespace filemanager
     {
         logger_log_info("Adding worksheet");
 
-        if (!taskData) {
+        if (!taskData)
+        {
             logger_log_error("Add worksheet task has no data");
             return -1;
         }
@@ -409,16 +412,19 @@ namespace filemanager
         cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
         cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
 
-        if (!filenameItem || !sheetnameItem) {
+        if (!filenameItem || !sheetnameItem)
+        {
             logger_log_error("Missing filename or sheetname in add worksheet data");
             return -1;
         }
-        
-        try {
-            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+
+        try
+        {
+            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
-            if (!xDoc.is()) {
+            if (!xDoc.is())
+            {
                 return -1;
             }
 
@@ -428,9 +434,10 @@ namespace filemanager
 
             // 检查工作表是否已存在
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-            if (nameAccess->hasByName(sheetName)) {
-                logger_log_info("Worksheet %s already exists in file: %s", 
-                               sheetnameItem->valuestring, filenameItem->valuestring);
+            if (nameAccess->hasByName(sheetName))
+            {
+                logger_log_info("Worksheet %s already exists in file: %s",
+                                sheetnameItem->valuestring, filenameItem->valuestring);
                 closeDocument(xComp);
                 return 0; // 工作表已存在，返回成功
             }
@@ -439,7 +446,7 @@ namespace filemanager
             sheets->insertNewByName(sheetName, 0);
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString filenameOstr = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
             getAbsolutePath(filenameOstr, absoluteFilePath);
             saveDocument(xDoc, absoluteFilePath);
@@ -447,20 +454,23 @@ namespace filemanager
             // 关闭文档
             closeDocument(xComp);
 
-            logger_log_info("Successfully added worksheet %s to file: %s", 
-                           sheetnameItem->valuestring, filenameItem->valuestring);
+            logger_log_info("Successfully added worksheet %s to file: %s",
+                            ensureXlsxExtension(std::string(sheetnameItem->valuestring)).c_str(), ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
-        catch (const uno::Exception &e) {
-            logger_log_error("UNO exception in worksheetAdd: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO exception in worksheetAdd: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return -1;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             logger_log_error("Exception in worksheetAdd: %s", e.what());
             return -1;
         }
-        catch (...) {
+        catch (...)
+        {
             logger_log_error("Unknown exception in worksheetAdd");
             return -1;
         }
@@ -470,7 +480,8 @@ namespace filemanager
     {
         logger_log_info("Removing worksheet");
 
-        if (!taskData) {
+        if (!taskData)
+        {
             logger_log_error("Remove worksheet task has no data");
             return -1;
         }
@@ -478,16 +489,19 @@ namespace filemanager
         cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
         cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
 
-        if (!filenameItem || !sheetnameItem) {
+        if (!filenameItem || !sheetnameItem)
+        {
             logger_log_error("Missing filename or sheetname in remove worksheet data");
             return -1;
         }
 
-        try {
-            rtl::OUString filePath = convertStringToOUString(filenameItem->valuestring);
+        try
+        {
+            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
-            if (!xDoc.is()) {
+            if (!xDoc.is())
+            {
                 logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                 return -1;
             }
@@ -498,9 +512,10 @@ namespace filemanager
 
             // 检查工作表是否存在
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-            if (!nameAccess->hasByName(sheetName)) {
-                logger_log_info("Worksheet %s does not exist in file: %s", 
-                               sheetnameItem->valuestring, filenameItem->valuestring);
+            if (!nameAccess->hasByName(sheetName))
+            {
+                logger_log_info("Worksheet %s does not exist in file: %s",
+                                sheetnameItem->valuestring, filenameItem->valuestring);
                 closeDocument(xComp);
                 return -1; // 工作表不存在
             }
@@ -509,7 +524,7 @@ namespace filemanager
             sheets->removeByName(sheetName);
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(filenameItem->valuestring);
+            rtl::OUString filenameOstr = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
             getAbsolutePath(filenameOstr, absoluteFilePath);
             saveDocument(xDoc, absoluteFilePath);
@@ -517,20 +532,23 @@ namespace filemanager
             // 关闭文档
             closeDocument(xComp);
 
-            logger_log_info("Successfully removed worksheet %s from file: %s", 
-                           sheetnameItem->valuestring, filenameItem->valuestring);
+            logger_log_info("Successfully removed worksheet %s from file: %s",
+                            sheetnameItem->valuestring, filenameItem->valuestring);
             return 0;
         }
-        catch (const uno::Exception &e) {
-            logger_log_error("UNO exception in worksheetRemove: %s", 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO exception in worksheetRemove: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return -1;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             logger_log_error("Exception in worksheetRemove: %s", e.what());
             return -1;
         }
-        catch (...) {
+        catch (...)
+        {
             logger_log_error("Unknown exception in worksheetRemove");
             return -1;
         }

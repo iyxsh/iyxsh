@@ -131,6 +131,7 @@ import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
 import { getLocale, setLocale, t as i18nTrans } from '../utils/i18n'
 import { onBeforeMount } from 'vue'
+import { useRoute } from 'vue-router'
 import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
@@ -144,6 +145,49 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
+
+// 获取路由信息
+const route = useRoute()
+
+// 默认页面尺寸
+const defaultPageSize = {
+  width: 210,
+  height: 297,
+  unit: 'mm'
+}
+
+// 初始化页面数据
+const initializePages = () => {
+  // 检查路由中是否有文件数据
+  if (route.query?.fileData) {
+    try {
+      const fileData = JSON.parse(route.query.fileData)
+      // 使用传入的文件数据初始化页面
+      pages.value = Array.isArray(fileData) ? fileData : [fileData]
+      currentPageIdx.value = Math.min(currentPageIdx.value, pages.value.length - 1)
+
+      console.log('[PageManager] 从文件管理器加载数据:', fileData)
+      
+      // 检查是否有文件名
+      if (route.query.fileName) {
+        console.log('[PageManager] 加载文件:', route.query.fileName)
+      }
+    } catch (e) {
+      console.error('[PageManager] 解析文件数据失败:', e)
+      // 如果解析失败，使用默认初始化
+      if (pages.value.length === 0) {
+        pages.value = [{ forms: [], pageSize: defaultPageSize }]
+        currentPageIdx.value = 0
+      }
+    }
+  } else {
+    // 默认初始化
+    if (pages.value.length === 0) {
+      pages.value = [{ forms: [], pageSize: defaultPageSize }]
+      currentPageIdx.value = 0
+    }
+  }
+}
 
 onBeforeMount(() => {
   try {

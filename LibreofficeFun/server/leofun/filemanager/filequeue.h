@@ -30,7 +30,8 @@ namespace filemanager {
         TASK_DELETE_FILE,         // 删除文件任务
         TASK_UPDATE_TEMPLATE,     // 更新模板任务
         TASK_ADD_WORKSHEET,       // 新增工作表任务
-        TASK_REMOVE_WORKSHEET     // 删除工作表任务
+        TASK_REMOVE_WORKSHEET,    // 删除工作表任务
+        TASK_RENAME_FILE          // 重命名文件任务
     };
 
     // 文件状态信息结构
@@ -57,6 +58,9 @@ namespace filemanager {
         
         // 添加文件状态
         void addFileStatus(const std::string& filename, FileStatus status, const std::string& errorMsg = "");
+        
+        // 添加文件状态（完整信息）
+        void addFileStatus(const FileInfo& fileInfo);
         
         // 更新文件状态
         void updateFileStatus(const std::string& filename, FileStatus status, const std::string& errorMsg = "");
@@ -123,6 +127,9 @@ namespace filemanager {
         // 处理删除工作表任务
         void processRemoveWorksheetTask(const FileTask& task);
         
+        // 处理重命名文件任务
+        void processRenameFileTask(const FileTask& task);
+
         // 等待文件状态变化
         bool waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds = 30);
 

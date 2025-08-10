@@ -67,5 +67,5 @@ export interface Form {
   elementStyles: ElementStyles;
   position: FormPosition;
   size: FormSize;
-  updatedAt?: number;
+  mediaPreviewUrl: string;
 }

@@ -219,7 +219,7 @@ const ensureElementStyleIntegrity = (style) => {
 
 // 表单状态
 /** @type {Form} */
-const formState = reactive({
+const formState = reactive<Form>({
   id: props.form?.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
   title: props.isEdit ? (props.form?.title || '') : '',
   value: props.isEdit ? (props.form?.value || '') : '',

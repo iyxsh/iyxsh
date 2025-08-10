@@ -51,4 +51,5 @@ void deal_opendata_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_deletefile_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_addworksheet_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_removeworksheet_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_renamefile_request(RequestBody requestbody, ResponseBody *responsebody);
 #endif

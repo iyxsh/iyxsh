@@ -2,23 +2,23 @@ import axios from 'axios';
 
 // 创建高级axios实例，支持更多功能
 const advancedApiClient = axios.create({
-  baseURL: process.env.VUE_APP_API_BASE_URL || 'http://localhost:3000/api',
+  baseURL: process.env.VUE_APP_API_BASE_URL || 'https://192.168.0.3:8443/api',
   timeout: 30000, // 增加超时时间以支持大数据量
   headers: {
     'Content-Type': 'application/json'
-  },
-  // 支持请求取消
-  cancelToken: null
+  }
 });
 
 // 请求拦截器
 advancedApiClient.interceptors.request.use(
   config => {
-    // 添加时间戳以避免缓存
-    config.params = {
-      ...config.params,
-      _t: Date.now()
-    };
+    // 添加时间戳以避免缓存，但不在POST请求中添加以避免触发CORS预检请求
+    if (config.method !== 'get' && config.method !== 'post') {
+      config.params = {
+        ...config.params,
+        _t: Date.now()
+      };
+    }
     
     // 可以在这里添加认证token等
     return config;
@@ -61,6 +61,16 @@ export const advancedCardApi = {
     return advancedApiClient.put('/card-groups', cardGroups, { cancelToken });
   },
   
+  // 创建新文件
+  newFile(fileData, cancelToken = null) {
+    return advancedApiClient.post('/newfile', fileData, { cancelToken });
+  },
+  
+  // 获取文件列表
+  getFileList(cancelToken = null) {
+    return advancedApiClient.get('/filelist', {}, { cancelToken });
+  },
+  
   // 获取样式配置
   getStyleConfig(cancelToken = null) {
     return advancedApiClient.get('/style-config', { cancelToken });
@@ -79,6 +89,11 @@ export const advancedCardApi = {
   // 数据同步
   syncData(cancelToken = null) {
     return advancedApiClient.get('/sync', { cancelToken });
+  },
+  
+  // 删除文件
+  deleteFile(filename, cancelToken = null) {
+    return advancedApiClient.post('/deletefile', { filename }, { cancelToken });
   }
 };
 

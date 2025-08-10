@@ -1,8 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router';
-// 只保留静态导入
-import HomeView from '../views/HomeView.vue';
-// 需要懒加载的组件
-import AboutView from '../views/AboutView.vue';
 
 // 修改 PageManager 路由配置，使用异步组件加载
 const lazyLoadView = (view) => {
@@ -13,21 +9,27 @@ const routes = [
   {
     path: '/',
     name: 'home',
-    // 统一使用静态导入
-    component: HomeView,
+    // 统一使用动态导入
+    component: lazyLoadView('HomeView'),
     meta: { title: 'Home' }
   },
   {
     path: '/about',
     name: 'about',
-    // 统一使用静态导入
-    component: AboutView
+    // 统一使用动态导入
+    component: lazyLoadView('AboutView')
   },
   {
     path: '/page',
     name: 'page',
     // 使用异步组件加载
     component: lazyLoadView('PageManager')
+  },
+  {
+    path: '/files',
+    name: 'files',
+    // 使用异步组件加载文件管理器
+    component: lazyLoadView('FileManager')
   }
 ];
 

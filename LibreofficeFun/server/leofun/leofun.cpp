@@ -3,12 +3,15 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/x509v3.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "./apihandle/handle.h"
 #include "./logger/logger.h"
 #include "./config/json_config.h"
 #include "./filemanager/filequeue.h"
 #include "./filemanager/lofficeconn.h"
 #include "./filemanager/cache.h"
+#include "./filemanager/fileops.h"
 
 // 新增外部声明
 extern void deal_filestatus_request(RequestBody requestbody, ResponseBody *responsebody);
@@ -113,7 +116,7 @@ void send_response(SSL *ssl, ResponseBody responsebody)
                        "HTTP/1.1 %d %s\r\n"
                        "Access-Control-Allow-Origin: *\r\n"
                        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-                       "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+                       "Access-Control-Allow-Headers: Content-Type, Authorization, X-Current-Page, X-Page-Size\r\n"
                        "Access-Control-Max-Age: 86400\r\n"
                        "Content-Type: %s; charset=utf-8\r\n"
                        "X-Total-Count: %d\r\n"  // 总数据量
@@ -121,7 +124,7 @@ void send_response(SSL *ssl, ResponseBody responsebody)
                        "X-Page-Size: %d\r\n"    // 每页条数
                        "Content-Length: %zu\r\n\r\n",
                        responsebody.status,
-                       responsebody.status == 200 ? "OK" : "Not Found",
+                       responsebody.status == 200 ? "OK" : (responsebody.status == 204 ? "No Content" : "Not Found"),
                        responsebody.content_type,
                        responsebody.total_count,
                        responsebody.current_page,
@@ -138,6 +141,17 @@ void send_response(SSL *ssl, ResponseBody responsebody)
     {
         ERR_print_errors_fp(stderr);
     }
+}
+
+// 专门处理OPTIONS预检请求的函数
+void handle_options_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    responsebody.status = 204; // No Content
+    strcpy(responsebody.content_type, "text/plain");
+    responsebody.body[0] = '\0'; // 空响应体
+    send_response(ssl, responsebody);
 }
 
 // GET /api/get-gridcircle-default 接口处理函数
@@ -232,6 +246,14 @@ void handle_removeworksheet_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
+void handle_renamefile_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_renamefile_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
 // 接口路由
 struct Route routes[] = {
     {"GET", "/api/filelist", handle_filelist_request},
@@ -245,6 +267,20 @@ struct Route routes[] = {
     {"POST", "/api/deletefile", handle_deletefile_request},
     {"POST", "/api/addworksheet", handle_addworksheet_request},
     {"POST", "/api/removeworksheet", handle_removeworksheet_request},
+    {"POST", "/api/renamefile", handle_renamefile_request},
+    // 添加通用OPTIONS处理路由
+    {"OPTIONS", "/api/filelist", handle_options_request},
+    {"OPTIONS", "/api/get-gridcircle-default", handle_options_request},
+    {"OPTIONS", "/api/newfile", handle_options_request},
+    {"OPTIONS", "/api/updatefile", handle_options_request},
+    {"OPTIONS", "/api/editfile", handle_options_request},
+    {"OPTIONS", "/api/filedata", handle_options_request},
+    {"OPTIONS", "/api/opendata", handle_options_request},
+    {"OPTIONS", "/api/filestatus", handle_options_request},
+    {"OPTIONS", "/api/deletefile", handle_options_request},
+    {"OPTIONS", "/api/addworksheet", handle_options_request},
+    {"OPTIONS", "/api/removeworksheet", handle_options_request},
+    {"OPTIONS", "/api/renamefile", handle_options_request},
     {NULL, NULL, NULL}};
 
 void handle_request(SSL *ssl, int client_socket)
@@ -390,8 +426,9 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
     }
     else
     {
-        //body_start ? body_start : "";
-        memcpy(requestbody.body_start,"",1);
+        // 如果没有找到正文分隔符，将body_start设置为空字符串
+        static const char empty_string[] = "";
+        requestbody.body_start = const_cast<char*>(empty_string);
     }
     printf("method:%s,path:%s,protocol:%s,body_start:%s\n", requestbody.method, requestbody.path, requestbody.protocol, requestbody.body_start);
     // 查找匹配路由
@@ -536,6 +573,9 @@ int main()
     // 初始化文件管理器模板缓存
     filemanager::initializeTemplateCache();
 
+    // 扫描并初始化datapath目录下的文件
+    filemanager::initializeDataPathFiles();
+
     // 启动服务
     int port = json_config_get_int("port");
     if (port == 0) {
@@ -635,8 +675,6 @@ int main()
     cleanup_resources(0);
     return 0;
 }
-
-// ... existing code ...
 
 extern "C" void cleanup(int sig) {
     logger_log_info("Cleaning up resources due to signal: %d", sig);

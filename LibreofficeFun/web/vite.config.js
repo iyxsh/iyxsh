@@ -16,11 +16,22 @@ export default defineConfig({
   ],
   // 明确指定构建选项
   build: {
+    // 调整块大小警告限制
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       external: [],
       // 添加详细的输入配置
       input: {
         main: path.resolve(__dirname, './index.html')
+      },
+      // 添加 manualChunks 配置以改善代码分割
+      output: {
+        manualChunks: {
+          // 将第三方库单独打包
+          'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          'element-plus': ['element-plus'],
+          'axios': ['axios']
+        }
       }
     }
   },

@@ -6,6 +6,7 @@
     <div class="navigation">
       <router-link to="/about">Go to About Page</router-link>
       <router-link to="/page">Go to Page Manager</router-link>
+      <router-link to="/files">Go to File Manager</router-link>
     </div>
     <!-- 添加功能描述 -->
     <div class="features">

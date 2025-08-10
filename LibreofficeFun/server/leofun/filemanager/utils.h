@@ -19,6 +19,10 @@ namespace filemanager
     void parseCellAddress(const rtl::OUString &cellAddress, sal_Int32 &col, sal_Int32 &row);
     // 获取文件的绝对路径
     void getAbsolutePath(const rtl::OUString &fileName, rtl::OUString &absoluteFilePath);
+    // 确保文件名有.xlsx后缀
+    std::string ensureXlsxExtension(const std::string& filename);
+    // 移除文件名后缀
+    std::string removeFileExtension(const std::string& filename);
     // 获取默认数据文件的路径
     void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &wordsSheetName);
 } // namespace filemanager

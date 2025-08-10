@@ -2,6 +2,7 @@
 #define FILEOPS_H
 
 #include "../cJSON/cJSON.h"
+#include <string>
 
 namespace filemanager 
 {
@@ -9,11 +10,17 @@ namespace filemanager
     void updatefile(cJSON *results, const char *body);
     void editfile(cJSON *results, const char *body);
     void filestatus(cJSON *results, const char *body);
+    void filelist(cJSON *results, const char *body);
     
     // 新增的接口函数声明
     void deletefile(cJSON *results, const char *body);
     void addworksheet(cJSON *results, const char *body);
     void removeworksheet(cJSON *results, const char *body);
+    void renamefile(cJSON *results, const char *body);
+    
+    // 系统初始化函数
+    void initializeDataPathFiles();
+    
 } // namespace filemanager
 
 #endif // FILEOPS_H

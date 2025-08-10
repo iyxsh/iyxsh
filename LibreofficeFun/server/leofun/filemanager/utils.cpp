@@ -9,6 +9,40 @@
 
 namespace filemanager
 {
+    // 移除文件名后缀
+    std::string removeFileExtension(const std::string& filename) {
+        // 查找最后一个点的位置
+        size_t lastDot = filename.find_last_of('.');
+        
+        // 如果没有找到点，或者点在第一个位置，或者点在最后一个位置，则返回原文件名
+        if (lastDot == std::string::npos || lastDot == 0 || lastDot == filename.length() - 1) {
+            return filename;
+        }
+        
+        // 返回不包含后缀的文件名
+        return filename.substr(0, lastDot);
+    }
+    
+    // 确保文件名有.xlsx后缀
+    std::string ensureXlsxExtension(const std::string& filename) {
+        // 如果文件名已经以.xlsx结尾，则直接返回
+        if (filename.length() >= 5 && 
+            (filename.substr(filename.length() - 5) == ".xlsx" || 
+             filename.substr(filename.length() - 5) == ".XLSX")) {
+            return filename;
+        }
+        
+        // 如果文件名以.xls结尾，则替换为.xlsx
+        if (filename.length() >= 4 && 
+            (filename.substr(filename.length() - 4) == ".xls" || 
+             filename.substr(filename.length() - 4) == ".XLS")) {
+            return filename.substr(0, filename.length() - 4) + ".xlsx";
+        }
+        
+        // 其他情况添加.xlsx后缀
+        return filename + ".xlsx";
+    }
+    
     // 实现工具函数
     std::string convertToAbsolutePath(const std::string &path)
     {
