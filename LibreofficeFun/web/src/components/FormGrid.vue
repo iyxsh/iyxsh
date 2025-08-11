@@ -62,12 +62,13 @@
 // =====================================================
 // = 1. 导入依赖
 // =====================================================
-import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
 import SingleFormShow from './SingleFormShow.vue'
 import FormEditor from './FormEditor.vue'
 import errorLogService from '@/services/errorLogService'
+import { getCurrentInstance } from 'vue'
 
 // =====================================================
 // = 2. 定义 props
@@ -96,8 +97,7 @@ const props = defineProps({
 // =====================================================
 // 定义 containerRef
 const containerRef = ref(null)
-// 定义 contentRefs
-const contentRefs = ref({})
+
 // 定义 positions
 const positions = ref([])
 
@@ -188,15 +188,6 @@ const validateForms = (forms) => {
   }
 };
 
-// 初始化网格布局
-const initializeGridLayout = () => {
-  console.log('[FormGrid] 初始化网格布局');
-  // 这里可以添加实际的布局初始化逻辑
-  
-  // 如果需要触发更新，应该由其他逻辑来处理
-  // 而不是在watch中直接调用导致循环
-};
-
 // =====================================================
 // = 4. 错误处理和日志
 // =====================================================
@@ -217,18 +208,6 @@ const handleError = (error, context = '未知上下文') => {
 const resetError = () => {
   error.value = null
   errorInfo.value = ''
-}
-
-// 处理组件错误
-const handleContentError = (err) => {
-  error.value = err
-  errorInfo.value = '组件加载失败'
-}
-
-// 处理表单卡片错误
-const handleFormCardError = (err) => {
-  error.value = err
-  errorInfo.value = '表单卡片加载失败'
 }
 
 // 处理表单编辑器错误
@@ -300,7 +279,7 @@ const handleAddForm = () => {
 const emit = defineEmits(['update:modelValue'])
 
 // 保存添加的表单
-const saveAddForm = (formData) => {
+const saveAddForm = async (formData) => {
   try {
     console.log('[FormGrid] 开始保存表单', formData);
     
@@ -395,6 +374,26 @@ const saveAddForm = (formData) => {
     // 触发更新事件，确保父组件接收到更新
     emit('update:modelValue', updatedForms);
     
+    // 调用ApiServiceManager保存表单数据
+    const apiService = getApiService()
+    if (apiService) {
+      try {
+        await apiService.updateFile({
+          action: 'addForm',
+          form: newForm,
+          forms: updatedForms,
+          timestamp: new Date().toISOString()
+        })
+        console.log('[FormGrid] 表单添加成功并同步到服务器')
+      } catch (error) {
+        console.error('[FormGrid] 同步表单到服务器失败:', error)
+        ElMessage.error('表单同步失败: ' + (error.message || '未知错误'))
+      }
+    } else {
+      console.warn('[FormGrid] ApiServiceManager不可用，仅保存到本地存储')
+      ElMessage.warning('当前仅保存到本地，无法同步到服务器')
+    }
+    
     // 确保在DOM更新后执行
     nextTick(() => {
       console.log('[FormGrid] 表单保存后DOM已更新');
@@ -444,98 +443,6 @@ const cancelAddForm = () => {
   addFormData.value = null
 }
 
-// 计算样式函数
-const computedStyles = (form) => {
-  try {
-    const defaultPosition = { x: 20, y: 20 };
-    const defaultSize = { width: 200, height: 100 };
-
-    // 获取表单位置和尺寸，如果不存在则使用默认值
-    const position = form.position || defaultPosition;
-    const size = form.size || defaultSize;
-
-    // 返回计算后的样式
-    return {
-      position: 'absolute',
-      left: `${position.x}px`,
-      top: `${position.y}px`,
-      width: `${size.width}px`,
-      height: `${size.height}px`,
-      zIndex: form.zIndex || 1,
-    };
-  } catch (error) {
-    handleError(error, `计算表单样式失败: ${form.id}`);
-    // 返回默认样式
-    return {
-      position: 'absolute',
-      left: '20px',
-      top: '20px',
-      width: '200px',
-      height: '100px'
-    };
-  }
-};
-
-// 设置ref的辅助函数
-const setContentRef = (id) => (el) => {
-  if (el) {
-    contentRefs.value[id] = el;
-  }
-};
-
-// 表单更新处理函数
-const handleUpdateForm = (updatedForm) => {
-  try {
-    console.log('[FormGrid] 开始更新表单:', updatedForm?.id);
-    
-    // 确保updatedForm存在且有id
-    if (!updatedForm || !updatedForm.id) {
-      console.warn('[FormGrid] 更新的表单缺少ID:', updatedForm);
-      ElMessage.warning('表单数据不完整');
-      return;
-    }
-    
-    // 确保props.modelValue存在且为数组
-    if (!props.modelValue || !Array.isArray(props.modelValue)) {
-      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
-      throw new Error('表单数据无效');
-    }
-    
-    // 检查表单是否真的发生了变化
-    const existingForm = props.modelValue.find(f => f.id === updatedForm.id);
-    if (JSON.stringify(existingForm) === JSON.stringify(updatedForm)) {
-      // 表单没有变化，无需更新
-      console.log('[FormGrid] 表单未发生变化，跳过更新');
-      return;
-    }
-    
-    // 创建更新后的表单数组
-    const updatedForms = props.modelValue.map(form => 
-      form.id === updatedForm.id 
-        ? { 
-            ...updatedForm,
-            updatedAt: new Date().toISOString()
-          } 
-        : form
-    );
-    
-    console.log(`[FormGrid] 准备更新表单数组，长度: ${updatedForms.length}`);
-    
-    // 触发更新事件
-    emit('update:modelValue', updatedForms);
-    
-    // 确保在DOM更新后执行
-    nextTick(() => {
-      console.log('[FormGrid] 表单更新后DOM已更新');
-      // 提示成功
-      ElMessage.success('表单已更新');
-    });
-  } catch (error) {
-    console.error('[FormGrid] 更新表单失败:', error);
-    handleError(error, '更新表单失败');
-  }
-};
-
 // 表单删除处理函数
 const handleDeleteForm = (formToDelete) => {
   try {
@@ -563,81 +470,6 @@ const handleDeleteForm = (formToDelete) => {
     });
   } catch (error) {
     handleError(error, '删除表单失败');
-  }
-};
-
-// 更新表单位置
-const updateFormPosition = ({ formId, position }) => {
-  try {
-    console.log(`[FormGrid] 更新表单位置: ${formId}`, position);
-    
-    // 验证参数
-    if (!formId || !position || typeof position.x === 'undefined' || typeof position.y === 'undefined') {
-      throw new Error('无效的位置数据或表单ID');
-    }
-    
-    // 确保props.modelValue存在且为数组
-    if (!props.modelValue || !Array.isArray(props.modelValue)) {
-      console.warn('[FormGrid] props.modelValue不是有效数组:', props.modelValue);
-      throw new Error('表单数据无效');
-    }
-    
-    // 获取容器尺寸以限制拖动边界
-    let containerWidth = 800;
-    let containerHeight = 600;
-    if (containerRef.value) {
-      containerWidth = containerRef.value.clientWidth;
-      containerHeight = containerRef.value.clientHeight;
-    } else if (props.pageSize) {
-      containerWidth = props.pageSize.width;
-      containerHeight = props.pageSize.height;
-    }
-    
-    // 创建更新后的表单数组
-    const updatedForms = props.modelValue.map(form => {
-      if (form.id === formId) {
-        // 确保表单不会被拖出容器边界
-        const boundedPosition = {
-          x: Math.max(0, Math.min(position.x, containerWidth - (form.size?.width || 200))),
-          y: Math.max(0, Math.min(position.y, containerHeight - (form.size?.height || 100)))
-        };
-        
-        // 确保创建新的位置对象以避免引用问题
-        return {
-          ...form,
-          position: { 
-            x: Math.round(boundedPosition.x), 
-            y: Math.round(boundedPosition.y) 
-          }
-        };
-      }
-      return form;
-    });
-    
-    // 触发更新事件
-    emit('update:modelValue', updatedForms);
-    
-    // 记录调试信息
-    const updatedForm = updatedForms.find(f => f.id === formId);
-    console.log(`[FormGrid] 表单位置更新成功: ${formId}`, {
-      oldPosition: props.modelValue.find(f => f.id === formId)?.position,
-      newPosition: updatedForm?.position
-    });
-    
-    // 更新全局位置信息用于样式计算
-    const newPositions = updatedForms.map(form => ({
-      id: form.id,
-      ...form.position,
-      width: form.size?.width || 200,
-      height: form.size?.height || 100
-    }));
-    
-    positions.value = newPositions;
-    
-    // 如果需要，更新卡片样式
-  } catch (error) {
-    console.error('[FormGrid] 更新表单位置失败:', error);
-    handleError(error, '更新表单位置失败');
   }
 };
 
@@ -809,38 +641,50 @@ const handleUpdatePosition = ({ formId, position }) => {
 };
 
 // 表单保存处理函数
-const handleFormSave = (updatedForm) => {
+const handleFormSave = async (updatedForm) => {
   try {
-    console.log('[FormGrid] 开始保存编辑的表单', updatedForm);
-    
-    // 确保 props.modelValue 是一个数组
-    const currentForms = Array.isArray(props.modelValue) ? [...props.modelValue] : [];
-    console.log('[FormGrid] 当前表单数量:', currentForms?.length ?? 0);
-    
-    // 查找并更新表单
-    const formIndex = currentForms.findIndex(form => form.id === updatedForm.id);
-    if (formIndex !== -1) {
-      // 更新表单
-      currentForms[formIndex] = { ...updatedForm };
+    const index = forms.value.findIndex(form => form.id === updatedForm.id)
+    if (index !== -1) {
+      const currentForms = [...forms.value]
+      currentForms[index] = updatedForm
+      forms.value = currentForms
+      
+      // 保存到localStorage
+      saveFormsToLocalStorage(currentForms)
+      
+      // 调用ApiServiceManager更新表单数据
+      const apiService = getApiService()
+      if (apiService) {
+        try {
+          await apiService.updateFile({
+            action: 'updateForm',
+            form: updatedForm,
+            forms: currentForms,
+            timestamp: new Date().toISOString()
+          })
+          console.log('[FormGrid] 表单更新成功并同步到服务器')
+        } catch (error) {
+          console.error('[FormGrid] 同步表单更新到服务器失败:', error)
+          ElMessage.error('表单更新同步失败: ' + (error.message || '未知错误'))
+        }
+      } else {
+        console.warn('[FormGrid] ApiServiceManager不可用，仅保存到本地存储')
+        ElMessage.warning('当前仅保存到本地，无法同步到服务器')
+      }
+      
+      hideFormEditor()
+      ElMessage.success('表单更新成功')
     } else {
-      // 如果没找到表单，可能是新增的
-      currentForms.push({ ...updatedForm });
+      ElMessage.error('未找到要更新的表单')
     }
-    
-    // 触发更新事件
-    emit('update:modelValue', currentForms);
-    
-    // 隐藏表单编辑器
-    showFormEditor.value = false;
-    selectedForm.value = null;
-    
-    // 提示成功
-    ElMessage.success('表单保存成功');
-    
-    console.log('[FormGrid] 表单保存成功，当前表单数量:', currentForms.length);
   } catch (error) {
-    console.error('[FormGrid] 保存表单失败:', error);
-    handleError(error, '保存表单失败');
+    console.error('更新表单失败:', error)
+    ElMessage.error('更新表单失败: ' + (error.message || '未知错误'))
+    errorLogService.addErrorLog(
+      error,
+      '更新表单失败',
+      'error'
+    )
   }
 };
 
@@ -963,7 +807,7 @@ onMounted(() => {
       deep: true         // 深度监听
     });
     
-        // 优化加载状态处理
+    // 优化加载状态处理
     nextTick(() => {
       // 当表单数据就绪时立即更新加载状态
       if (props.modelValue && props.modelValue.length > 0) {
@@ -1000,6 +844,32 @@ onMounted(() => {
   }
 });
 
+// 获取ApiServiceManager实例
+const getApiService = () => {
+  // 首先尝试通过getCurrentInstance获取
+  const instance = getCurrentInstance()
+  if (instance) {
+    const apiService = instance.appContext.config.globalProperties.$apiService
+    if (apiService) {
+      return apiService
+    }
+  }
+  
+  // 如果通过实例无法获取，则尝试通过window对象获取
+  if (typeof window !== 'undefined' && window.$apiService) {
+    return window.$apiService
+  }
+  
+  // 如果都获取不到，输出详细错误信息
+  console.warn('[FormGrid] 无法获取ApiServiceManager实例', {
+    instanceExists: !!instance,
+    globalProperties: instance ? Object.keys(instance.appContext.config.globalProperties || {}) : 'No instance',
+    windowExists: typeof window !== 'undefined',
+    windowApiService: typeof window !== 'undefined' ? window.$apiService : 'No window'
+  })
+  
+  return null
+}
 
 // 计算网格容器样式
 const gridContainerStyle = computed(() => {

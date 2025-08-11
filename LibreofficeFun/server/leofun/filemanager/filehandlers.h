@@ -14,6 +14,7 @@ namespace filemanager
     void readSheetContents(cJSON *results, const char *body);
     int worksheetAdd(cJSON *taskData);
     int worksheetRemove(cJSON *taskData);
+    int worksheetRename(cJSON *taskData);
 } // namespace filemanager
 
 #endif // FILEHANDLERS_H

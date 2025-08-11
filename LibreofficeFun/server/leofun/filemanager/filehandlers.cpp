@@ -553,4 +553,115 @@ namespace filemanager
             return -1;
         }
     }
-}
+
+    int worksheetRename(cJSON *taskData)
+    {
+        logger_log_info("Renaming worksheet");
+
+        if (!taskData)
+        {
+            logger_log_error("Rename worksheet task has no data");
+            return -1;
+        }
+
+        cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
+        cJSON *newsheetnameItem = cJSON_GetObjectItem(taskData, "newsheetname");
+
+        if (!filenameItem || !sheetnameItem || !newsheetnameItem)
+        {
+            logger_log_error("Missing filename, sheetname or newsheetname in rename worksheet data");
+            return -1;
+        }
+
+        try
+        {
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            uno::Reference<lang::XComponent> xComp;
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            if (!xDoc.is())
+            {
+                logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                return -1;
+            }
+
+            // 获取工作表集合
+            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
+            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+
+            // 检查工作表是否存在
+            rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+            if (!nameAccess->hasByName(sheetName))
+            {
+                logger_log_info("Worksheet %s does not exist in file: %s",
+                                sheetnameItem->valuestring, filenameItem->valuestring);
+                closeDocument(xComp);
+                return -1; // 工作表不存在
+            }
+
+            // 检查新名称的工作表是否已存在
+            rtl::OUString newSheetName = convertStringToOUString(newsheetnameItem->valuestring);
+            if (nameAccess->hasByName(newSheetName))
+            {
+                logger_log_info("Worksheet %s already exists in file: %s",
+                                newsheetnameItem->valuestring, filenameItem->valuestring);
+                closeDocument(xComp);
+                return -1; // 新名称的工作表已存在
+            }
+
+            // 获取要重命名的工作表
+            uno::Any sheetAny = nameAccess->getByName(sheetName);
+            uno::Reference<sheet::XSpreadsheet> xSheet(sheetAny, uno::UNO_QUERY);
+            
+            if (!xSheet.is())
+            {
+                logger_log_error("Failed to get worksheet: %s", sheetnameItem->valuestring);
+                closeDocument(xComp);
+                return -1;
+            }
+
+            // 通过XPropertySet接口设置新的工作表名称
+            uno::Reference<beans::XPropertySet> xPropSet(xSheet, uno::UNO_QUERY);
+            if (!xPropSet.is())
+            {
+                logger_log_error("Failed to get property set for worksheet: %s", sheetnameItem->valuestring);
+                closeDocument(xComp);
+                return -1;
+            }
+
+            // 设置新的工作表名称
+            xPropSet->setPropertyValue(rtl::OUString(RTL_CONSTASCII_USTRINGPARAM("Name")), 
+                                      uno::makeAny(newSheetName));
+
+            // 保存文档
+            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString absoluteFilePath;
+            getAbsolutePath(filenameOstr, absoluteFilePath);
+            saveDocument(xDoc, absoluteFilePath);
+
+            // 关闭文档
+            closeDocument(xComp);
+
+            logger_log_info("Successfully renamed worksheet from %s to %s in file: %s",
+                            sheetnameItem->valuestring, newsheetnameItem->valuestring, filenameItem->valuestring);
+            return 0;
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO exception in worksheetRename: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return -1;
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in worksheetRename: %s", e.what());
+            return -1;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in worksheetRename");
+            return -1;
+        }
+    }
+
+} // namespace filemanager

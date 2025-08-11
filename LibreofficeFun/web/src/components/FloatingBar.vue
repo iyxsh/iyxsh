@@ -146,6 +146,8 @@
 <script>
 import { ref, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Plus, Delete, Grid, ArrowLeft, ArrowRight, Menu, Document, Edit, Check, Lock, Unlock, Tickets } from '@element-plus/icons-vue'
+import { getCurrentInstance } from 'vue'
+import { ElMessage } from 'element-plus'
 
 export default {
   name: 'FloatingBar',
@@ -225,6 +227,9 @@ export default {
     const editInput = ref(null)
     const floatingContent = ref(null)
     const homeButton = ref(null)
+    
+    // 获取当前实例以访问全局属性
+    const instance = getCurrentInstance()
     
     // 计算当前页面
     const currentPage = computed(() => {
@@ -318,40 +323,165 @@ export default {
       }
     };
 
-    const handleAddForm = () => {
+    // 获取ApiServiceManager实例
+    const getApiService = () => {
+      return instance?.appContext.config.globalProperties.$apiService
+    }
+
+    // 显示需要解锁页面的提示信息
+    const showUnlockMessage = () => {
+      ElMessage.warning('请先解锁页面再执行此操作')
+    }
+
+    const handleAddForm = async () => {
+      // 检查页面是否可编辑
+      if (!props.editable) {
+        showUnlockMessage()
+        return
+      }
+      
       emit('add-form')
       visible.value = false // 执行操作后自动收起面板
+
+      // 使用 ApiServiceManager 发送请求
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'addForm',
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
-    const handleClearCurrentPageForms = () => {
+    const handleClearCurrentPageForms = async () => {
+      // 检查页面是否可编辑
+      if (!props.editable) {
+        showUnlockMessage()
+        return
+      }
+      
       emit('clear-current-page')
       visible.value = false // 执行操作后自动收起面板
+
+      // 使用 ApiServiceManager 发送请求
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'clearForms',
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
-    const handleToggleCardStyle = () => {
+    const handleToggleCardStyle = async () => {
       emit('toggle-card-style')
       visible.value = false // 执行操作后自动收起面板
+
+      // 使用 ApiServiceManager 发送请求
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'toggleCardStyle',
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
-    const handlePrevPage = () => {
+    const handlePrevPage = async () => {
       emit('prev-page')
       visible.value = false // 执行操作后自动收起面板
+
+      // 使用 ApiServiceManager 发送请求
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'prevPage',
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
-    const handleNextPage = () => {
+    const handleNextPage = async () => {
       emit('next-page')
       visible.value = false // 执行操作后自动收起面板
+
+      // 使用 ApiServiceManager 发送请求
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'nextPage',
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
     // 切换页面类型
-    const togglePageType = () => {
+    const togglePageType = async () => {
+      // 检查页面是否可编辑
+      if (!props.editable) {
+        showUnlockMessage()
+        return
+      }
+      
       const newType = props.currentPageType === 'form' ? 'cards' : 'form'
       emit('change-page-type', newType)
       // 页面类型切换后不自动收起面板，用户可能还需要其他操作
+      
+      // 发送表单数据到后台
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'changePageType',
+            pageType: newType,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
     // 处理编辑页面名称
-    const handleEditPageName = (idx) => {
+    const handleEditPageName = async (idx) => {
+      // 检查页面是否可编辑
+      if (!props.editable) {
+        showUnlockMessage()
+        return
+      }
+      
       emit('edit-page-name', idx)
       nextTick(() => {
         if (editInput.value && editInput.value.focus) {
@@ -359,18 +489,72 @@ export default {
         }
       })
       visible.value = false // 执行操作后自动收起面板
+      
+      // 发送表单数据到后台
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'editPageName',
+            pageIndex: idx,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
     // 处理删除页面
-    const handleDeletePage = (idx) => {
+    const handleDeletePage = async (idx) => {
+      // 检查页面是否可编辑
+      if (!props.editable) {
+        showUnlockMessage()
+        return
+      }
+      
       emit('delete-page', idx)
       // 删除操作后不自动收起面板，因为可能需要确认
+      
+      // 发送表单数据到后台
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'deletePage',
+            pageIndex: idx,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
     // 处理切换页面编辑状态
-    const handleToggleEditPage = (idx) => {
+    const handleToggleEditPage = async (idx) => {
       emit('toggle-edit-page', idx)
       visible.value = false // 执行操作后自动收起面板
+      
+      // 发送表单数据到后台
+      try {
+        const apiService = getApiService()
+        if (apiService) {
+          await apiService.updateFile({
+            action: 'toggleEditPage',
+            pageIndex: idx,
+            timestamp: new Date().toISOString()
+          })
+        } else {
+          console.warn('[FloatingBar] ApiServiceManager 未找到')
+        }
+      } catch (error) {
+        console.error('发送表单数据到后台失败:', error);
+      }
     }
 
     // 处理编辑名称输入

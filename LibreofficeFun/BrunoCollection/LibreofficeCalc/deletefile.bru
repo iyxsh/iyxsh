@@ -1,0 +1,17 @@
+meta {
+  name: deletefile
+  type: http
+  seq: 5
+}
+
+post {
+  url: https://192.168.0.3:8443/api/deletefile
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filename":"spreadsheet_20250810_201055"
+  }
+}

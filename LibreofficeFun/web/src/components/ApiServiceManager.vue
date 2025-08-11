@@ -62,6 +62,103 @@ const newFile = async (fileData) => {
   }
 };
 
+// 更新文件
+const updateFile = async (fileData) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+
+  try {
+    await advancedCardApi.updateFile(fileData);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
+// 获取文件数据
+const getFileData = async (fileId) => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+
+  try {
+    const response = await advancedCardApi.getFileData(fileId);
+    serviceState.lastSync = new Date();
+    return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
+  }
+};
+
+// 添加工作表
+const addWorksheet = async (worksheetData) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+
+  try {
+    await advancedCardApi.addWorksheet(worksheetData);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
+// 删除工作表
+const removeWorksheet = async (worksheetId) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+
+  try {
+    await advancedCardApi.removeWorksheet(worksheetId);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
+// 重命名工作表
+const renameWorksheet = async (worksheetId, newName) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+
+  try {
+    await advancedCardApi.renameWorksheet(worksheetId, newName);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
+// 重命名文件
+const renameFile = async (fileId, newName) => {
+  serviceState.isSaving = true;
+  serviceState.error = null;
+
+  try {
+    await advancedCardApi.renameFile(fileId, newName);
+    serviceState.lastSync = new Date();
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isSaving = false;
+  }
+};
+
 // 删除文件
 const deleteFile = async (filename) => {
   serviceState.isSaving = true;
@@ -257,6 +354,12 @@ defineExpose({
   syncData,
   getFileList,
   newFile, // 添加newFile方法
+  updateFile, // 添加updateFile方法
+  getFileData, // 添加getFileData方法
+  addWorksheet, // 添加addWorksheet方法
+  removeWorksheet, // 添加removeWorksheet方法
+  renameWorksheet, // 添加renameWorksheet方法
+  renameFile, // 添加renameFile方法
   deleteFile, // 添加deleteFile方法
   
   // 状态

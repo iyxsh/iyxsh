@@ -138,8 +138,8 @@ export function createI18n(locale = getInitialLocale()) {
   // 翻译函数
   function t(key, params = {}, defaultValue = '') {
     // 检查缓存
-    console.log('currentLocale.value', currentLocale.value);
-    console.log('key', key);
+    //console.log('currentLocale.value', currentLocale.value);
+    //console.log('key', key);
     //console.log('params', params);
     //console.log('defaultValue', defaultValue);
     //console.log('messages[currentLocale.value]', messages[currentLocale.value]);
@@ -150,11 +150,11 @@ export function createI18n(locale = getInitialLocale()) {
     const cacheKey = `${currentLocale.value}:${key}`;
     if (translationCache.has(cacheKey)) {
       const cachedValue = translationCache.get(cacheKey);
-      console.log(`[i18n] 从缓存获取翻译: ${cacheKey} = ${cachedValue}`);
+      //console.log(`[i18n] 从缓存获取翻译: ${cacheKey} = ${cachedValue}`);
       
       // 如果缓存值为空或未定义，重新生成翻译
       if (cachedValue === undefined || cachedValue === null || cachedValue === '') {
-        console.warn(`[i18n] 缓存中存在但值无效: ${cacheKey}`);
+        //console.warn(`[i18n] 缓存中存在但值无效: ${cacheKey}`);
         // 删除无效缓存
         translationCache.delete(cacheKey);
       } else {

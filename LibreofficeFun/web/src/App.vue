@@ -20,6 +20,9 @@
       </ul>
     </div>
 
+    <!-- ApiServiceManager 组件 -->
+    <ApiServiceManager ref="apiServiceManager" />
+
     <!-- 加载状态 -->
     <AppLoading 
       v-if="!isLoaded" 
@@ -50,17 +53,19 @@
 </template>
 
 <script>
-import { ref, onMounted, onErrorCaptured, onUpdated, onBeforeUnmount, computed } from 'vue';
+import { ref, onMounted, onErrorCaptured, onUpdated, onBeforeUnmount, computed, nextTick, watch, getCurrentInstance } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { t, setLocale, getLocale } from './utils/i18n';
 import AppLoading from './components/AppLoading.vue';
 import AppError from './components/AppError.vue';
+import ApiServiceManager from './components/ApiServiceManager.vue';
 import errorLogService from './services/errorLogService';
 export default {
   name: 'App',
   components: {
     AppLoading,
-    AppError
+    AppError,
+    ApiServiceManager
   },
   setup() {
     // 状态管理
@@ -71,6 +76,7 @@ export default {
     const isRouterAlive = ref(true);
     const loadingProgress = ref(0);
     const showDebugInfo = ref(false);
+    const apiServiceManager = ref(null);
 
     // 路由相关
     const route = useRoute();
@@ -92,6 +98,7 @@ export default {
           loadingProgress.value += 1;
         } else {
           clearInterval(interval);
+          // 模拟加载完成后的操作
           // 模拟加载完成后的操作
           setTimeout(() => {
             isLoaded.value = true;
@@ -199,23 +206,25 @@ export default {
       return false; // 阻止错误继续传播
     };
 
-    // 修改 reloadApp 方法，添加错误状态清理
+    // 重新加载应用
     const reloadApp = () => {
+      console.log('重新加载应用');
       isLoaded.value = false;
       hasError.value = false;
       errorMessage.value = null;
+      loadingProgress.value = 0;
       isRouterAlive.value = false;
-      // 强制刷新路由
-      setTimeout(() => {
+      
+      // 强制刷新路由视图
+      nextTick(() => {
         isRouterAlive.value = true;
         startLoading();
-      }, 0);
+      });
     };
 
     // 切换调试信息显示
     const toggleDebugInfo = () => {
       showDebugInfo.value = !showDebugInfo.value;
-      console.log(`调试信息${showDebugInfo.value ? '开启' : '关闭'}`);
     };
 
     // 错误捕获
@@ -295,8 +304,35 @@ export default {
       console.log('当前语言:', locale.value);
     });
 
+    // 组件卸载前的清理
     onBeforeUnmount(() => {
       console.log('App 组件即将卸载');
+      
+      // 清理全局属性和 window 对象中的引用
+      const appInstance = getCurrentInstance();
+      if (appInstance) {
+        delete appInstance.appContext.config.globalProperties.$apiService;
+      }
+      
+      if (typeof window !== 'undefined' && window.$apiService) {
+        delete window.$apiService;
+      }
+    });
+
+    // 监听 ApiServiceManager 实例变化并注册到全局属性
+    watch(apiServiceManager, (newVal) => {
+      if (newVal) {
+        // 将 ApiServiceManager 实例注册到全局属性
+        const appInstance = getCurrentInstance();
+        if (appInstance) {
+          appInstance.appContext.config.globalProperties.$apiService = newVal;
+        }
+        
+        // 同时注册到 window 对象，以便在其他地方访问
+        if (typeof window !== 'undefined') {
+          window.$apiService = newVal;
+        }
+      }
     });
 
     // 设置语言
@@ -307,6 +343,8 @@ export default {
     };
 
     // 添加全局Promise错误处理
+    // 注意: 这个事件监听器已经在 main.js 中添加过了，避免重复添加
+    /*
     window.addEventListener('unhandledrejection', (event) => {
       console.groupCollapsed('Unhandled Promise Rejection');
       console.error('Event:', event);
@@ -348,6 +386,7 @@ export default {
         'error'
       );
     });
+    */
 
     return {
       // 状态
@@ -363,6 +402,7 @@ export default {
       // 方法
       toggleDebugInfo,
       reloadApp,
+      apiServiceManager,
       onComponentLoad,
       handleComponentError,
       setLocale: setLocaleWrapper

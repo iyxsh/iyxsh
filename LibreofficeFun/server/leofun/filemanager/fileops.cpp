@@ -35,7 +35,7 @@ namespace filemanager
 
                     // 检查是否为ods文件
                     std::string filename(entry->d_name);
-                    if (filename.length() > 5 && filename.substr(filename.length() - 5) == ".ods")
+                    if (filename.length() > 4 && filename.substr(filename.length() - 4) == ".ods")
                     {
                         std::string filepath = std::string(datapath) + "/" + filename;
 
@@ -53,9 +53,14 @@ namespace filemanager
                             filemanager::FileQueueManager::getInstance().addFileStatus(info);
                             logger_log_info("Added existing file to queue: %s with mtime: %ld", filename.c_str(), (long)fileStat.st_mtime);
                         }
+                        else
+                        {
+                            logger_log_warn("Failed to get file status for: %s", filepath.c_str());
+                        }
                     }
                 }
                 closedir(dir);
+                logger_log_info("Finished scanning directory: %s", datapath);
             }
             else
             {
@@ -526,6 +531,69 @@ namespace filemanager
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "filestatus", "processing");
+        cJSON_Delete(jsonRoot);
+    }
+
+    void renameworksheet(cJSON *results, const char *body)
+    {
+        // 重命名工作表需要请求体，检查body是否为空
+        if (!body || strlen(body) == 0)
+        {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+
+        // 创建重命名工作表任务并添加到队列
+        filemanager::FileTask renameSheetTask;
+        renameSheetTask.type = filemanager::TASK_RENAME_WORKSHEET;
+        renameSheetTask.filename = std::string("");
+        renameSheetTask.data = std::string("");
+        renameSheetTask.createTime = std::time(nullptr);
+        renameSheetTask.taskData = nullptr;
+
+        // body 应为 JSON 字符串，包含文件名、原工作表名和新工作表名
+        if (!body)
+        {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+
+        cJSON *jsonRoot = cJSON_Parse(body);
+        if (!jsonRoot)
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            return;
+        }
+
+        cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(jsonRoot, "sheetname");
+        cJSON *newsheetnameItem = cJSON_GetObjectItem(jsonRoot, "newsheetname");
+        if (!filenameItem || !sheetnameItem || !newsheetnameItem)
+        {
+            logger_log_error("error Missing filename, sheetname or newsheetname in renameworksheet data");
+            cJSON_AddStringToObject(results, "error", "Missing filename, sheetname or newsheetname in renameworksheet data");
+
+            cJSON_Delete(jsonRoot);
+            return;
+        }
+
+        renameSheetTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        std::string sheetName = std::string(sheetnameItem->valuestring);
+        std::string newSheetName = std::string(newsheetnameItem->valuestring);
+        // 正确管理cJSON内存
+        if (renameSheetTask.taskData)
+        {
+            cJSON_Delete(renameSheetTask.taskData);
+        }
+        renameSheetTask.taskData = cJSON_Duplicate(jsonRoot, cJSON_True);
+
+        // 添加任务到队列
+        filemanager::FileQueueManager::getInstance().addFileTask(renameSheetTask);
+        cJSON_AddStringToObject(results, "result", "success");
+        cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "newsheetname", removeFileExtension(std::string(newsheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
         cJSON_Delete(jsonRoot);
     }

@@ -242,7 +242,7 @@ export default {
             filename: removeFileExtension(newFileName.value),
             status: 'ready',
             modified: new Date(),
-            type: 'xlsx'
+            type: 'ods'
           };
 
           // 调用ApiServiceManager组件的新功能创建新修文
@@ -270,7 +270,7 @@ export default {
           name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
           status: item.status || '未知',
           modified: parseDate(item.lastModified) || new Date(),
-          type: 'xlsx'
+          type: 'ods'
         })) : [];
       } catch (error) {
         console.error('操作失败:', error);
@@ -291,7 +291,7 @@ export default {
           name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
           status: item.status || '未知',
           modified: parseDate(item.lastModified) || new Date(),
-          type: 'xlsx'
+          type: 'ods'
         })) : [];
       } catch (error) {
         console.error('加载修文列表失败:', error);
@@ -354,13 +354,32 @@ export default {
     };
 
     // 在页面管理器中使用
-    const useInPageManager = () => {
-      if (fileContent.value) {
+    const useInPageManager = (file) => {
+      // 如果传入了文件参数，直接使用该文件
+      if (file) {
+        router.push({
+          name: 'page',
+          query: {
+            fileName: file.name
+          }
+        });
+      } 
+      // 否则使用已加载的文件内容
+      else if (fileContent.value) {
         // 将修文内容传递给PageManager组件
         router.push({
           name: 'page',
           query: {
             fileData: JSON.stringify(fileContent.value),
+            fileName: selectedFile.value.name
+          }
+        });
+      }
+      // 如果没有文件内容但有选中的文件，只传递文件名
+      else if (selectedFile.value) {
+        router.push({
+          name: 'page',
+          query: {
             fileName: selectedFile.value.name
           }
         });

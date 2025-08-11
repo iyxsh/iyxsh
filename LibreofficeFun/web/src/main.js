@@ -1,4 +1,3 @@
-
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
@@ -62,18 +61,6 @@ app.config.errorHandler = (err, vm, info) => {
     }
   }
 }
-
-// 添加全局未处理的Promise拒绝事件监听器
-window.addEventListener('unhandledrejection', (event) => {
-  console.groupCollapsed('Unhandled Promise Rejection')
-  console.error('Event:', event)
-  console.error('Reason:', event.reason)
-  console.error('Stack trace:', event.reason?.stack)
-  console.groupEnd()
-  
-  // 阻止默认处理
-  event.preventDefault()
-})
 
 // 创建Pinia存储
 const pinia = createPinia();
@@ -141,6 +128,13 @@ try {
   if (process.env.NODE_ENV !== 'production') {
     window.$app = appInstance
   }
+  
+  // 在应用挂载后，将ApiServiceManager实例注册到全局属性
+  appInstance.$nextTick(() => {
+    if (window.$apiService) {
+      app.config.globalProperties.$apiService = window.$apiService
+    }
+  })
 } catch (error) {
   errorLogService.addErrorLog(error, '应用程序挂载失败', 'error');
   console.error('[main] 应用程序挂载失败:', error);

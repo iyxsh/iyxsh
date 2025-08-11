@@ -49,6 +49,13 @@
             <span class="button-text">添加页面</span>
           </el-button>
         </el-tooltip>
+        
+        <el-tooltip content="删除当前页面" placement="bottom" :disabled="!isEditable">
+          <el-button @click="removeCurrentPage" :disabled="!isEditable || (props.pages && props.pages.length <= 1)" type="danger" plain>
+            <el-icon><Delete /></el-icon>
+            <span class="button-text">删除页面</span>
+          </el-button>
+        </el-tooltip>
       </div>
 
       <div class="toolbar-section toolbar-right">
@@ -69,7 +76,26 @@
               :key="index"
               :label="page.name || `页面 ${index + 1}`"
               :value="index"
-            />
+            >
+              <div class="page-option" @click.stop>
+                <span 
+                  v-if="!editingPageName || editingPageIndex !== index" 
+                  @dblclick.stop="startEditPageName(index)"
+                  class="page-name"
+                >
+                  {{ page.name || `页面 ${index + 1}` }}
+                </span>
+                <el-input
+                  v-else
+                  v-model="newPageName"
+                  size="small"
+                  ref="pageNameInput"
+                  @blur="savePageName(index)"
+                  @keyup.enter="savePageName(index)"
+                  @keyup.esc="cancelEditPageName"
+                />
+              </div>
+            </el-option>
           </el-select>
         </el-tooltip>
 
@@ -100,11 +126,12 @@
 
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
-import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip } from 'element-plus'
+import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip, ElInput } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
 import { DocumentAdd, Grid, Delete, Upload, Download, Position, Rank, Plus, Minus } from '@element-plus/icons-vue'
 import { Share as Save } from '@element-plus/icons-vue'
 import { CollectionTag as TakeawayBox } from '@element-plus/icons-vue'
+import errorLogService from '../services/errorLogService'
 
 // 添加组件加载调试信息
 console.log('Toolbar component initializing');
@@ -121,20 +148,27 @@ const props = defineProps({
   },
   clearAllPages: Function,
   rotatePage: Function,
-  showRotateButton: Boolean
+  showRotateButton: Boolean,
+  onRemovePage: Function // 添加删除页面的回调函数
 })
 
 // 创建计算属性或本地状态以避免直接修改props
 const isEditable = ref(props.editable)
 
 // 定义emits
-const emit = defineEmits(['toggle-card-style', 'clear-current-page-forms', 'add-form', 'toggle-edit-mode', 'change-page', 'export-data', 'import-data', 'save-all', 'on-add-page'])
+const emit = defineEmits(['toggle-card-style', 'clear-current-page-forms', 'add-form', 'toggle-edit-mode', 'change-page', 'export-data', 'import-data', 'save-all', 'on-add-page', 'remove-page', 'rename-page'])
 
 // 使用事件总线
 const { on, off } = useEventBus()
 
 // 本地状态
 const selectedPage = ref(props.currentPage)
+
+// 页面名称编辑状态
+const editingPageName = ref(false)
+const editingPageIndex = ref(-1)
+const newPageName = ref('')
+const pageNameInput = ref(null)
 
 // 监听props.currentPage变化
 watch(() => props.currentPage, (newVal) => {
@@ -528,6 +562,85 @@ const toggleMinimize = () => {
   localStorage.setItem('toolbar-minimized', isMinimized.value.toString())
 }
 
+// 开始编辑页面名称
+const startEditPageName = (index) => {
+  if (!isEditable.value) {
+    showUnlockMessage()
+    return
+  }
+  
+  editingPageName.value = true
+  editingPageIndex.value = index
+  newPageName.value = props.pages[index].name || `页面 ${index + 1}`
+  
+  nextTick(() => {
+    if (pageNameInput.value) {
+      pageNameInput.value.focus()
+    }
+  })
+}
+
+// 保存页面名称
+const savePageName = (index) => {
+  try {
+    if (!isEditable.value) {
+      showUnlockMessage()
+      cancelEditPageName()
+      return
+    }
+    
+    if (newPageName.value.trim() && newPageName.value !== (props.pages[index].name || `页面 ${index + 1}`)) {
+      // 通知父组件执行重命名操作
+      emit('rename-page', index, newPageName.value.trim())
+    }
+  } catch (error) {
+    handleError(error, '重命名页面失败')
+  } finally {
+    cancelEditPageName()
+  }
+}
+
+// 取消编辑页面名称
+const cancelEditPageName = () => {
+  editingPageName.value = false
+  editingPageIndex.value = -1
+  newPageName.value = ''
+}
+
+// 删除当前页面方法
+const removeCurrentPage = () => {
+  try {
+    if (!isEditable.value) {
+      showUnlockMessage()
+      return
+    }
+    
+    // 检查是否只剩一个页面
+    if (!props.pages || props.pages.length <= 1) {
+      ElMessage.warning('至少需要保留一个页面')
+      return
+    }
+    
+    // 确认删除
+    ElMessageBox.confirm(
+      '确定要删除当前页面吗？此操作无法撤销。',
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    ).then(() => {
+      // 通知父组件执行删除操作
+      emit('remove-page', props.currentPage)
+    }).catch(() => {
+      // 用户取消操作
+    })
+  } catch (error) {
+    handleError(error, '删除页面失败')
+  }
+}
+
 // 加载保存的工具栏状态
 const loadToolbarState = () => {
   try {
@@ -749,6 +862,22 @@ defineExpose({
 
 .button-text {
   margin-left: 4px;
+}
+
+.page-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.page-name {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.page-name:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 @media (max-width: 768px) {

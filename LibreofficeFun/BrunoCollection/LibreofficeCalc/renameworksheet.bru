@@ -1,0 +1,19 @@
+meta {
+  name: renameworksheet
+  type: http
+  seq: 10
+}
+
+post {
+  url: https://192.168.0.3:8443/api/renameworksheet
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filename":"spreadsheet_20250811_194044",
+    "sheetname":"testaddsheet",
+    "newsheetname":"newsheetname"
+  }
+}

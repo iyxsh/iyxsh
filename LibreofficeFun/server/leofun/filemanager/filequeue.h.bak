@@ -128,9 +128,6 @@ namespace filemanager {
         // 处理删除工作表任务
         void processRemoveWorksheetTask(const FileTask& task);
         
-        // 处理重命名工作表任务
-        void processRenameWorksheetTask(const FileTask& task);
-        
         // 处理重命名文件任务
         void processRenameFileTask(const FileTask& task);
 
@@ -144,20 +141,20 @@ namespace filemanager {
         std::queue<FileTask> taskQueue;
         
         // 互斥锁
-        mutable std::mutex statusMutex;
-        std::mutex taskMutex;
+        mutable std::mutex queueMutex_;
+        mutable std::mutex statusMutex_;
         
         // 条件变量
-        mutable std::condition_variable statusCondition;
-        std::condition_variable taskCondition;
+        std::condition_variable taskAvailable_;
         
         // 任务处理线程
-        std::thread taskProcessorThread;
-        bool shouldStop;
+        std::unique_ptr<std::thread> taskProcessorThread_;
+        
+        // 是否正在运行
+        bool running_;
         
         // 模板加载状态
-        bool templateLoading;
-        mutable std::mutex templateMutex;
+        bool templateLoading_;
     };
 
 } // namespace filemanager

@@ -269,6 +269,9 @@ namespace filemanager
                     case TASK_REMOVE_WORKSHEET:
                         processRemoveWorksheetTask(task);
                         break;
+                    case TASK_RENAME_WORKSHEET:
+                        processRenameWorksheetTask(task);
+                        break;
                     case TASK_RENAME_FILE:
                         processRenameFileTask(task);
                         break;
@@ -296,7 +299,6 @@ namespace filemanager
         logger_log_info("File task processor thread stopped");
     }
 
-    
     // 等待文件状态变化
     bool FileQueueManager::waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds)
     {
@@ -523,16 +525,6 @@ namespace filemanager
 
         try
         {
-            // 等待文件状态变为就绪或关闭状态
-            bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
-            if (!isReady)
-            {
-                logger_log_error("File %s is not ready for deleting, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
-                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
-                return;
-            }
-
             // 更新文件状态为处理中
             updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
 
@@ -741,6 +733,62 @@ namespace filemanager
 
         logger_log_info("Finished processing remove worksheet task: %s", 
                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+    }
+
+    // 处理重命名工作表任务
+    void FileQueueManager::processRenameWorksheetTask(const FileTask &task)
+    {
+        logger_log_info("Processing rename worksheet task: %s", task.filename.c_str());
+
+        try
+        {
+            // 等待文件状态变为就绪或关闭状态
+            bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            if (!isReady)
+            {
+                logger_log_error("File %s is not ready for renaming worksheet, timeout or error occurred", task.filename.c_str());
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
+                return;
+            }
+
+            // 更新文件状态为处理中
+            updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
+
+            // 确保taskData不为空
+            if (!task.taskData)
+            {
+                logger_log_error("Rename worksheet task has no data");
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Rename worksheet task has no data");
+                return;
+            }
+
+            // 调用filehandlers中的处理函数
+            int res = filemanager::worksheetRename(task.taskData);
+            if (res == 0)
+            {
+                // 更新文件状态为就绪
+                updateFileStatus(task.filename, FILE_STATUS_READY);
+                logger_log_info("Successfully renamed worksheet for file: %s", task.filename.c_str());
+            }
+            else
+            {
+                // 更新文件状态为错误
+                updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to rename worksheet");
+                logger_log_error("Failed to rename worksheet for file: %s", task.filename.c_str());
+            }
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in processRenameWorksheetTask for %s: %s", task.filename.c_str(), e.what());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in processRenameWorksheetTask for %s", task.filename.c_str());
+            updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
+        }
+
+        logger_log_info("Finished processing rename worksheet task: %s", task.filename.c_str());
     }
     // 处理重命名文件任务
     void FileQueueManager::processRenameFileTask(const FileTask &task)

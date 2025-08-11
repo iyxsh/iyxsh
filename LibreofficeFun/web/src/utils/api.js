@@ -66,6 +66,36 @@ export const advancedCardApi = {
     return advancedApiClient.post('/newfile', fileData, { cancelToken });
   },
   
+  // 更新文件
+  updateFile(fileData, cancelToken = null) {
+    return advancedApiClient.post('/updatefile', fileData, { cancelToken });
+  },
+  
+  // 获取文件数据
+  getFileData(fileId, cancelToken = null) {
+    return advancedApiClient.post('/filedata', { fileId }, { cancelToken });
+  },
+  
+  // 添加工作表
+  addWorksheet(worksheetData, cancelToken = null) {
+    return advancedApiClient.post('/addworksheet', worksheetData, { cancelToken });
+  },
+  
+  // 删除工作表
+  removeWorksheet(worksheetId, cancelToken = null) {
+    return advancedApiClient.post('/removeworksheet', { worksheetId }, { cancelToken });
+  },
+  
+  // 重命名工作表
+  renameWorksheet(worksheetId, newName, cancelToken = null) {
+    return advancedApiClient.post('/renameworksheet', { worksheetId, newName }, { cancelToken });
+  },
+  
+  // 重命名文件
+  renameFile(fileId, newName, cancelToken = null) {
+    return advancedApiClient.post('/renamefile', { fileId, newName }, { cancelToken });
+  },
+  
   // 获取文件列表
   getFileList(cancelToken = null) {
     return advancedApiClient.get('/filelist', {}, { cancelToken });

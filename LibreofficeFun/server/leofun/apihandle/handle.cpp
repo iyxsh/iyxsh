@@ -314,3 +314,22 @@ void deal_renamefile_request(RequestBody requestbody, ResponseBody *responsebody
     filemanager::renamefile(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
+
+/**
+ * 处理重命名工作表请求
+ */
+void deal_renameworksheet_request(RequestBody requestbody, ResponseBody *responsebody)
+{
+    if (!validate_request(requestbody, responsebody, "POST", "/api/renameworksheet")) {
+        return;
+    }
+
+    if (handle_empty_body(requestbody, responsebody)) {
+        return;
+    }
+
+    cJSON *results = cJSON_CreateObject();
+    printf("request renameworksheet body:%s\n", requestbody.body_start);
+    filemanager::renameworksheet(results, requestbody.body_start);
+    send_response(responsebody, results, STATUS_SUCCESS);
+}

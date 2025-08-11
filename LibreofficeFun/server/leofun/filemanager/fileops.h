@@ -16,6 +16,7 @@ namespace filemanager
     void deletefile(cJSON *results, const char *body);
     void addworksheet(cJSON *results, const char *body);
     void removeworksheet(cJSON *results, const char *body);
+    void renameworksheet(cJSON *results, const char *body);
     void renamefile(cJSON *results, const char *body);
     
     // 系统初始化函数

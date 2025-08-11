@@ -246,6 +246,14 @@ void handle_removeworksheet_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
+void handle_renameworksheet_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_renameworksheet_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
 void handle_renamefile_request(SSL *ssl, RequestBody requestbody)
 {
     ResponseBody responsebody;
@@ -267,6 +275,7 @@ struct Route routes[] = {
     {"POST", "/api/deletefile", handle_deletefile_request},
     {"POST", "/api/addworksheet", handle_addworksheet_request},
     {"POST", "/api/removeworksheet", handle_removeworksheet_request},
+    {"POST", "/api/renameworksheet", handle_renameworksheet_request},
     {"POST", "/api/renamefile", handle_renamefile_request},
     // 添加通用OPTIONS处理路由
     {"OPTIONS", "/api/filelist", handle_options_request},
@@ -280,6 +289,7 @@ struct Route routes[] = {
     {"OPTIONS", "/api/deletefile", handle_options_request},
     {"OPTIONS", "/api/addworksheet", handle_options_request},
     {"OPTIONS", "/api/removeworksheet", handle_options_request},
+    {"OPTIONS", "/api/renameworksheet", handle_options_request},
     {"OPTIONS", "/api/renamefile", handle_options_request},
     {NULL, NULL, NULL}};
 
