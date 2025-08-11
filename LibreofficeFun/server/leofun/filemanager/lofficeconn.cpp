@@ -1,5 +1,6 @@
 #include "lofficeconn.h"
 #include "../logger/logger.h"
+#include "utils.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -91,7 +92,7 @@ namespace filemanager
                 uno::Reference<uno::XInterface> xResolverIface;
                 try {
                     xResolverIface = xLocalMCF->createInstanceWithContext(
-                        rtl::OUString::createFromAscii("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
+                        convertStringToOUString("com.sun.star.bridge.UnoUrlResolver"), xLocalContext);
                 } catch (const uno::Exception& e) {
                     std::cerr << "UNO Exception creating UnoUrlResolver: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
                     continue; // 重试
@@ -130,7 +131,7 @@ namespace filemanager
                 try
                 {
                     xCtxIface = xUrlResolver->resolve(
-                        rtl::OUString::createFromAscii("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
+                        convertStringToOUString("uno:socket,host=127.0.0.1,port=2002;urp;StarOffice.ComponentContext"));
                 }
                 catch (const uno::Exception &e)
                 {
@@ -192,7 +193,7 @@ namespace filemanager
                 try {
                     // 直接通过服务管理器创建Desktop实例
                     uno::Reference<uno::XInterface> desktopInterface = xMCF_base->createInstanceWithContext(
-                        rtl::OUString::createFromAscii("com.sun.star.frame.Desktop"), xContext);
+                        convertStringToOUString("com.sun.star.frame.Desktop"), xContext);
                     
                     // 检查Desktop实例是否有效
                     if (desktopInterface.is()) {
@@ -283,7 +284,7 @@ namespace filemanager
                     try
                     {
                         uno::Reference<uno::XInterface> testInstance = xMCF_base->createInstanceWithContext(
-                            rtl::OUString::createFromAscii("com.sun.star.util.URLTransformer"), mContext);
+                            convertStringToOUString("com.sun.star.util.URLTransformer"), mContext);
                         if (testInstance.is())
                         {
                             // 连接有效，返回加载器

@@ -23,24 +23,24 @@ namespace filemanager
         return filename.substr(0, lastDot);
     }
     
-    // 确保文件名有.xlsx后缀
-    std::string ensureXlsxExtension(const std::string& filename) {
-        // 如果文件名已经以.xlsx结尾，则直接返回
-        if (filename.length() >= 5 && 
-            (filename.substr(filename.length() - 5) == ".xlsx" || 
-             filename.substr(filename.length() - 5) == ".XLSX")) {
+    // 确保文件名有.ods后缀
+    std::string ensureOdsExtension(const std::string& filename) {
+        // 如果文件名已经以.ods结尾，则直接返回
+        if (filename.length() >= 4 && 
+            (filename.substr(filename.length() - 4) == ".ods" || 
+             filename.substr(filename.length() - 4) == ".ODS")) {
             return filename;
         }
         
-        // 如果文件名以.xls结尾，则替换为.xlsx
+        // 如果文件名以.ods结尾，则替换为.ods
         if (filename.length() >= 4 && 
-            (filename.substr(filename.length() - 4) == ".xls" || 
-             filename.substr(filename.length() - 4) == ".XLS")) {
-            return filename.substr(0, filename.length() - 4) + ".xlsx";
+            (filename.substr(filename.length() - 4) == ".ods" || 
+             filename.substr(filename.length() - 4) == ".ODS")) {
+            return filename.substr(0, filename.length() - 4) + ".ods";
         }
         
-        // 其他情况添加.xlsx后缀
-        return filename + ".xlsx";
+        // 其他情况添加.ods后缀
+        return filename + ".ods";
     }
     
     // 实现工具函数
@@ -254,7 +254,7 @@ namespace filemanager
         if (!datapath)
             datapath = "../data"; // 默认数据路径
         if (!defaultname)
-            defaultname = "default.xlsx"; // 默认文件名
+            defaultname = "default.ods"; // 默认文件名
 
         // 默认工作表名
         const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
@@ -267,7 +267,7 @@ namespace filemanager
 
         rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
         defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
-        wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+        wordsSheetName = convertStringToOUString(defaultSheetName);
         logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
         logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
     }

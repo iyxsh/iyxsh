@@ -312,7 +312,7 @@ namespace filemanager
         const char *wordsSheetNameConfig = json_config_get_string("WordsSheet");
         
         if (!datapath) datapath = "../data"; // 默认数据路径
-        if (!defaultname) defaultname = "default.xlsx"; // 默认文件名
+        if (!defaultname) defaultname = "default.ods"; // 默认文件名
         
         // 默认工作表名
         const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
@@ -325,7 +325,7 @@ namespace filemanager
         
         rtl::OString absoluteDefaultFilePathOStr = rtl::OString(absoluteDefaultFilePathStr.c_str());
         rtl::OUString defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
-        rtl::OUString wordsSheetName = rtl::OUString::createFromAscii(defaultSheetName);
+        rtl::OUString wordsSheetName = convertStringToOUString(defaultSheetName);
         
         // 保存全局变量供监控线程使用
         g_defaultFilePathStr = absoluteDefaultFilePathStr;
@@ -491,7 +491,7 @@ namespace filemanager
             // 获取默认模板文件名
             const char* defaultTemplateName = json_config_get_string("defaultname");
             if (!defaultTemplateName) {
-                defaultTemplateName = "default.xlsx"; // 默认模板文件名
+                defaultTemplateName = "default.ods"; // 默认模板文件名
             }
             std::string defaultTemplateFile(defaultTemplateName);
 
@@ -511,7 +511,7 @@ namespace filemanager
                     
                     try {
                         // 更新文件中的WordsSheet
-                        rtl::OUString fileNameOUString = convertStringToOUString(ensureXlsxExtension(filename).c_str());
+                        rtl::OUString fileNameOUString = convertStringToOUString(ensureOdsExtension(filename).c_str());
                         rtl::OUString absoluteFilePath;
                         getAbsolutePath(fileNameOUString, absoluteFilePath);
                         if(!cJSON_IsObject(templateData))

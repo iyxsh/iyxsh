@@ -31,7 +31,7 @@ namespace filemanager
             const char *defaultname = json_config_get_string("defaultname");
             if (!defaultname)
             {
-                defaultname = "default.xlsx"; // 默认文件名
+                defaultname = "default.ods"; // 默认文件名
             }
 
             // 构造完整文件路径
@@ -150,7 +150,7 @@ namespace filemanager
                             continue;
                         }
                         // 使用UTF-8编码处理文件名和sheet名
-                        rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+                        rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
                         rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
                         rtl::OUString absoluteFilePath;
                         getAbsolutePath(filePath, absoluteFilePath);
@@ -230,7 +230,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
 
             cJSON *result = readSheetData(filePath, sheetName);
@@ -300,7 +300,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
             rtl::OUString searchValue = convertStringToOUString(searchValueItem->valuestring);
 
@@ -366,7 +366,7 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
 
             cJSON *contentMap = readSheetData(filePath, sheetName);
@@ -420,7 +420,7 @@ namespace filemanager
 
         try
         {
-            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is())
@@ -446,7 +446,7 @@ namespace filemanager
             sheets->insertNewByName(sheetName, 0);
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
             getAbsolutePath(filenameOstr, absoluteFilePath);
             saveDocument(xDoc, absoluteFilePath);
@@ -455,7 +455,7 @@ namespace filemanager
             closeDocument(xComp);
 
             logger_log_info("Successfully added worksheet %s to file: %s",
-                            ensureXlsxExtension(std::string(sheetnameItem->valuestring)).c_str(), ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+                            ensureOdsExtension(std::string(sheetnameItem->valuestring)).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
         catch (const uno::Exception &e)
@@ -497,7 +497,7 @@ namespace filemanager
 
         try
         {
-            rtl::OUString filePath = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is())
@@ -524,7 +524,7 @@ namespace filemanager
             sheets->removeByName(sheetName);
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(ensureXlsxExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
             getAbsolutePath(filenameOstr, absoluteFilePath);
             saveDocument(xDoc, absoluteFilePath);

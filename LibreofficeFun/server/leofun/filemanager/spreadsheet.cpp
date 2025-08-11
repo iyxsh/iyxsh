@@ -51,10 +51,10 @@ namespace filemanager
             }
 
             // 加载文档
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString url = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> args(0);
             com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComponent = xLoader->loadComponentFromURL(
-                url, rtl::OUString::createFromAscii("_blank"), 0, args);
+                url, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
 
             if (!xComp.is())
@@ -172,7 +172,7 @@ namespace filemanager
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);
-            props[0].Name = rtl::OUString::createFromAscii("Overwrite");
+            props[0].Name = convertStringToOUString("Overwrite");
             props[0].Value <<= true;
 
             xStorable->storeAsURL(url, props);
@@ -244,12 +244,12 @@ namespace filemanager
                 return nullptr;
             }
 
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + rtl::OUString::createFromAscii(absolutePath.c_str());
+            rtl::OUString url = convertStringToOUString("file:///") + convertStringToOUString(absolutePath.c_str());
             std::string urlStr = std::string(rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
             std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
 
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
             if (!xComp.is())
             {
@@ -386,7 +386,7 @@ namespace filemanager
 
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<uno::XInterface> loadedIface = xLoader->loadComponentFromURL(
-                rtl::OUString::createFromAscii("private:factory/scalc"), rtl::OUString::createFromAscii("_blank"), 0, args);
+                convertStringToOUString("private:factory/scalc"), convertStringToOUString("_blank"), 0, args);
             if (!loadedIface.is())
             {
                 std::cerr << "createNewSpreadsheetFile: loadComponentFromURL returned null!" << std::endl;
@@ -467,7 +467,7 @@ namespace filemanager
                     {
                         // 解析位置字符串，如"A1" -> 列=0 (A), 行=0 (1-based, 实际是0)
                         sal_Int32 col = 0, row = 0;
-                        parseCellAddress(rtl::OUString::createFromAscii(position), col, row);
+                        parseCellAddress(convertStringToOUString(position), col, row);
 
                         // 将字符写入指定单元格
                         rtl::OUString charOUString = convertStringToOUString(character);
@@ -516,7 +516,7 @@ namespace filemanager
                             if (cJSON_IsString(cellItem))
                             {
                                 // 字符串类型
-                                rtl::OUString cellValue = rtl::OUString::createFromAscii(cellItem->valuestring);
+                                rtl::OUString cellValue = convertStringToOUString(cellItem->valuestring);
                                 cell->setFormula(cellValue);
                             }
                             else if (cJSON_IsNumber(cellItem))
@@ -535,7 +535,7 @@ namespace filemanager
                                     const char *typeStr = type->valuestring;
                                     if (strcmp(typeStr, "string") == 0 && cJSON_IsString(value))
                                     {
-                                        rtl::OUString cellValue = rtl::OUString::createFromAscii(value->valuestring);
+                                        rtl::OUString cellValue = convertStringToOUString(value->valuestring);
                                         cell->setFormula(cellValue);
                                     }
                                     else if (strcmp(typeStr, "number") == 0 && cJSON_IsNumber(value))
@@ -544,7 +544,7 @@ namespace filemanager
                                     }
                                     else if (strcmp(typeStr, "formula") == 0 && cJSON_IsString(value))
                                     {
-                                        rtl::OUString formula = rtl::OUString::createFromAscii(value->valuestring);
+                                        rtl::OUString formula = convertStringToOUString(value->valuestring);
                                         cell->setFormula(formula);
                                     }
                                 }
@@ -656,12 +656,12 @@ namespace filemanager
             getAbsolutePath(filePath, curFilePath);
 
             // 构造文件URL
-            rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + curFilePath.replaceAll("\\", "/");
+            rtl::OUString fileUrl = convertStringToOUString("file:///") + curFilePath.replaceAll("\\", "/");
             logger_log_info("curFilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
             logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
             if (!xComp.is())
             {
@@ -796,11 +796,11 @@ namespace filemanager
             }
 
             // 构造文件URL
-            rtl::OUString fileUrl = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString fileUrl = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
 
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, rtl::OUString::createFromAscii("_blank"), 0, args);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
             if (!xComp.is())
             {
@@ -849,7 +849,7 @@ namespace filemanager
                         {
                             rtl::OUString cellAddr = convertStringToOUString(celladdrItem->valuestring);
                             rtl::OUString newValue = convertStringToOUString(valueItem->valuestring);
-                            rtl::OUString celltype = typeItem && cJSON_IsString(typeItem) ? convertStringToOUString(typeItem->valuestring) : rtl::OUString::createFromAscii("string");
+                            rtl::OUString celltype = typeItem && cJSON_IsString(typeItem) ? convertStringToOUString(typeItem->valuestring) : convertStringToOUString("string");
 
                             // 解析单元格地址
                             sal_Int32 col = 0, row = 0;
@@ -1002,9 +1002,9 @@ namespace filemanager
                 return nullptr;
             }
 
-            rtl::OUString url = rtl::OUString::createFromAscii("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString url = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, rtl::OUString::createFromAscii("_blank"), 0, args);
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
             if (!xComp.is())
             {
@@ -1181,31 +1181,31 @@ namespace filemanager
                 if (i > 0)
                 {
                     // 除了第一个字符外，其他字符前面都加&
-                    resultBuffer.append(rtl::OUString::createFromAscii("&"));
+                    resultBuffer.append(convertStringToOUString("&"));
                 }
                 else
                 {
-                    resultBuffer.append(rtl::OUString::createFromAscii("="));
+                    resultBuffer.append(convertStringToOUString("="));
                 }
-                resultBuffer.append(rtl::OUString::createFromAscii("$"));
+                resultBuffer.append(convertStringToOUString("$"));
                 // 从配置中获取默认工作表名
                 const char *defaultSheetName = json_config_get_string("WordsSheet");
                 if (!defaultSheetName)
                 {
                     defaultSheetName = "WordsSheet"; // 默认值
                 }
-                resultBuffer.append(rtl::OUString::createFromAscii(defaultSheetName));
-                resultBuffer.append(rtl::OUString::createFromAscii("."));
-                resultBuffer.append(rtl::OUString::createFromAscii(positionItem->valuestring));
+                resultBuffer.append(convertStringToOUString(defaultSheetName));
+                resultBuffer.append(convertStringToOUString("."));
+                resultBuffer.append(convertStringToOUString(positionItem->valuestring));
             }
             else
             {
                 // 如果未找到字符位置，可以添加一个占位符或跳过
                 if (i > 0)
                 {
-                    resultBuffer.append(rtl::OUString::createFromAscii(""));
+                    resultBuffer.append(convertStringToOUString(""));
                 }
-                resultBuffer.append(rtl::OUString::createFromAscii("N/A"));
+                resultBuffer.append(convertStringToOUString("N/A"));
             }
         }
 

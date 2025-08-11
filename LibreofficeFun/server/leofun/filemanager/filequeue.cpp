@@ -543,7 +543,7 @@ namespace filemanager
             }
 
             // 获取文件的绝对路径
-            rtl::OUString fileNameOUString = rtl::OUString::createFromAscii(task.filename.c_str());
+            rtl::OUString fileNameOUString = convertStringToOUString(task.filename.c_str());
             rtl::OUString absoluteFilePath;
             filemanager::getAbsolutePath(fileNameOUString, absoluteFilePath);
             
@@ -780,8 +780,8 @@ namespace filemanager
             }
 
             // 获取旧文件和新文件的绝对路径
-            rtl::OUString oldFileNameOUString = rtl::OUString::createFromAscii(task.filename.c_str());
-            rtl::OUString newFileNameOUString = rtl::OUString::createFromAscii(newFilename.c_str());
+            rtl::OUString oldFileNameOUString = convertStringToOUString(task.filename.c_str());
+            rtl::OUString newFileNameOUString = convertStringToOUString(newFilename.c_str());
             
             rtl::OUString oldAbsoluteFilePath, newAbsoluteFilePath;
             filemanager::getAbsolutePath(oldFileNameOUString, oldAbsoluteFilePath);

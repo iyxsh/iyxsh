@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "port": 8443,
     "datapath": "../data",
-    "defaultname": "default.xlsx",
+    "defaultname": "default.ods",
     "logdata": "../log/server.log",
     "WordsSheet": "WordsSheet",
     "maxCols": 200,
