@@ -110,8 +110,18 @@ pkg install git
 git clone --filter=tree:0 https://mirrors.ustc.edu.cn/freebsd-ports/ports.git /usr/ports
 
 ===========================
+libreoffice sdk for FreeBSD 安装配置
 
+参考：https://blog.fortinet.com/2018/02/13/compiling-the-libreoffice-sdk-on-freebsd-11-2
 在 FreeBSD 上安装 LibreOffice SDK，‌推荐使用 FreeBSD 原生的 Ports 系统编译安装‌，而非尝试安装 Linux 格式的包（如 DEB/RPM）。以下是具体步骤和关键点：
+1. ‌更新Ports Tree‌
+首次使用或需完整更新时执行：
+portsnap fetch extract
+
+
+后续增量更新只需：
+portsnap fetch update
+‌提速技巧‌：修改/etc/portsnap.conf，替换默认服务器为国内镜像（如portsnap.hshh.org）
 
 📦 方法一：通过 Ports 编译安装 LibreOffice (含 SDK 选项)
 ‌定位 LibreOffice 的 Ports 目录‌
@@ -136,6 +146,9 @@ Copy Code
 sudo make install clean
 ‌验证 SDK 安装‌
 安装完成后，SDK 文件通常位于：
+
+遇到问题：make deinstall   # 卸载旧版本
+make reinstall # 重装安装新版本
 
 头文件：/usr/local/include/libreoffice/
 库文件：/usr/local/lib/libreoffice/

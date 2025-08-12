@@ -57,7 +57,7 @@ static bool validate_request(RequestBody requestbody, ResponseBody *responsebody
         return false;
     }
     
-    printf("method: %s, path: %s", requestbody.method, requestbody.path);
+    printf("method: %s, path: %s\n", requestbody.method, requestbody.path);
     if (strcmp(requestbody.method, expected_method) != 0 || strcmp(requestbody.path, expected_path) != 0) {
         responsebody->status = STATUS_METHOD_NOT_ALLOWED;
         strcpy(responsebody->content_type, "application/json");
@@ -124,6 +124,7 @@ void deal_newfile_request(RequestBody requestbody, ResponseBody *responsebody)
     }
     
     cJSON *results = cJSON_CreateObject();
+    printf("request update body:%s\n", requestbody.body_start);
     filemanager::newfileCreate(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
@@ -141,7 +142,7 @@ void deal_updatefile_request(RequestBody requestbody, ResponseBody *responsebody
         return;
     }
     
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     printf("request update body:%s\n", requestbody.body_start);
     filemanager::updatefile(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
@@ -160,7 +161,7 @@ void deal_editfile_request(RequestBody requestbody, ResponseBody *responsebody)
         return;
     }
     
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     printf("request editfile body:%s\n", requestbody.body_start);
     filemanager::editfile(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
@@ -179,7 +180,7 @@ void deal_filedata_request(RequestBody requestbody, ResponseBody *responsebody)
         return;
     }
     
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     responsebody->current_page = requestbody.current_page;
     responsebody->page_size = requestbody.page_size;
     //gridcirclesearch(results,requestbody.body_start,0,responsebody->current_page,&responsebody->page_size,&responsebody->total_count);//查询文件数据非默认设置
@@ -333,3 +334,24 @@ void deal_renameworksheet_request(RequestBody requestbody, ResponseBody *respons
     filemanager::renameworksheet(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
+
+/**
+ * 处理工作表数据请求
+ */
+void deal_sheetdata_request(RequestBody requestbody, ResponseBody *responsebody)
+{
+    if (!validate_request(requestbody, responsebody, "POST", "/api/sheetdata")) {
+        return;
+    }
+
+    if (handle_empty_body(requestbody, responsebody)) {
+        return;
+    }
+
+    cJSON *results = cJSON_CreateArray();
+    printf("request sheetdata body:%s\n", requestbody.body_start);
+    filemanager::sheetdata(results, requestbody.body_start);
+    send_response(responsebody, results, STATUS_SUCCESS);
+}
+
+// namespace apihandle

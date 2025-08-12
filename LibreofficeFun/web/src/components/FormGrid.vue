@@ -69,6 +69,7 @@ import SingleFormShow from './SingleFormShow.vue'
 import FormEditor from './FormEditor.vue'
 import errorLogService from '@/services/errorLogService'
 import { getCurrentInstance } from 'vue'
+import { savePositions } from '../services/formPositionService'
 
 // =====================================================
 // = 2. 定义 props
@@ -649,23 +650,123 @@ const handleFormSave = async (updatedForm) => {
       currentForms[index] = updatedForm
       forms.value = currentForms
       
+      // 同时更新父组件的modelValue
+      const updatedModelValue = [...props.modelValue]
+      const modelIndex = updatedModelValue.findIndex(form => form.id === updatedForm.id)
+      if (modelIndex !== -1) {
+        updatedModelValue[modelIndex] = updatedForm
+        emit('update:modelValue', updatedModelValue)
+      }
+      
       // 保存到localStorage
-      saveFormsToLocalStorage(currentForms)
+      // 提取位置和尺寸信息用于保存
+      const positions = {}
+      const sizes = {}
+      currentForms.forEach(form => {
+        if (form.position) {
+          positions[form.id] = form.position
+        }
+        if (form.size) {
+          sizes[form.id] = form.size
+        }
+      })
+      savePositions(positions, sizes)
       
       // 调用ApiServiceManager更新表单数据
       const apiService = getApiService()
       if (apiService) {
         try {
+          // 获取文件名（从URL参数中获取）
+          const urlParams = new URLSearchParams(window.location.search);
+          const filename = urlParams.get('fileName') || '未命名文件';
+          
+          // 获取当前页面索引（通过全局属性获取PageManager实例）
+          const instance = getCurrentInstance();
+          let currentPageIndex = 0;
+          let currentPageName = 'Sheet1';
+          
+          if (instance && instance.appContext.config.globalProperties) {
+            const { $pageManager } = instance.appContext.config.globalProperties;
+            if ($pageManager && $pageManager.currentPageIdx !== undefined && $pageManager.pages) {
+              currentPageIndex = $pageManager.currentPageIdx;
+              // 获取当前页面名称，如果页面没有名称则使用默认名称
+              currentPageName = $pageManager.pages[currentPageIndex]?.name || `Sheet${currentPageIndex + 1}`;
+            }
+          }
+          
+          // 将表单数据转换为符合接口要求的形式
+          // 以表单字段值为 key，单元格地址为 value
+          const updatecells = {};
+          
+          // 定义字段到列的映射关系
+          const fieldToColumn = {
+            'id': 'A',
+            'title': 'B',
+            'value': 'C',
+            'remark': 'D',
+            'media': 'E',
+            'mediaType': 'F',
+            'showTitle': 'G',
+            'showValue': 'H',
+            'showRemark': 'I',
+            'showMedia': 'J',
+          };
+          console.log('currentForms:', currentForms);
+          currentForms.forEach((form, index) => {
+            // 计算行号 (从第1行开始)
+            const row = index + 1;
+            
+            // 处理所有字段
+            Object.keys(form).forEach(fieldName => {
+              // 跳过不需要映射到单元格的字段
+              const skipFields = ['id', 'createdAt', 'style', 'elementStyles', 'position', 'size', 'zIndex'];
+              if (skipFields.includes(fieldName)) {
+                return;
+              }
+              
+              // 获取字段值
+              const fieldValue = form[fieldName];
+              
+              // 只处理有值的字段
+              if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
+                // 对于布尔值和对象需要特殊处理
+                let cellValue = fieldValue;
+                if (typeof fieldValue === 'boolean') {
+                  cellValue = fieldValue ? 'true' : 'false';
+                } else if (typeof fieldValue === 'object') {
+                  cellValue = JSON.stringify(fieldValue);
+                }
+                
+                // 确定列号
+                let column = fieldToColumn[fieldName];
+                if (!column) {
+                  // 如果没有预定义的列，则按字母顺序分配（J, K, L, ...）
+                  const additionalFields = Object.keys(form).filter(
+                    key => !skipFields.includes(key) && !fieldToColumn[key]
+                  );
+                  const fieldIndex = additionalFields.indexOf(fieldName);
+                  column = String.fromCharCode(74 + fieldIndex); // 74 is 'J' in ASCII
+                }
+                
+                // 使用字段值作为 key，单元格地址作为 value
+                updatecells[cellValue] = `${column}${row}`;
+              }
+            });
+          });
+          
+          // 构造符合接口定义的更新数据
           await apiService.updateFile({
-            action: 'updateForm',
-            form: updatedForm,
-            forms: currentForms,
-            timestamp: new Date().toISOString()
-          })
-          console.log('[FormGrid] 表单更新成功并同步到服务器')
+            filename: filename,
+            updatedata: [{
+              sheetname: currentPageName,
+              updatecells: updatecells
+            }]
+          });
+          
+          console.log('[FormGrid] 表单更新成功并同步到服务器');
         } catch (error) {
-          console.error('[FormGrid] 同步表单更新到服务器失败:', error)
-          ElMessage.error('表单更新同步失败: ' + (error.message || '未知错误'))
+          console.error('[FormGrid] 同步表单更新到服务器失败:', error);
+          ElMessage.error('表单更新同步失败: ' + (error.message || '未知错误'));
         }
       } else {
         console.warn('[FormGrid] ApiServiceManager不可用，仅保存到本地存储')

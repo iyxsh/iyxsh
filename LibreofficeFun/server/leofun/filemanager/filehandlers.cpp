@@ -455,7 +455,7 @@ namespace filemanager
             closeDocument(xComp);
 
             logger_log_info("Successfully added worksheet %s to file: %s",
-                            ensureOdsExtension(std::string(sheetnameItem->valuestring)).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+                            std::string(sheetnameItem->valuestring).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
         catch (const uno::Exception &e)
@@ -533,7 +533,7 @@ namespace filemanager
             closeDocument(xComp);
 
             logger_log_info("Successfully removed worksheet %s from file: %s",
-                            sheetnameItem->valuestring, filenameItem->valuestring);
+                            sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
         catch (const uno::Exception &e)
@@ -594,7 +594,7 @@ namespace filemanager
             if (!nameAccess->hasByName(sheetName))
             {
                 logger_log_info("Worksheet %s does not exist in file: %s",
-                                sheetnameItem->valuestring, filenameItem->valuestring);
+                                sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
                 closeDocument(xComp);
                 return -1; // 工作表不存在
             }
@@ -604,7 +604,7 @@ namespace filemanager
             if (nameAccess->hasByName(newSheetName))
             {
                 logger_log_info("Worksheet %s already exists in file: %s",
-                                newsheetnameItem->valuestring, filenameItem->valuestring);
+                                newsheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
                 closeDocument(xComp);
                 return -1; // 新名称的工作表已存在
             }
@@ -620,7 +620,7 @@ namespace filemanager
                 return -1;
             }
 
-            // 通过XPropertySet接口设置新的工作表名称
+            // 使用XPropertySet接口设置工作表名称
             uno::Reference<beans::XPropertySet> xPropSet(xSheet, uno::UNO_QUERY);
             if (!xPropSet.is())
             {
@@ -630,9 +630,19 @@ namespace filemanager
             }
 
             // 设置新的工作表名称
-            xPropSet->setPropertyValue(rtl::OUString(RTL_CONSTASCII_USTRINGPARAM("Name")), 
-                                      uno::makeAny(newSheetName));
-
+            try {
+                xPropSet->setPropertyValue(rtl::OUString(RTL_CONSTASCII_USTRINGPARAM("Name")), 
+                                          uno::makeAny(newSheetName));
+            }
+            catch (const uno::Exception &e)
+            {
+                logger_log_error("UNO exception while setting worksheet name: %s, Message: %s",
+                                 rtl::OUStringToOString(newSheetName, RTL_TEXTENCODING_UTF8).getStr(),
+                                 rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                closeDocument(xComp);
+                return -1;
+            }
+            
             // 保存文档
             rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
@@ -643,7 +653,8 @@ namespace filemanager
             closeDocument(xComp);
 
             logger_log_info("Successfully renamed worksheet from %s to %s in file: %s",
-                            sheetnameItem->valuestring, newsheetnameItem->valuestring, filenameItem->valuestring);
+                            sheetnameItem->valuestring, newsheetnameItem->valuestring,
+                            ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
         catch (const uno::Exception &e)
@@ -662,6 +673,98 @@ namespace filemanager
             logger_log_error("Unknown exception in worksheetRename");
             return -1;
         }
+    }
+    
+    int sheetdata(cJSON *taskData)
+    {
+        try
+        {
+            // 从taskData中提取文件名和工作表名
+            cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
+            cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
+
+            if (!filenameItem || !cJSON_IsString(filenameItem) ||
+                !sheetnameItem || !cJSON_IsString(sheetnameItem))
+            {
+                logger_log_error("Missing filename or sheetname in sheetdata task data");
+                return -1;
+            }
+
+            // 使用UTF-8编码处理文件名和sheet名
+            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+
+            // 读取工作表数据
+            cJSON *sheetContent = readSheetData(filePath, sheetName);
+            if (sheetContent)
+            {
+                // 创建结果文件
+                std::string resultFilename = std::string(filenameItem->valuestring) + "_" + std::string(sheetnameItem->valuestring) + "_data.json";
+                
+                // 将数据写入结果文件
+                FILE *resultFile = fopen(resultFilename.c_str(), "w");
+                if (resultFile)
+                {
+                    // 创建结果数组
+                    cJSON *rowsArray = cJSON_CreateArray();
+                    
+                    // 创建第一行数据对象
+                    cJSON *firstRow = cJSON_CreateObject();
+                    
+                    // 遍历sheetContent中的所有键值对
+                    cJSON *currentItem = sheetContent->child;
+                    while (currentItem) {
+                        // 将内容作为key，位置作为value添加到firstRow对象中
+                        cJSON_AddStringToObject(firstRow, currentItem->string, currentItem->valuestring);
+                        currentItem = currentItem->next;
+                    }
+                    
+                    // 将第一行添加到结果数组中
+                    cJSON_AddItemToArray(rowsArray, firstRow);
+                    
+                    // 将结果写入文件
+                    char *resultString = cJSON_Print(rowsArray);
+                    fputs(resultString, resultFile);
+                    fclose(resultFile);
+                    free(resultString);
+                    
+                    // 清理cJSON对象
+                    cJSON_Delete(rowsArray);
+                }
+                else
+                {
+                    logger_log_error("Failed to create result file: %s", resultFilename.c_str());
+                    cJSON_Delete(sheetContent);
+                    return -1;
+                }
+                
+                cJSON_Delete(sheetContent);
+            }
+            else
+            {
+                logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s", 
+                                filenameItem->valuestring, sheetnameItem->valuestring);
+                return -1;
+            }
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO exception in sheetdata: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return -1;
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("STD exception in sheetdata: %s", e.what());
+            return -1;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in sheetdata");
+            return -1;
+        }
+
+        return 0;
     }
 
 } // namespace filemanager

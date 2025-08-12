@@ -19,6 +19,9 @@ namespace filemanager
     void renameworksheet(cJSON *results, const char *body);
     void renamefile(cJSON *results, const char *body);
     
+    // 添加获取工作表数据的函数声明
+    void sheetdata(cJSON *results, const char *body);
+    
     // 系统初始化函数
     void initializeDataPathFiles();
     

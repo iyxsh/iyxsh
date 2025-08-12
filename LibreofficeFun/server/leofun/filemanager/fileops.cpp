@@ -580,7 +580,6 @@ namespace filemanager
 
         renameSheetTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
         std::string sheetName = std::string(sheetnameItem->valuestring);
-        std::string newSheetName = std::string(newsheetnameItem->valuestring);
         // 正确管理cJSON内存
         if (renameSheetTask.taskData)
         {
@@ -594,6 +593,59 @@ namespace filemanager
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "newsheetname", removeFileExtension(std::string(newsheetnameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "filestatus", "processing");
+        cJSON_Delete(jsonRoot);
+    }
+
+    void sheetdata(cJSON *results, const char *body)
+    {
+        // 获取工作表数据需要请求体，检查body是否为空
+        if (!body || strlen(body) == 0)
+        {
+            cJSON_AddStringToObject(results, "error", "Empty request body");
+            return;
+        }
+
+        // 解析输入的 JSON 字符串
+        cJSON *jsonRoot = cJSON_Parse(body);
+        if (!jsonRoot)
+        {
+            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            return;
+        }
+
+        cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(jsonRoot, "sheetname");
+
+        if (!filenameItem || !cJSON_IsString(filenameItem) ||
+            !sheetnameItem || !cJSON_IsString(sheetnameItem))
+        {
+            cJSON_AddStringToObject(results, "error", "Missing filename or sheetname");
+            cJSON_Delete(jsonRoot);
+            return;
+        }
+
+        // 创建获取工作表数据任务并添加到队列
+        filemanager::FileTask sheetDataTask;
+        sheetDataTask.type = filemanager::TASK_SHEET_DATA;
+        sheetDataTask.filename = std::string("");
+        sheetDataTask.data = std::string("");
+        sheetDataTask.createTime = std::time(nullptr);
+        sheetDataTask.taskData = nullptr;
+
+        // 正确管理cJSON内存
+        if (sheetDataTask.taskData)
+        {
+            cJSON_Delete(sheetDataTask.taskData);
+        }
+        sheetDataTask.taskData = cJSON_Duplicate(jsonRoot, cJSON_True);
+
+        // 添加任务到队列
+        filemanager::FileQueueManager::getInstance().addFileTask(sheetDataTask);
+        
+        cJSON_AddStringToObject(results, "result", "success");
+        cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
         cJSON_AddStringToObject(results, "filestatus", "processing");
         cJSON_Delete(jsonRoot);
     }

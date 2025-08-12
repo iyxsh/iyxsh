@@ -6,7 +6,7 @@
 
 <script setup>
 import { ref, reactive } from 'vue';
-import { advancedCardApi } from '../utils/api.js';
+import { advancedCardApi } from '@/utils/api.ts';
 
 // 定义服务状态
 const serviceState = reactive({
@@ -47,12 +47,17 @@ const processQueue = async () => {
 };
 
 // 创建新文件
-const newFile = async (fileData) => {
+const newFile = async (/** @type {NewFileRequest} */ fileData) => {
   serviceState.isSaving = true;
   serviceState.error = null;
   
   try {
-    await advancedCardApi.newFile(fileData);
+    // 类型验证
+    if (fileData && typeof fileData === 'object') {
+      await advancedCardApi.newFile(fileData);
+    } else {
+      throw new Error('Invalid fileData parameter');
+    }
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -63,12 +68,17 @@ const newFile = async (fileData) => {
 };
 
 // 更新文件
-const updateFile = async (fileData) => {
+const updateFile = async (/** @type {UpdateFileRequest} */ fileData) => {
   serviceState.isSaving = true;
   serviceState.error = null;
 
   try {
-    await advancedCardApi.updateFile(fileData);
+    // 类型验证
+    if (fileData && typeof fileData === 'object') {
+      await advancedCardApi.updateFile(fileData);
+    } else {
+      throw new Error('Invalid fileData parameter');
+    }
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -79,11 +89,16 @@ const updateFile = async (fileData) => {
 };
 
 // 获取文件数据
-const getFileData = async (fileId) => {
+const getFileData = async (/** @type {string} */ fileId) => {
   serviceState.isLoading = true;
   serviceState.error = null;
 
   try {
+    // 类型验证
+    if (typeof fileId !== 'string' || !fileId) {
+      throw new Error('Invalid fileId parameter');
+    }
+    
     const response = await advancedCardApi.getFileData(fileId);
     serviceState.lastSync = new Date();
     return response;
@@ -96,11 +111,21 @@ const getFileData = async (fileId) => {
 };
 
 // 添加工作表
-const addWorksheet = async (worksheetData) => {
+const addWorksheet = async (/** @type {AddWorksheetRequest} */ worksheetData) => {
   serviceState.isSaving = true;
   serviceState.error = null;
 
   try {
+    // 类型验证
+    if (!worksheetData || typeof worksheetData !== 'object') {
+      throw new Error('Invalid worksheetData parameter');
+    }
+    
+    // 验证必需字段
+    if (!worksheetData.filename || !worksheetData.sheetname) {
+      throw new Error('Missing required fields: filename and sheetname are required');
+    }
+    
     await advancedCardApi.addWorksheet(worksheetData);
     serviceState.lastSync = new Date();
   } catch (error) {
@@ -112,12 +137,22 @@ const addWorksheet = async (worksheetData) => {
 };
 
 // 删除工作表
-const removeWorksheet = async (worksheetId) => {
+const removeWorksheet = async (/** @type {RemoveWorksheetRequest} */ removeWorksheetRequest) => {
   serviceState.isSaving = true;
   serviceState.error = null;
 
   try {
-    await advancedCardApi.removeWorksheet(worksheetId);
+    // 类型验证
+    if (!removeWorksheetRequest || typeof removeWorksheetRequest !== 'object') {
+      throw new Error('Invalid removeWorksheetRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!removeWorksheetRequest.filename || !removeWorksheetRequest.sheetname) {
+      throw new Error('Missing required fields: filename and sheetname are required');
+    }
+    
+    await advancedCardApi.removeWorksheet(removeWorksheetRequest);
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -128,12 +163,24 @@ const removeWorksheet = async (worksheetId) => {
 };
 
 // 重命名工作表
-const renameWorksheet = async (worksheetId, newName) => {
+const renameWorksheet = async (/** @type {RenameWorksheetRequest} */ renameWorksheetRequest) => {
   serviceState.isSaving = true;
   serviceState.error = null;
 
   try {
-    await advancedCardApi.renameWorksheet(worksheetId, newName);
+    // 类型验证
+    if (!renameWorksheetRequest || typeof renameWorksheetRequest !== 'object') {
+      throw new Error('Invalid renameWorksheetRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!renameWorksheetRequest.filename || 
+        !renameWorksheetRequest.sheetname || 
+        !renameWorksheetRequest.newsheetname) {
+      throw new Error('Missing required fields: filename, sheetname and newsheetname are required');
+    }
+    
+    await advancedCardApi.renameWorksheet(renameWorksheetRequest);
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -144,12 +191,22 @@ const renameWorksheet = async (worksheetId, newName) => {
 };
 
 // 重命名文件
-const renameFile = async (fileId, newName) => {
+const renameFile = async (/** @type {import('@/utils/apiTypes').RenameFileRequest} */ renameFileRequest) => {
   serviceState.isSaving = true;
   serviceState.error = null;
 
   try {
-    await advancedCardApi.renameFile(fileId, newName);
+    // 类型验证
+    if (!renameFileRequest || typeof renameFileRequest !== 'object') {
+      throw new Error('Invalid renameFileRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!renameFileRequest.oldFilename || !renameFileRequest.newFilename) {
+      throw new Error('Missing required fields: oldFilename and newFilename are required');
+    }
+    
+    await advancedCardApi.renameFile(renameFileRequest);
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -160,18 +217,82 @@ const renameFile = async (fileId, newName) => {
 };
 
 // 删除文件
-const deleteFile = async (filename) => {
+const deleteFile = async (/** @type {DeleteFileRequest} */ deleteFileRequest) => {
   serviceState.isSaving = true;
   serviceState.error = null;
   
   try {
-    await advancedCardApi.deleteFile(filename);
+    // 类型验证
+    if (!deleteFileRequest || typeof deleteFileRequest !== 'object') {
+      throw new Error('Invalid deleteFileRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!deleteFileRequest.filename) {
+      throw new Error('Missing required field: filename is required');
+    }
+    
+    await advancedCardApi.deleteFile(deleteFileRequest);
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
     throw error;
   } finally {
     serviceState.isSaving = false;
+  }
+};
+
+// 获取文件状态
+const fileStatus = async (/** @type {FileStatusRequest} */ fileStatusRequest) => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+
+  try {
+    // 类型验证
+    if (!fileStatusRequest || typeof fileStatusRequest !== 'object') {
+      throw new Error('Invalid fileStatusRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!fileStatusRequest.filename) {
+      throw new Error('Missing required field: filename is required');
+    }
+    
+    const response = await advancedCardApi.fileStatus(fileStatusRequest);
+    serviceState.lastSync = new Date();
+    return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
+  }
+};
+
+// 获取工作表数据
+const getSheetData = async (/** @type {import('@/utils/apiTypes').SheetDataRequest} */ sheetDataRequest) => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+
+  try {
+    // 类型验证
+    if (!sheetDataRequest || typeof sheetDataRequest !== 'object') {
+      throw new Error('Invalid sheetDataRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!sheetDataRequest.filename || !sheetDataRequest.sheetname) {
+      throw new Error('Missing required fields: filename and sheetname are required');
+    }
+    
+    const response = await advancedCardApi.getSheetData(sheetDataRequest);
+    serviceState.lastSync = new Date();
+    return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
   }
 };
 
@@ -193,11 +314,16 @@ const getCardGroups = async () => {
 };
 
 // 保存卡片组数据（支持批量处理）
-const saveCardGroups = async (cardGroups) => {
+const saveCardGroups = async (/** @type {any[]} */ cardGroups) => {
   serviceState.isSaving = true;
   serviceState.error = null;
   
   try {
+    // 类型验证
+    if (!Array.isArray(cardGroups)) {
+      throw new Error('Invalid cardGroups parameter, must be an array');
+    }
+    
     // 对于大数据量，分批处理
     if (cardGroups.length > 100) {
       const batchSize = 50;
@@ -249,7 +375,7 @@ const getStyleConfig = async () => {
 };
 
 // 保存样式配置
-const saveStyleConfig = async (styleConfig) => {
+const saveStyleConfig = async (/** @type {Partial<import('@/utils/apiTypes').StyleConfig>} */ styleConfig) => {
   serviceState.isSaving = true;
   serviceState.error = null;
   
@@ -265,11 +391,16 @@ const saveStyleConfig = async (styleConfig) => {
 };
 
 // 批量操作支持
-const batchOperation = async (operations) => {
+const batchOperation = async (/** @type {import('@/utils/apiTypes').BatchOperation[]} */ operations) => {
   serviceState.isSaving = true;
   serviceState.error = null;
   
   try {
+    // 类型验证
+    if (!Array.isArray(operations)) {
+      throw new Error('Invalid operations parameter, must be an array');
+    }
+    
     const results = [];
     
     // 分组操作以提高效率
@@ -361,6 +492,8 @@ defineExpose({
   renameWorksheet, // 添加renameWorksheet方法
   renameFile, // 添加renameFile方法
   deleteFile, // 添加deleteFile方法
+  fileStatus, // 添加fileStatus方法
+  getSheetData, // 添加getSheetData方法
   
   // 状态
   serviceState,

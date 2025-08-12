@@ -22,27 +22,6 @@
     <!-- 主工具栏内容 -->
     <div class="toolbar" v-show="!isMinimized">
       <div class="toolbar-section toolbar-left">
-        <el-tooltip content="切换卡片样式" placement="bottom" :disabled="!isEditable">
-          <el-button @click="toggleCardStyle" :disabled="!isEditable" type="primary" plain>
-            <el-icon><Grid /></el-icon>
-            <span class="button-text">{{ cardStyleOn ? '隐藏样式' : '显示样式' }}</span>
-          </el-button>
-        </el-tooltip>
-
-        <el-tooltip content="清除当前页面" placement="bottom" :disabled="!isEditable">
-          <el-button @click="clearCurrentPageForms" :disabled="!isEditable" type="danger" plain>
-            <el-icon><Delete /></el-icon>
-            <span class="button-text">清除页面</span>
-          </el-button>
-        </el-tooltip>
-        
-        <el-tooltip content="清除所有页面" placement="bottom" :disabled="!isEditable">
-          <el-button @click="clearAllPages" :disabled="!isEditable" type="danger" plain>
-            <el-icon><Delete /></el-icon>
-            <span class="button-text">清除全部</span>
-          </el-button>
-        </el-tooltip>
-
         <el-tooltip content="添加新页面" placement="bottom" :disabled="!isEditable">
           <el-button @click="addPage" :disabled="!isEditable" type="success" plain>
             <el-icon><DocumentAdd /></el-icon>
@@ -56,17 +35,39 @@
             <span class="button-text">删除页面</span>
           </el-button>
         </el-tooltip>
+
+        <el-tooltip content="清除所有页面" placement="bottom" :disabled="!isEditable">
+          <el-button @click="clearAllPages" :disabled="!isEditable" type="danger" plain>
+            <el-icon><Delete /></el-icon>
+            <span class="button-text">清除全部</span>
+          </el-button>
+        </el-tooltip>
+
+        <el-tooltip content="旋转页面" placement="bottom" :disabled="!isEditable">
+          <el-button @click="rotatePage" :disabled="!isEditable || !showRotateButton" type="warning" plain>
+            <el-icon><Refresh /></el-icon>
+            <span class="button-text">旋转页面</span>
+          </el-button>
+        </el-tooltip>
       </div>
 
-      <div class="toolbar-section toolbar-right">
-        <el-tooltip content="切换编辑/预览模式" placement="bottom">
-          <el-switch
-            :model-value="isEditable"
-            @update:model-value="toggleEditMode"
-            active-text="编辑"
-            inactive-text="预览"
-            inline-prompt
-          />
+      <div class="toolbar-section toolbar-center">
+        <el-tooltip 
+          effect="dark" 
+          :content="isEditable ? '锁定页面' : '解锁页面'" 
+          placement="bottom"
+        >
+          <el-button 
+            type="primary" 
+            size="small" 
+            @click="toggleEditPage"
+          >
+            <el-icon>
+              <Lock v-if="!isEditable" />
+              <Unlock v-else />
+            </el-icon>
+            <span class="button-text">{{ isEditable ? '锁定' : '解锁' }}</span>
+          </el-button>
         </el-tooltip>
 
         <el-tooltip content="选择要编辑的页面" placement="bottom">
@@ -99,6 +100,18 @@
           </el-select>
         </el-tooltip>
 
+        <el-tooltip content="切换编辑/预览模式" placement="bottom">
+          <el-switch
+            :model-value="isEditable"
+            @update:model-value="toggleEditMode"
+            active-text="编辑"
+            inactive-text="预览"
+            inline-prompt
+          />
+        </el-tooltip>
+      </div>
+
+      <div class="toolbar-section toolbar-right">
         <el-button-group>
           <el-tooltip content="导出数据" placement="bottom">
             <el-button @click="exportData" type="info" plain>
@@ -125,10 +138,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, watch, getCurrentInstance } from 'vue'
 import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip, ElInput } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
-import { DocumentAdd, Grid, Delete, Upload, Download, Position, Rank, Plus, Minus } from '@element-plus/icons-vue'
+import { DocumentAdd, Delete, Upload, Download, Position, Rank, Plus, Minus, Refresh, Lock, Unlock } from '@element-plus/icons-vue'
 import { Share as Save } from '@element-plus/icons-vue'
 import { CollectionTag as TakeawayBox } from '@element-plus/icons-vue'
 import errorLogService from '../services/errorLogService'
@@ -140,7 +153,6 @@ console.log('Toolbar component initializing');
 const props = defineProps({
   pages: Array,
   currentPage: Number,
-  cardStyleOn: Boolean,
   editable: Boolean,
   onAddPage: {
     type: Function,
@@ -149,14 +161,15 @@ const props = defineProps({
   clearAllPages: Function,
   rotatePage: Function,
   showRotateButton: Boolean,
-  onRemovePage: Function // 添加删除页面的回调函数
+  onRemovePage: Function, // 添加删除页面的回调函数
+  newPageName: String // 添加新页面名称prop
 })
 
 // 创建计算属性或本地状态以避免直接修改props
 const isEditable = ref(props.editable)
 
 // 定义emits
-const emit = defineEmits(['toggle-card-style', 'clear-current-page-forms', 'add-form', 'toggle-edit-mode', 'change-page', 'export-data', 'import-data', 'save-all', 'on-add-page', 'remove-page', 'rename-page'])
+const emit = defineEmits(['toggle-edit-mode', 'change-page', 'export-data', 'import-data', 'save-all', 'on-add-page', 'remove-page', 'rename-page', 'toggle-edit-page'])
 
 // 使用事件总线
 const { on, off } = useEventBus()
@@ -241,41 +254,40 @@ const changePage = (pageIndex) => {
 }
 
 // 添加页面方法
-const addPage = () => {
+const addPage = async () => {
   try {
-    if (!props.onAddPage) {
-      throw new Error('onAddPage 方法未定义')
-    }
+    // 使用emit触发添加页面事件，确保事件名称与PageManager.vue中监听的事件一致
+    emit('on-add-page')
     
-    props.onAddPage()
+    // 调用 API 服务添加工作表
+    try {
+      // 使用全局属性方式访问API服务
+      const apiService = window.$apiService
+      if (apiService && typeof apiService.addWorksheet === 'function') {
+        // 获取当前文件名和新建页面名称
+        const newPageNameValue = props.newPageName || `Sheet${(props.pages ? props.pages.length : 0) + 1}`
+        const fileName = window.location.search.includes('fileName=') ? 
+          decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
+          '未命名文件'
+        
+        // 传递正确的参数格式
+        const worksheetData = {
+          filename: fileName,
+          sheetname: newPageNameValue
+        }
+        
+        // 调用API服务的addWorksheet方法
+        await apiService.addWorksheet(worksheetData)
+        console.log('[Toolbar] 成功调用 addWorksheet API')
+      } else {
+        console.warn('[Toolbar] ApiService不可用或缺少addWorksheet方法')
+      }
+    } catch (apiError) {
+      console.error('[Toolbar] 调用 addWorksheet API 失败:', apiError)
+      // 不阻塞 UI 操作，仅记录错误
+    }
   } catch (error) {
     handleError(error, '添加页面失败')
-  }
-}
-
-// 清空当前页
-const clearCurrentPageForms = () => {
-  try {
-    if (!isEditable.value) {
-      showUnlockMessage()
-      return
-    }
-    
-    ElMessageBox.confirm(
-      '确定要清除当前页面的所有表单吗？此操作无法撤销。',
-      '清除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    ).then(() => {
-      emit('clear-current-page-forms')
-    }).catch(() => {
-      // 用户取消操作
-    })
-  } catch (error) {
-    handleError(error, '清除表单失败')
   }
 }
 
@@ -311,20 +323,6 @@ const clearAllPages = () => {
   }
 }
 
-// 切换卡片样式
-const toggleCardStyle = () => {
-  try {
-    if (!isEditable.value) {
-      showUnlockMessage()
-      return
-    }
-    
-    emit('toggle-card-style')
-  } catch (error) {
-    handleError(error, '切换卡片样式失败')
-  }
-}
-
 // 切换编辑模式
 const toggleEditMode = (value) => {
   try {
@@ -332,6 +330,83 @@ const toggleEditMode = (value) => {
     emit('toggle-edit-mode', value)
   } catch (error) {
     handleError(error, '切换编辑模式失败')
+  }
+}
+
+// 切换页面编辑状态
+const toggleEditPage = () => {
+  try {
+    // 切换编辑状态
+    const newEditableState = !isEditable.value;
+    isEditable.value = newEditableState;
+    emit('toggle-edit-page', props.currentPage);
+    emit('toggle-edit-mode', newEditableState);
+  } catch (error) {
+    handleError(error, '切换页面编辑状态失败');
+  }
+}
+
+// 删除当前页面
+const removeCurrentPage = async () => {
+  try {
+    if (!isEditable.value) {
+      showUnlockMessage();
+      return;
+    }
+    
+    // 检查是否只剩一个页面
+    if (props.pages && props.pages.length <= 1) {
+      ElMessage.warning('至少需要保留一个页面');
+      return;
+    }
+    
+    // 获取当前选中页面的索引
+    const currentPageIndex = selectedPage.value;
+    
+    // 获取要删除的页面名称
+    const pageName = props.pages && props.pages[currentPageIndex] 
+      ? (props.pages[currentPageIndex].name || `Sheet${currentPageIndex + 1}`)
+      : `Sheet${currentPageIndex + 1}`;
+    
+    // 确认删除
+    await ElMessageBox.confirm(
+      `确定要删除页面"${pageName}"吗？此操作无法撤销。`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+
+    // 调用API服务删除工作表
+    try {
+      const apiService = window.$apiService;
+      if (apiService && typeof apiService.removeWorksheet === 'function') {
+        // 获取文件名
+        const fileName = window.location.search.includes('fileName=') ? 
+          decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
+          '未命名文件';
+        
+        // 调用API服务的removeWorksheet方法
+        await apiService.removeWorksheet({
+          filename: fileName,
+          sheetname: pageName
+        });
+        console.log('[Toolbar] 成功调用 removeWorksheet API');
+      } else {
+        console.warn('[Toolbar] ApiService不可用或缺少removeWorksheet方法');
+      }
+    } catch (apiError) {
+      console.error('[Toolbar] 调用 removeWorksheet API 失败:', apiError);
+      ElMessage.error('删除工作表失败: ' + (apiError.message || '未知错误'));
+      return; // 阻止继续执行
+    }
+
+    // 发出删除页面事件
+    emit('remove-page', currentPageIndex);
+  } catch (error) {
+    handleError(error, '删除页面失败');
   }
 }
 
@@ -423,7 +498,6 @@ onMounted(() => {
 
   console.log('Toolbar component mounted', {
     currentPage: props.currentPage,
-    cardStyleOn: props.cardStyleOn,
     editable: props.editable
   });
 })
@@ -574,14 +648,21 @@ const startEditPageName = (index) => {
   newPageName.value = props.pages[index].name || `页面 ${index + 1}`
   
   nextTick(() => {
-    if (pageNameInput.value) {
+    // 修复：正确访问Element Plus el-input组件的focus方法
+    if (pageNameInput.value && typeof pageNameInput.value.focus === 'function') {
       pageNameInput.value.focus()
+    } else if (pageNameInput.value && pageNameInput.value.$el) {
+      // 如果是Element Plus组件实例，获取其内部的input元素
+      const inputEl = pageNameInput.value.$el.querySelector('input')
+      if (inputEl && typeof inputEl.focus === 'function') {
+        inputEl.focus()
+      }
     }
   })
 }
 
 // 保存页面名称
-const savePageName = (index) => {
+const savePageName = async (index) => {
   try {
     if (!isEditable.value) {
       showUnlockMessage()
@@ -589,9 +670,55 @@ const savePageName = (index) => {
       return
     }
     
-    if (newPageName.value.trim() && newPageName.value !== (props.pages[index].name || `页面 ${index + 1}`)) {
+    const trimmedName = newPageName.value.trim()
+    
+    // 验证名称不为空
+    if (!trimmedName) {
+      ElMessage.warning('页面名称不能为空')
+      return
+    }
+    
+    // 检测名称重复
+    const isDuplicate = props.pages.some((page, pageIndex) => 
+      pageIndex !== index && (page.name || `页面 ${pageIndex + 1}`) === trimmedName)
+    
+    if (isDuplicate) {
+      ElMessage.warning('页面名称不能重复')
+      return
+    }
+    
+    const oldName = props.pages[index].name || `页面 ${index + 1}`
+    
+    if (trimmedName && trimmedName !== oldName) {
+      // 调用API服务重命名工作表
+      try {
+        const apiService = window.$apiService
+        if (apiService && typeof apiService.renameWorksheet === 'function') {
+          // 获取文件名
+          const fileName = window.location.search.includes('fileName=') ? 
+            decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
+            '未命名文件'
+          
+          // 调用API服务的renameWorksheet方法
+          await apiService.renameWorksheet({
+            filename: fileName,
+            sheetname: oldName,
+            newsheetname: trimmedName
+          })
+          console.log('[Toolbar] 成功调用 renameWorksheet API')
+        } else {
+          console.warn('[Toolbar] ApiService不可用或缺少renameWorksheet方法')
+        }
+      } catch (apiError) {
+        console.error('[Toolbar] 调用 renameWorksheet API 失败:', apiError)
+        ElMessage.error('重命名工作表失败: ' + (apiError.message || '未知错误'))
+      }
+      
       // 通知父组件执行重命名操作
-      emit('rename-page', index, newPageName.value.trim())
+      emit('rename-page', index, trimmedName)
+      
+      // 显示成功提示
+      ElMessage.success('页面名称已更新')
     }
   } catch (error) {
     handleError(error, '重命名页面失败')
@@ -605,40 +732,6 @@ const cancelEditPageName = () => {
   editingPageName.value = false
   editingPageIndex.value = -1
   newPageName.value = ''
-}
-
-// 删除当前页面方法
-const removeCurrentPage = () => {
-  try {
-    if (!isEditable.value) {
-      showUnlockMessage()
-      return
-    }
-    
-    // 检查是否只剩一个页面
-    if (!props.pages || props.pages.length <= 1) {
-      ElMessage.warning('至少需要保留一个页面')
-      return
-    }
-    
-    // 确认删除
-    ElMessageBox.confirm(
-      '确定要删除当前页面吗？此操作无法撤销。',
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    ).then(() => {
-      // 通知父组件执行删除操作
-      emit('remove-page', props.currentPage)
-    }).catch(() => {
-      // 用户取消操作
-    })
-  } catch (error) {
-    handleError(error, '删除页面失败')
-  }
 }
 
 // 加载保存的工具栏状态
@@ -688,7 +781,6 @@ onMounted(() => {
 
   console.log('Toolbar component mounted', {
     currentPage: props.currentPage,
-    cardStyleOn: props.cardStyleOn,
     editable: props.editable,
     isDocked: isDocked.value,
     isMinimized: isMinimized.value
@@ -852,6 +944,12 @@ defineExpose({
 
 .toolbar-left {
   flex: 1;
+}
+
+.toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .toolbar-right {

@@ -32,7 +32,8 @@ namespace filemanager {
         TASK_ADD_WORKSHEET,       // 新增工作表任务
         TASK_REMOVE_WORKSHEET,    // 删除工作表任务
         TASK_RENAME_WORKSHEET,    // 重命名工作表任务
-        TASK_RENAME_FILE          // 重命名文件任务
+        TASK_RENAME_FILE,         // 重命名文件任务
+        TASK_SHEET_DATA           // 获取工作表数据任务
     };
 
     // 文件状态信息结构
@@ -133,6 +134,9 @@ namespace filemanager {
         
         // 处理重命名文件任务
         void processRenameFileTask(const FileTask& task);
+        
+        // 处理获取工作表数据任务
+        void processSheetDataTask(const FileTask &task);
 
         // 等待文件状态变化
         bool waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds = 30);

@@ -275,6 +275,9 @@ namespace filemanager
                     case TASK_RENAME_FILE:
                         processRenameFileTask(task);
                         break;
+                    case TASK_SHEET_DATA:
+                        processSheetDataTask(task);
+                        break;
                     default:
                         logger_log_error("Unknown task type: %d", task.type);
                         break;
@@ -898,5 +901,42 @@ namespace filemanager
 
         logger_log_info("Finished processing rename file task: %s", 
                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+    }
+    
+    // 处理获取工作表数据任务
+    void FileQueueManager::processSheetDataTask(const FileTask &task)
+    {
+        logger_log_info("Processing sheet data task");
+
+        try
+        {
+            // 确保taskData不为空
+            if (!task.taskData)
+            {
+                logger_log_error("Sheet data task has no data");
+                return;
+            }
+
+            // 调用filehandlers中的处理函数
+            int res = filemanager::sheetdata(task.taskData);
+            if (res == 0)
+            {
+                logger_log_info("Successfully processed sheet data task");
+            }
+            else
+            {
+                logger_log_error("Failed to process sheet data task");
+            }
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in processSheetDataTask: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in processSheetDataTask");
+        }
+
+        logger_log_info("Finished processing sheet data task");
     }
 } // namespace filemanager

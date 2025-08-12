@@ -19,18 +19,23 @@
     <!-- 页面管理功能 -->
     <el-container class="main-container">
       <Toolbar 
-        :onAddPage="onAddPage" 
         :clearAllPages="clearAllPages" 
         :rotatePage="rotateCurrentPage"
         :showRotateButton="pages.length > 0" 
-        @change-page="handleToolbarChangePage"
-        @remove-page="deletePage"
-        @rename-page="renamePage"
         :pages="pages"
         :currentPage="currentPageIdx"
         :cardStyleOn="cardStyleOn"
         :editable="editPageIdx === currentPageIdx"
-        :onRemovePage="deletePage"
+        :newPageName="newPageName"
+        @toggle-edit-mode="toggleEditMode"
+        @export-data="exportData"
+        @import-data="importData"
+        @save-all="saveAll"
+        @on-add-page="onAddPage"
+        @remove-page="handleRemovePage"
+        @rename-page="handleRenamePage"
+        @toggle-edit-page="toggleEditPage"
+        @change-page="handleToolbarChangePage"
         />
       <el-main>
         <!-- 表单页面 -->
@@ -52,25 +57,15 @@
         
         <!-- 浮动工具条 -->
         <FloatingBar 
-          v-if="pages.length > 0"
-          :clearCurrentPageForms="clearCurrentPageForms"
           :editable="editPageIdx === currentPageIdx"
-          :onToggleCardStyle="onToggleCardStyle"
-          @add-form="onAddForm"
           :pages="pages"
           :current-page-idx="currentPageIdx"
-          :edit-page-idx="editPageIdx"
-          @select-page="onSelectPage"
-          @edit-page-name="editPageName"
-          :edit-idx-map="editIdxMap"
-          :edit-name="editName"
-          @update:edit-name="val => editName = val"
-          @save-page-name="savePageName"
-          @delete-page="deletePage"
-          @toggle-edit-page="toggleEditPage"
           :current-page-type="currentPageType"
+          @add-form="addFormToCurrentPage"
+          @toggle-card-style="onToggleCardStyle"
+          @prev-page="prevPage"
+          @next-page="nextPage"
           @change-page-type="handlePageTypeChange"
-          @add-page="onAddPage"
         />
       </el-main>
     </el-container>
@@ -132,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, computed, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed, nextTick, onUnmounted, getCurrentInstance } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
@@ -142,8 +137,8 @@ import SimpleCardConverter from '../components/SimpleCardConverter.vue'
 import { debounce } from 'lodash-es'
 import { savePositions, clearPositions } from '../services/formPositionService'
 import { getLocale, setLocale, t as i18nTrans } from '../utils/i18n'
-import { onBeforeMount } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeMount, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
@@ -157,6 +152,7 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
+const router = useRouter()
 
 // 获取路由信息
 const route = useRoute()
@@ -201,7 +197,13 @@ const initializePages = () => {
   }
 }
 
-onBeforeMount(() => {
+// 添加 getApiService 方法
+const getApiService = () => {
+  const instance = getCurrentInstance();
+  return instance?.appContext.config.globalProperties.$apiService;
+};
+
+onBeforeMount(async () => {
   try {
     console.log('[PageManager] 页面即将挂载，当前页面数量:', pages.value.length);
 
@@ -210,6 +212,40 @@ onBeforeMount(() => {
       currentPageIdx.value = Math.min(currentPageIdx.value, pages.value.length - 1);
     } else {
       currentPageIdx.value = 0;
+    }
+
+    // 检查路由中是否有文件名参数
+    if (route.query?.fileName) {
+      console.log('[PageManager] 加载文件:', route.query.fileName);
+
+      // 获取 ApiServiceManager 实例
+      const apiService = getApiService();
+      if (!apiService) {
+        console.warn('[PageManager] ApiServiceManager 实例不可用');
+        ElMessage.warning('API服务不可用，请稍后重试');
+        return;
+      }
+
+      // 调用 getSheetData 获取工作表数据
+      const sheetDataRequest = {
+        filename: route.query.fileName,
+        sheetname: 'Sheet1' // 默认工作表名称，可根据需要调整
+      };
+
+      try {
+        const response = await apiService.getSheetData(sheetDataRequest);
+
+        // 将返回的工作表数据转换为多条表单数据
+        const formDataArray = convertSheetDataToForms(response.data);
+
+        // 清理并写入表单缓存
+        updateFormCache(formDataArray);
+
+        console.log('[PageManager] 工作表数据已成功加载并缓存');
+      } catch (error) {
+        console.error('[PageManager] 获取工作表数据失败:', error);
+        ElMessage.error('加载工作表数据失败');
+      }
     }
 
     console.log('[PageManager] 初始化当前页面索引:', currentPageIdx.value);
@@ -398,6 +434,74 @@ function handleFormUpdate(updatedForms) {
   }
 }
 
+// 页面导航方法
+function prevPage() {
+  if (currentPageIdx.value > 0) {
+    currentPageIdx.value--
+  } else {
+    ElMessage.warning(i18nTrans('pageManager.firstPage', {}, '已经是第一页'))
+  }
+}
+
+function nextPage() {
+  if (currentPageIdx.value < pages.value.length - 1) {
+    currentPageIdx.value++
+  } else {
+    ElMessage.warning(i18nTrans('pageManager.lastPage', {}, '已经是最后一页'))
+  }
+}
+
+// 新增方法：添加表单到当前页面
+function addFormToCurrentPage() {
+  console.log('[PageManager] 添加表单到当前页面');
+
+  // 确保当前页面存在
+  if (!pages.value[currentPageIdx.value]) {
+    console.warn('[PageManager] 当前页面不存在，无法添加表单');
+    return;
+  }
+
+  // 获取当前页面
+  const currentPage = pages.value[currentPageIdx.value];
+
+  // 确保表单数组存在
+  if (!currentPage.forms) {
+    currentPage.forms = [];
+  }
+
+  // 添加新表单
+  const newForm = {
+    id: Date.now() + Math.random(),
+    type: 'text',
+    title: '',
+    value: '',
+    remark: '',
+    fontSize: 14,
+    fontColor: '#000000',
+    backgroundColor: '#ffffff',
+    borderColor: '#000000'
+  };
+
+  currentPage.forms.push(newForm);
+
+  console.log('[PageManager] 已添加新表单，当前页面表单数量:', currentPage.forms.length);
+}
+
+// 新增方法：添加页面
+function onAddPage() {
+  console.log('[PageManager] 接收到添加页面请求');
+  showPageSizeSelector();
+}
+
+// 新增方法：显示页面尺寸选择器
+function showPageSizeSelector() {
+  // 重置新建页面名称
+  newPageName.value = i18nTrans('pageManager.newPage')
+  
+  // 显示对话框
+  showPageSizeDialog.value = true
+}
+
 // 检查并修复表单显示问题
 function checkAndFixFormDisplay() {
   try {
@@ -442,6 +546,21 @@ onMounted(() => {
   // 注册添加表单事件
   on('add-form', () => {
     onAddForm()
+  })
+  
+  // 添加页面相关事件监听
+  on('add-page', () => {
+    onAddPage()
+  })
+  
+  // 添加删除页面事件监听
+  on('delete-page', (idx) => {
+    deletePage(idx)
+  })
+  
+  // 添加切换页面事件监听
+  on('change-page', (idx) => {
+    currentPageIdx.value = idx
   })
 
   // 注册其他事件...
@@ -638,11 +757,6 @@ const onAddForm = () => {
 const isCreatingPage = ref(false)
 const selectedPaper = ref(null)
 
-// 获取ApiServiceManager实例
-const getApiService = () => {
-  return getCurrentInstance()?.appContext.config.globalProperties.$apiService
-}
-
 // 处理对话框关闭
 const handleDialogClose = (done) => {
   if (isCreatingPage.value) {
@@ -778,29 +892,12 @@ const createNewPage = async () => {
       orientation: 'portrait'
     }
 
-    // 调用 ApiServiceManager 添加工作表
-    try {
-      const apiServiceManager = getApiService();
-      if (apiServiceManager) {
-        await apiServiceManager.addWorksheet({
-          pageIndex: newPageIdx,
-          pageSize: newPage.pageSize,
-          pageName: newPage.name
-        });
-      } else {
-        console.warn('[PageManager] ApiServiceManager 未找到');
-      }
-    } catch (apiError) {
-      console.error('添加工作表API调用失败:', apiError);
-      ElMessage.error('添加工作表失败: ' + (apiError.message || '未知错误'));
-    }
-
     // 使用 usePages 提供的 addPage 方法
     addPage(newPage);
 
     // 更新当前页面索引
-    currentPageIndex.value = pages.value.length - 1;
-    console.log('[PageManager] 页面创建完成，当前页面索引:', currentPageIndex.value);
+    currentPageIdx.value = newPageIdx;
+    console.log('[PageManager] 页面创建完成，当前页面索引:', currentPageIdx.value);
 
     // 重置表单
     resetPageForm();
@@ -809,7 +906,7 @@ const createNewPage = async () => {
     ElMessage.success(i18nTrans('pageManager.pageCreated'));
 
     // 关闭对话框
-    dialogVisible.value = false;
+    showPageSizeDialog.value = false;
   } catch (error) {
     console.error('[PageManager] 创建页面失败:', error);
     ElMessage.error('创建页面失败: ' + (error.message || '未知错误'));
@@ -823,6 +920,113 @@ const createNewPage = async () => {
   } finally {
     isCreatingPage.value = false;
   }
+}
+
+// 重置页面表单
+const resetPageForm = () => {
+  newPageName.value = i18nTrans('pageManager.newPage')
+  selectedPageSize.value = 'A4'
+  selectedPaper.value = null
+}
+
+// 处理Toolbar的页面切换事件
+function handleToolbarChangePage(pageIndex) {
+  console.log('[PageManager] 接收到Toolbar的页面切换事件:', pageIndex);
+  
+  // 添加参数验证
+  if (typeof pageIndex !== 'number' || pageIndex < 0 || pageIndex >= pages.value.length) {
+    console.warn('[PageManager] 接收到无效的页面索引:', pageIndex);
+    return;
+  }
+  
+  currentPageIdx.value = pageIndex;
+}
+
+// 处理页面删除事件
+function handleRemovePage(pageIndex) {
+  console.log('[PageManager] 处理页面删除事件:', pageIndex);
+  
+  // 添加参数验证
+  if (typeof pageIndex !== 'number' || pageIndex < 0 || pageIndex >= pages.value.length) {
+    console.warn('[PageManager] 接收到无效的页面索引:', pageIndex);
+    ElMessage.error('无效的页面索引');
+    return;
+  }
+  
+  // 检查是否只剩一个页面
+  if (pages.value.length <= 1) {
+    ElMessage.warning('至少需要保留一个页面');
+    return;
+  }
+  
+  // 获取要删除的页面名称
+  const pageName = pages.value[pageIndex].name || `页面 ${pageIndex + 1}`;
+  
+  // 确认删除
+  ElMessageBox.confirm(
+    `确定要删除页面"${pageName}"吗？此操作无法撤销。`,
+    '删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    // 执行删除操作
+    removePage(pageIndex);
+    
+    // 如果删除的是当前页面或之前的页面，需要调整当前页面索引
+    if (pageIndex < currentPageIdx.value) {
+      // 删除了当前页面之前的页面，当前页面索引需要减1
+      currentPageIdx.value = Math.max(0, currentPageIdx.value - 1);
+    } else if (pageIndex === currentPageIdx.value) {
+      // 删除了当前页面，切换到前一个页面（如果存在）或后一个页面
+      if (currentPageIdx.value > 0) {
+        currentPageIdx.value = currentPageIdx.value - 1;
+      } else if (pages.value.length > 0) {
+        // 当前页面是第一页，切换到新的第一页
+        currentPageIdx.value = 0;
+      } else {
+        // 没有页面了
+        currentPageIdx.value = -1;
+      }
+    }
+    // 如果删除的是后面的页面，则不需要调整当前页面索引
+    
+    // 显示删除成功提示
+    ElMessage.success(`页面"${pageName}"已删除`);
+    
+    console.log('[PageManager] 页面删除成功，当前页面索引:', currentPageIdx.value, '剩余页面数:', pages.value.length);
+  }).catch(() => {
+    // 用户取消删除
+    console.log('[PageManager] 用户取消删除页面');
+  });
+}
+
+// 处理页面重命名事件
+function handleRenamePage(pageIndex, newName) {
+  console.log('[PageManager] 处理页面重命名事件:', pageIndex, newName);
+  
+  // 添加参数验证
+  if (typeof pageIndex !== 'number' || pageIndex < 0 || pageIndex >= pages.value.length) {
+    console.warn('[PageManager] 接收到无效的页面索引:', pageIndex);
+    return;
+  }
+  
+  if (!newName || typeof newName !== 'string') {
+    console.warn('[PageManager] 接收到无效的页面名称:', newName);
+    return;
+  }
+  
+  // 更新页面名称
+  pages.value[pageIndex].name = newName;
+  
+  console.log('[PageManager] 页面名称已更新:', pageIndex, newName);
+}
+
+// 切换页面编辑状态
+function toggleEditPage(idx) {
+  editPageIdx.value = editPageIdx.value === idx ? -1 : idx
 }
 
 // 创建页面并使用默认尺寸
@@ -890,23 +1094,6 @@ async function createNewPageWithDefaults() {
       orientation: 'portrait'
     }
 
-    // 调用 ApiServiceManager 添加工作表
-    try {
-      const apiServiceManager = getApiService();
-      if (apiServiceManager) {
-        await apiServiceManager.addWorksheet({
-          pageIndex: newPageIdx,
-          pageSize: newPage.pageSize,
-          pageName: newPage.name
-        });
-      } else {
-        console.warn('[PageManager] ApiServiceManager 未找到');
-      }
-    } catch (apiError) {
-      console.error('添加工作表API调用失败:', apiError);
-      ElMessage.error('添加工作表失败: ' + (apiError.message || '未知错误'));
-    }
-
     // 使用 usePages 提供的 addPage 方法
     addPage(newPage);
 
@@ -966,241 +1153,6 @@ async function createNewPageWithDefaults() {
 // 切换卡片样式
 function onToggleCardStyle() {
   cardStyleOn.value = !cardStyleOn.value
-}
-
-// 选择页面
-function onSelectPage(idx) {
-  const numIdx = Number(idx)
-  console.log('[PageManager] 开始选择页面，索引:', numIdx);
-
-  if (numIdx < 0 || numIdx >= pages.value.length) {
-    const warningMessage = `无效的页面索引: ${numIdx}`;
-    console.warn('[PageManager] 选择页面警告:', warningMessage);
-    ElMessage.warning(warningMessage);
-
-    errorLogService.addErrorLog(
-      new Error(warningMessage),
-      `页面选择失败 - 无效索引: ${numIdx}`,
-      'warning'
-    );
-
-    return;
-  }
-
-  try {
-    currentPageIdx.value = numIdx
-
-    // 如果当前页面被选中并且是编辑状态，保持编辑状态
-    // 否则维持原有的锁定状态
-    if (editPageIdx.value === currentPageIdx.value) {
-      editPageIdx.value = numIdx
-    }
-
-    console.log('[PageManager] 页面选择成功:', {
-      pageIndex: numIdx,
-      pageName: pages.value[numIdx]?.name
-    });
-
-    // 只记录信息性日志，不使用errorLogService
-    console.info(`[PageManager] 页面选择成功: ${pages.value[numIdx]?.name} (${numIdx})`);
-  } catch (error) {
-    console.error('[PageManager] 选择页面时发生错误:', error);
-    ElMessage.error('页面选择失败');
-
-    errorLogService.addErrorLog(
-      error,
-      `页面选择失败: ${numIdx}`,
-      'error'
-    );
-  }
-}
-
-// 处理Toolbar的页面切换事件
-function handleToolbarChangePage(pageIndex) {
-  console.log('[PageManager] 接收到Toolbar的页面切换事件:', pageIndex);
-  
-  // 添加参数验证
-  if (typeof pageIndex !== 'number' || pageIndex < 0 || pageIndex >= pages.value.length) {
-    console.warn('[PageManager] 接收到无效的页面索引:', pageIndex);
-    return;
-  }
-  
-  onSelectPage(pageIndex);
-}
-
-// 编辑页面名称
-function editPageName(idx) {
-  editIdxMap[idx] = true
-  editName.value = pages.value[idx].name || '新页面'
-}
-
-// 保存页面名称
-function savePageName(idx) {
-  if (editName.value.trim()) {
-    updatePage(idx, { name: editName.value.trim() })
-  }
-  editIdxMap[idx] = false
-}
-
-// 重命名页面
-async function renamePage(idx, newName) {
-  console.log('[PageManager] 开始重命名页面，索引:', idx, '新名称:', newName);
-
-  if (idx < 0 || idx >= pages.value.length) {
-    const warningMessage = `无效的页面索引: ${idx}`;
-    console.warn('[PageManager] 重命名页面警告:', warningMessage);
-    ElMessage.warning(warningMessage);
-
-    errorLogService.addErrorLog(
-      new Error(warningMessage),
-      `页面重命名失败 - 无效索引: ${idx}`,
-      'warning'
-    );
-
-    return;
-  }
-
-  if (!newName || !newName.trim()) {
-    ElMessage.warning('页面名称不能为空');
-    return;
-  }
-
-  try {
-    console.log('[PageManager] 重命名页面:', {
-      pageIndex: idx,
-      oldName: pages.value[idx]?.name,
-      newName: newName.trim()
-    });
-
-    // 调用 ApiServiceManager 重命名工作表
-    try {
-      const currentPage = pages.value[idx];
-      if (currentPage) {
-        const apiServiceManager = getApiService();
-        if (apiServiceManager) {
-          await apiServiceManager.renameWorksheet(
-            currentPage.id,
-            newName.trim()
-          );
-        } else {
-          console.warn('[PageManager] ApiServiceManager 未找到');
-        }
-      }
-    } catch (apiError) {
-      console.error('重命名工作表API调用失败:', apiError);
-      ElMessage.error('重命名工作表失败: ' + (apiError.response?.data?.message || apiError.message));
-      throw apiError;
-    }
-
-    // 更新页面名称
-    updatePage(idx, { name: newName.trim() });
-
-    // 记录成功重命名日志
-    console.log('[PageManager] 页面重命名成功:', {
-      pageIndex: idx,
-      newName: newName.trim()
-    });
-
-    // 页面重命名成功提示
-    ElMessage.success(i18nTrans('pageManager.pageRenamed', {}, '页面重命名成功'));
-  } catch (error) {
-    console.error('[PageManager] 重命名页面异常:', error);
-    ElMessage.error(i18nTrans('pageManager.pageRenamingFailed'));
-
-    errorLogService.addErrorLog(
-      error,
-      `重命名页面失败: ${idx}`,
-      'error'
-    );
-  }
-}
-
-// 删除页面
-async function deletePage(idx) {
-  console.log('[PageManager] 开始删除页面，索引:', idx);
-
-  if (idx < 0 || idx >= pages.value.length) {
-    const warningMessage = `无效的页面索引: ${idx}`;
-    console.warn('[PageManager] 删除页面警告:', warningMessage);
-    ElMessage.warning(warningMessage);
-
-    errorLogService.addErrorLog(
-      new Error(warningMessage),
-      `页面删除失败 - 无效索引: ${idx}`,
-      'warning'
-    );
-
-    return;
-  }
-
-  // 显示确认对话框
-  ElMessageBox.confirm(
-    i18nTrans('pageManager.confirmDeletePage'),
-    i18nTrans('pageManager.warning'),
-    {
-      confirmButtonText: i18nTrans('pageManager.confirm'),
-      cancelButtonText: i18nTrans('pageManager.cancel'),
-      type: 'warning'
-    }
-  ).then(async () => {
-    try {
-      console.log('[PageManager] 用户确认删除页面:', {
-        pageIndex: idx,
-        pageName: pages.value[idx]?.name
-      });
-
-      // 调用 ApiServiceManager 删除工作表
-      try {
-        const currentPage = pages.value[idx];
-        if (currentPage) {
-          const apiServiceManager = getApiService();
-          if (apiServiceManager) {
-            await apiServiceManager.removeWorksheet({
-              pageId: currentPage.id,
-              pageName: currentPage.name
-            });
-          } else {
-            console.warn('[PageManager] ApiServiceManager 未找到');
-          }
-        }
-      } catch (apiError) {
-        console.error('删除工作表API调用失败:', apiError);
-        ElMessage.error('删除工作表失败: ' + (apiError.response?.data?.message || apiError.message));
-      }
-
-      removePage(idx)
-
-      if (currentPageIdx.value >= pages.value.length) {
-        currentPageIdx.value = Math.max(0, pages.value.length - 1)
-      }
-
-      // 记录成功删除日志
-      console.log('[PageManager] 页面删除成功:', {
-        pageIndex: idx,
-        pageName: currentPage?.name
-      });
-
-      // 页面删除成功提示
-      ElMessage.success(i18nTrans('pageManager.pageDeleted', {}, '页面删除成功'));
-    } catch (error) {
-      console.error('[PageManager] 删除页面异常:', error);
-      ElMessage.error(i18nTrans('pageManager.pageDeletionFailed'));
-
-      errorLogService.addErrorLog(
-        error,
-        `删除页面失败: ${idx}`,
-        'error'
-      );
-    }
-  }).catch(() => {
-    // 用户取消操作
-    console.log('[PageManager] 用户取消删除页面:', idx);
-  })
-}
-
-// 切换页面编辑状态
-function toggleEditPage(idx) {
-  editPageIdx.value = editPageIdx.value === idx ? -1 : idx
 }
 
 // 旋转页面
@@ -1280,32 +1232,6 @@ function rotateCurrentPage() {
   rotatePage(currentPageIdx.value)
 }
 
-// 添加页面
-async function onAddPage() {
-  try {
-    // 显示选择对话框，让用户选择是否使用纸张尺寸选择
-    const action = await ElMessageBox.confirm(
-      '是否要选择纸张尺寸？选择"否"将使用默认尺寸。',
-      '添加页面',
-      {
-        distinguishCancelAndClose: true,
-        confirmButtonText: '选择纸张尺寸',
-        cancelButtonText: '使用默认尺寸'
-      }
-    ).then(() => 'select').catch(() => 'default');
-    
-    if (action === 'select') {
-      // 用户选择使用纸张尺寸选择对话框
-      showPageSizeDialog.value = true;
-    } else {
-      // 用户选择使用默认尺寸
-      await createNewPageWithDefaults();
-    }
-  } catch (error) {
-    console.error('[PageManager] 添加页面时出错:', error);
-    ElMessage.error('添加页面失败: ' + (error.response?.data?.message || error.message));
-  }
-}
 
 // 清除所有页面
 function clearAllPages() {
@@ -1443,6 +1369,34 @@ const handleFileInfoClose = () => {
   // 因为实际应用中用户可能希望继续编辑
   console.log('[PageManager] 文件信息横幅已关闭');
 };
+
+// 添加辅助方法：将工作表数据转换为表单格式
+function convertSheetDataToForms(sheetData) {
+  return sheetData.map(row => ({
+    id: Date.now() + Math.random(),
+    type: 'text',
+    title: row.title || '',
+    value: row.value || '',
+    remark: row.remark || '',
+    fontSize: 14,
+    fontColor: '#000000',
+    backgroundColor: '#ffffff',
+    borderColor: '#000000'
+  }));
+}
+
+// 添加辅助方法：更新表单缓存
+function updateFormCache(formDataArray) {
+  // 假设使用 store 来管理表单缓存
+  const currentPage = pages.value[currentPageIdx.value];
+  if (currentPage) {
+    currentPage.forms = [...formDataArray];
+    pages.value = [...pages.value]; // 触发响应式更新
+
+    // 保存到本地存储或其它缓存机制
+    localStorage.setItem('form-cache', JSON.stringify(pages.value));
+  }
+}
 
 </script>
 

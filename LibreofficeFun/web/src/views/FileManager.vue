@@ -321,7 +321,7 @@ export default {
         );
         
         // 调用ApiServiceManager组件的删除文件功能
-        await apiServiceManager.value.deleteFile(file.name);
+        await apiServiceManager.value.deleteFile({ filename: file.name });
         
         // 重新加载文件列表
         await loadFileList();
