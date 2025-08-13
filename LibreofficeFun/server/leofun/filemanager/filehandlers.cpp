@@ -11,6 +11,22 @@
 #include <string>
 #include <mutex>
 
+#include <com/sun/star/uno/Reference.hxx>
+#include <com/sun/star/lang/XMultiServiceFactory.hpp>
+#include <com/sun/star/frame/XComponentLoader.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
+#include <com/sun/star/sheet/XSpreadsheets.hpp>
+#include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/container/XNameContainer.hpp>
+#include "lofficeconn.h"
+
+// Helper function to create UNO URL
+static rtl::OUString createUnoUrl(const char *path)
+{
+    return rtl::OUString::createFromAscii("file:///") +
+           rtl::OUString::createFromAscii(path);
+}
+
 namespace filemanager
 {
     int createfile(std::string filename)
@@ -35,8 +51,8 @@ namespace filemanager
             }
 
             // 构造完整文件路径
-            std::string filePathStr = std::string(datapath) + "/" + filename;
-            logger_log_info("Full file path: %s", filePathStr.c_str());
+            std::string filePathStr = std::string(datapath) + "/" + ensureOdsExtension(filename);
+            logger_log_info("file path: %s", filePathStr.c_str());
 
             // 构造默认模板文件路径
             std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultname);
@@ -420,7 +436,10 @@ namespace filemanager
 
         try
         {
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is())
@@ -446,10 +465,7 @@ namespace filemanager
             sheets->insertNewByName(sheetName, 0);
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            rtl::OUString absoluteFilePath;
-            getAbsolutePath(filenameOstr, absoluteFilePath);
-            saveDocument(xDoc, absoluteFilePath);
+            saveDocument(xDoc, filePath);
 
             // 关闭文档
             closeDocument(xComp);
@@ -497,7 +513,10 @@ namespace filemanager
 
         try
         {
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is())
@@ -553,7 +572,6 @@ namespace filemanager
             return -1;
         }
     }
-
     int worksheetRename(cJSON *taskData)
     {
         logger_log_info("Renaming worksheet");
@@ -570,102 +588,76 @@ namespace filemanager
 
         if (!filenameItem || !sheetnameItem || !newsheetnameItem)
         {
-            logger_log_error("Missing filename, sheetname or newsheetname in rename worksheet data");
+            logger_log_error("Missing required parameters for renaming worksheet");
             return -1;
         }
 
         try
         {
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
             uno::Reference<lang::XComponent> xComp;
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+
             if (!xDoc.is())
             {
                 logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                 return -1;
             }
 
-            // 获取工作表集合
             uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            uno::Reference<container::XNameContainer> nameContainer(sheets, uno::UNO_QUERY);
+            if (!nameContainer.is())
+            {
+                logger_log_error("Failed to obtain XNameContainer for sheets");
+                closeDocument(xComp);
+                return -1;
+            }
 
-            // 检查工作表是否存在
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-            if (!nameAccess->hasByName(sheetName))
-            {
-                logger_log_info("Worksheet %s does not exist in file: %s",
-                                sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-                closeDocument(xComp);
-                return -1; // 工作表不存在
-            }
-
-            // 检查新名称的工作表是否已存在
             rtl::OUString newSheetName = convertStringToOUString(newsheetnameItem->valuestring);
-            if (nameAccess->hasByName(newSheetName))
-            {
-                logger_log_info("Worksheet %s already exists in file: %s",
-                                newsheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-                closeDocument(xComp);
-                return -1; // 新名称的工作表已存在
-            }
 
-            // 获取要重命名的工作表
-            uno::Any sheetAny = nameAccess->getByName(sheetName);
-            uno::Reference<sheet::XSpreadsheet> xSheet(sheetAny, uno::UNO_QUERY);
-            
-            if (!xSheet.is())
+            if (!nameContainer->hasByName(sheetName))
             {
-                logger_log_error("Failed to get worksheet: %s", sheetnameItem->valuestring);
+                logger_log_error("Worksheet %s does not exist in file: %s",
+                                 sheetnameItem->valuestring, filenameItem->valuestring);
+                closeDocument(xComp);
+                return -1;
+            }
+            if (nameContainer->hasByName(newSheetName))
+            {
+                logger_log_error("New worksheet name %s already exists in file: %s",
+                                 newsheetnameItem->valuestring, filenameItem->valuestring);
                 closeDocument(xComp);
                 return -1;
             }
 
-            // 使用XPropertySet接口设置工作表名称
-            uno::Reference<beans::XPropertySet> xPropSet(xSheet, uno::UNO_QUERY);
-            if (!xPropSet.is())
-            {
-                logger_log_error("Failed to get property set for worksheet: %s", sheetnameItem->valuestring);
-                closeDocument(xComp);
-                return -1;
-            }
+            // 复制原工作表到新名称
+            uno::Sequence<rtl::OUString> names = sheets->getElementNames();
+            sal_Int32 insertIndex = names.getLength();
+            sheets->copyByName(sheetName, newSheetName, insertIndex);
+            sheets->removeByName(sheetName);
 
-            // 设置新的工作表名称
-            try {
-                xPropSet->setPropertyValue(rtl::OUString(RTL_CONSTASCII_USTRINGPARAM("Name")), 
-                                          uno::makeAny(newSheetName));
-            }
-            catch (const uno::Exception &e)
-            {
-                logger_log_error("UNO exception while setting worksheet name: %s, Message: %s",
-                                 rtl::OUStringToOString(newSheetName, RTL_TEXTENCODING_UTF8).getStr(),
-                                 rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
-                closeDocument(xComp);
-                return -1;
-            }
-            
+            logger_log_info("Successfully renamed worksheet %s to %s in file: %s",
+                            sheetnameItem->valuestring, newsheetnameItem->valuestring, filenameItem->valuestring);
+
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            rtl::OUString absoluteFilePath;
-            getAbsolutePath(filenameOstr, absoluteFilePath);
-            saveDocument(xDoc, absoluteFilePath);
-
-            // 关闭文档
+            saveDocument(xDoc, filePath);
             closeDocument(xComp);
-
-            logger_log_info("Successfully renamed worksheet from %s to %s in file: %s",
-                            sheetnameItem->valuestring, newsheetnameItem->valuestring,
-                            ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             return 0;
         }
         catch (const uno::Exception &e)
         {
+            rtl::OString message = rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8);
             logger_log_error("UNO exception in worksheetRename: %s",
-                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                             message.getLength() > 0 ? message.getStr() : "Unknown error in UNO Exception");
             return -1;
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in worksheetRename: %s", e.what());
+            logger_log_error("STD exception in worksheetRename: %s", e.what());
             return -1;
         }
         catch (...)
@@ -674,7 +666,6 @@ namespace filemanager
             return -1;
         }
     }
-    
     int sheetdata(cJSON *taskData)
     {
         try
@@ -700,34 +691,35 @@ namespace filemanager
             {
                 // 创建结果文件
                 std::string resultFilename = std::string(filenameItem->valuestring) + "_" + std::string(sheetnameItem->valuestring) + "_data.json";
-                
+
                 // 将数据写入结果文件
                 FILE *resultFile = fopen(resultFilename.c_str(), "w");
                 if (resultFile)
                 {
                     // 创建结果数组
                     cJSON *rowsArray = cJSON_CreateArray();
-                    
+
                     // 创建第一行数据对象
                     cJSON *firstRow = cJSON_CreateObject();
-                    
+
                     // 遍历sheetContent中的所有键值对
                     cJSON *currentItem = sheetContent->child;
-                    while (currentItem) {
+                    while (currentItem)
+                    {
                         // 将内容作为key，位置作为value添加到firstRow对象中
                         cJSON_AddStringToObject(firstRow, currentItem->string, currentItem->valuestring);
                         currentItem = currentItem->next;
                     }
-                    
+
                     // 将第一行添加到结果数组中
                     cJSON_AddItemToArray(rowsArray, firstRow);
-                    
+
                     // 将结果写入文件
                     char *resultString = cJSON_Print(rowsArray);
                     fputs(resultString, resultFile);
                     fclose(resultFile);
                     free(resultString);
-                    
+
                     // 清理cJSON对象
                     cJSON_Delete(rowsArray);
                 }
@@ -737,13 +729,13 @@ namespace filemanager
                     cJSON_Delete(sheetContent);
                     return -1;
                 }
-                
+
                 cJSON_Delete(sheetContent);
             }
             else
             {
-                logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s", 
-                                filenameItem->valuestring, sheetnameItem->valuestring);
+                logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s",
+                                 filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
         }

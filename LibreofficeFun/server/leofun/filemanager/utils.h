@@ -25,6 +25,8 @@ namespace filemanager
     std::string removeFileExtension(const std::string& filename);
     // 获取默认数据文件的路径
     void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &wordsSheetName);
+    // 获取文件的绝对路径字符串
+    std::string getAbsoluteString(const std::string &fileName);
 } // namespace filemanager
 
 #endif // UTILS_H

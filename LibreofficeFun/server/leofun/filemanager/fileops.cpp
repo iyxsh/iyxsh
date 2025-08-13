@@ -35,6 +35,7 @@ namespace filemanager
 
                     // 检查是否为ods文件
                     std::string filename(entry->d_name);
+                    //代码中任务和保存时使用的名称不包含路径和后缀（和接口保持一致，所有路径和后缀都在代码逻辑中处理）
                     if (filename.length() > 4 && filename.substr(filename.length() - 4) == ".ods")
                     {
                         std::string filepath = std::string(datapath) + "/" + filename;
@@ -45,7 +46,7 @@ namespace filemanager
                         {
                             // 添加文件到队列管理器，使用文件的真实修改时间
                             filemanager::FileInfo info;
-                            info.filename = filename;
+                            info.filename = removeFileExtension(filename);
                             info.status = filemanager::FILE_STATUS_READY;
                             info.lastModified = fileStat.st_mtime; // 使用文件的真实修改时间
                             info.errorMessage = "";
@@ -105,7 +106,7 @@ namespace filemanager
             const filemanager::FileInfo &fileInfo = pair.second;
 
             // 过滤掉模板文件
-            if (fileInfo.filename == defaultTemplateFile)
+            if (fileInfo.filename == removeFileExtension(defaultTemplateFile))
             {
                 continue;
             }
@@ -174,7 +175,7 @@ namespace filemanager
         }
 
         // 复制文件名字符串，避免使用悬空指针
-        std::string filename(ensureOdsExtension(filenameItem->valuestring));
+        std::string filename(filenameItem->valuestring);
 
         // 获取文件信息
         filemanager::FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(filename);
@@ -245,7 +246,7 @@ namespace filemanager
             cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
             if (filenameItem && cJSON_IsString(filenameItem))
             {
-                task.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+                task.filename = std::string(filenameItem->valuestring);
                 filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
                 filemanager::FileQueueManager::getInstance().addFileTask(task);
                 // 构造返回结果
@@ -273,7 +274,7 @@ namespace filemanager
             logger_log_info("filename: %s", filename);
             
             // 确保文件名有.ods后缀
-            std::string filenameWithExt = ensureOdsExtension(std::string(filename));
+            std::string filenameWithExt = std::string(filename);
             
             // 创建文件任务
             filemanager::FileTask task;
@@ -333,7 +334,7 @@ namespace filemanager
             return;
         }
 
-        createTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        createTask.filename = std::string(filenameItem->valuestring);
 
         // 正确管理cJSON内存，首先释放旧数据，然后分配新数据
         if (createTask.taskData)
@@ -405,7 +406,7 @@ namespace filemanager
             return;
         }
 
-        deleteTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        deleteTask.filename = std::string(filenameItem->valuestring);
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(deleteTask);
@@ -457,7 +458,7 @@ namespace filemanager
             return;
         }
 
-        addSheetTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        addSheetTask.filename = std::string(filenameItem->valuestring);
 
         // 正确管理cJSON内存
         if (addSheetTask.taskData)
@@ -517,7 +518,7 @@ namespace filemanager
             return;
         }
 
-        removeSheetTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        removeSheetTask.filename = std::string(filenameItem->valuestring);
         std::string sheetName = std::string(sheetnameItem->valuestring);
         // 正确管理cJSON内存
         if (removeSheetTask.taskData)
@@ -578,7 +579,7 @@ namespace filemanager
             return;
         }
 
-        renameSheetTask.filename = ensureOdsExtension(std::string(filenameItem->valuestring));
+        renameSheetTask.filename = std::string(filenameItem->valuestring);
         std::string sheetName = std::string(sheetnameItem->valuestring);
         // 正确管理cJSON内存
         if (renameSheetTask.taskData)
@@ -628,7 +629,7 @@ namespace filemanager
         // 创建获取工作表数据任务并添加到队列
         filemanager::FileTask sheetDataTask;
         sheetDataTask.type = filemanager::TASK_SHEET_DATA;
-        sheetDataTask.filename = std::string("");
+        sheetDataTask.filename = std::string(filenameItem->valuestring);
         sheetDataTask.data = std::string("");
         sheetDataTask.createTime = std::time(nullptr);
         sheetDataTask.taskData = nullptr;
@@ -692,8 +693,8 @@ namespace filemanager
             return;
         }
 
-        renameFileTask.filename = ensureOdsExtension(std::string(oldFilenameItem->valuestring));
-        std::string newFilename = ensureOdsExtension(std::string(newFilenameItem->valuestring));
+        renameFileTask.filename = std::string(oldFilenameItem->valuestring);
+        std::string newFilename = std::string(newFilenameItem->valuestring);
         // 正确管理cJSON内存
         if (renameFileTask.taskData)
         {

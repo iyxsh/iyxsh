@@ -235,7 +235,7 @@ namespace filemanager
         if (!datapath)
             datapath = "../data"; // 默认数据路径
                                   // 构建默认文件的完整路径
-        std::string FilePathStr = std::string(datapath) + "/" + rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr();
+        std::string FilePathStr = std::string(datapath) + "/" + ensureOdsExtension(rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr());
 
         // 处理相对路径，转换为绝对路径
         std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
@@ -270,5 +270,16 @@ namespace filemanager
         wordsSheetName = convertStringToOUString(defaultSheetName);
         logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
         logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
+    }
+    std::string getAbsoluteString(const std::string &fileName)
+    {
+        // 从配置文件中获取数据路径和默认文件名
+        const char *datapath = json_config_get_string("datapath");
+        if (!datapath)
+            datapath = "../data"; // 默认数据路径
+                                  // 构建默认文件的完整路径
+        std::string FilePathStr = std::string(datapath) + "/" + ensureOdsExtension(fileName);
+        logger_log_info("getAbsoluteString: input fileName: %s", FilePathStr.c_str());
+        return convertToAbsolutePath(FilePathStr);
     }
 }

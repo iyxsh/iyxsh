@@ -26,15 +26,12 @@
 
 namespace filemanager
 {
-    // 提取公共函数用于加载文档
+    // 提取公共函数用于加载文档(传入绝对路径)
     com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
-    loadSpreadsheetDocument(const rtl::OUString &filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp)
+    loadSpreadsheetDocument(const rtl::OUString &filePath, com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp)
     {
         try
         {
-            rtl::OUString filePath;
-            getAbsolutePath(filename, filePath);
-
             // 使用LibreOffice连接管理器
             if (!LibreOfficeConnectionManager::initialize())
             {
@@ -59,14 +56,14 @@ namespace filemanager
 
             if (!xComp.is())
             {
-                logger_log_error("Cannot load document: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
+                logger_log_error("Cannot load document: %s", filePath.getStr());
                 return nullptr;
             }
 
             com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> xDoc(xComp, com::sun::star::uno::UNO_QUERY);
             if (!xDoc.is())
             {
-                logger_log_error("Cannot open spreadsheet: %s", rtl::OUStringToOString(filename, RTL_TEXTENCODING_UTF8).getStr());
+                logger_log_error("Cannot open spreadsheet: %s", filePath.getStr());
                 closeDocument(xComp);
                 return nullptr;
             }

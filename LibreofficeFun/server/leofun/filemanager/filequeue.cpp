@@ -43,26 +43,27 @@ namespace filemanager
         info.errorMessage = errorMsg;
         fileStatusMap[filename] = info;
 
-        logger_log_info("Added file status: %s - %d", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(), 
-                       status);
+        logger_log_info("Added file status: %s - %d",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(),
+                        status);
     }
-    
+
     // 添加文件状态（完整信息）
-    void FileQueueManager::addFileStatus(const FileInfo& fileInfo)
+    void FileQueueManager::addFileStatus(const FileInfo &fileInfo)
     {
         std::lock_guard<std::mutex> lock(statusMutex);
         fileStatusMap[fileInfo.filename] = fileInfo;
-        logger_log_info("Added file status: %s - %d with mtime: %ld", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(fileInfo.filename.c_str())).c_str(), 
-                       fileInfo.status,
-                       (long)fileInfo.lastModified);
+        logger_log_info("Added file status: %s - %d with mtime: %ld",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(fileInfo.filename.c_str())).c_str(),
+                        fileInfo.status,
+                        (long)fileInfo.lastModified);
     }
 
     // 更新文件状态
     void FileQueueManager::updateFileStatus(const std::string &filename, FileStatus status, const std::string &errorMsg)
     {
-        try {
+        try
+        {
             std::lock_guard<std::mutex> lock(statusMutex);
             auto it = fileStatusMap.find(filename);
             if (it != fileStatusMap.end())
@@ -73,9 +74,9 @@ namespace filemanager
                 {
                     it->second.errorMessage = errorMsg;
                 }
-                logger_log_info("Updated file status: %s - %d", 
-                           filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(), 
-                           status);
+                logger_log_info("Updated file status: %s - %d",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(),
+                                status);
             }
             else
             {
@@ -86,28 +87,31 @@ namespace filemanager
                 info.lastModified = std::time(nullptr);
                 info.errorMessage = errorMsg;
                 fileStatusMap[filename] = info;
-                logger_log_info("Added file status: %s - %d", 
-                           filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(), 
-                           status);
+                logger_log_info("Added file status: %s - %d",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(),
+                                status);
             }
-            
+
             // 通知等待状态变化的线程
             statusCondition.notify_all();
         }
-        catch (const std::system_error& e) {
-            logger_log_error("System error in updateFileStatus for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(), 
-                            e.what());
+        catch (const std::system_error &e)
+        {
+            logger_log_error("System error in updateFileStatus for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(),
+                             e.what());
             logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
         }
-        catch (const std::exception& e) {
-            logger_log_error("Exception in updateFileStatus for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(), 
-                            e.what());
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in updateFileStatus for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str(),
+                             e.what());
         }
-        catch (...) {
-            logger_log_error("Unknown exception in updateFileStatus for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str());
+        catch (...)
+        {
+            logger_log_error("Unknown exception in updateFileStatus for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(filename.c_str())).c_str());
         }
     }
 
@@ -230,7 +234,8 @@ namespace filemanager
         while (!shouldStop)
         {
             std::unique_lock<std::mutex> lock(taskMutex);
-            taskCondition.wait(lock, [this] { return !taskQueue.empty() || shouldStop; });
+            taskCondition.wait(lock, [this]
+                               { return !taskQueue.empty() || shouldStop; });
 
             if (shouldStop)
             {
@@ -283,12 +288,12 @@ namespace filemanager
                         break;
                     }
                 }
-                catch (const std::system_error& e)
+                catch (const std::system_error &e)
                 {
                     logger_log_error("System error in processTasks: %s", e.what());
                     logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
                 }
-                catch (const std::exception& e)
+                catch (const std::exception &e)
                 {
                     logger_log_error("Exception in processTasks: %s", e.what());
                 }
@@ -303,90 +308,105 @@ namespace filemanager
     }
 
     // 等待文件状态变化
-    bool FileQueueManager::waitForFileStatus(const std::string& filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds)
+    bool FileQueueManager::waitForFileStatus(const std::string &filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds)
     {
-        try {
+        try
+        {
             std::unique_lock<std::mutex> lock(statusMutex);
             auto now = std::chrono::system_clock::now();
             auto timeout = now + std::chrono::seconds(timeoutSeconds);
-            
+
             // 检查当前状态是否已经符合要求
             auto it = fileStatusMap.find(filename);
-            if (it != fileStatusMap.end()) {
+            if (it != fileStatusMap.end())
+            {
                 FileStatus currentStatus = it->second.status;
-                if (currentStatus == targetStatus1 || currentStatus == targetStatus2) {
+                if (currentStatus == targetStatus1 || currentStatus == targetStatus2)
+                {
                     logger_log_info("File %s already in target status %d", filename.c_str(), currentStatus);
                     return true;
                 }
-            } else {
+            }
+            else
+            {
                 // 文件不存在于状态映射表中，对于更新操作，我们将其视为可以处理的状态
                 // 因为新文件或没有状态记录的文件可以被更新
                 logger_log_info("File %s not found in status map, treating as ready for processing", filename.c_str());
                 return true;
             }
-            
+
             // 等待状态变化或超时
-            while (true) {
+            while (true)
+            {
                 // 等待条件变量或超时
                 auto cvStatus = statusCondition.wait_until(lock, timeout);
-                
+
                 // 检查是否超时
-                if (cvStatus == std::cv_status::timeout) {
-                    logger_log_error("Timeout waiting for file %s to reach status %d or %d", 
-                                    filename.c_str(), targetStatus1, targetStatus2);
+                if (cvStatus == std::cv_status::timeout)
+                {
+                    logger_log_error("Timeout waiting for file %s to reach status %d or %d",
+                                     filename.c_str(), targetStatus1, targetStatus2);
                     return false;
                 }
-                
+
                 // 检查文件状态是否符合要求
                 auto it = fileStatusMap.find(filename);
-                if (it != fileStatusMap.end()) {
+                if (it != fileStatusMap.end())
+                {
                     FileStatus currentStatus = it->second.status;
-                    if (currentStatus == targetStatus1 || currentStatus == targetStatus2) {
+                    if (currentStatus == targetStatus1 || currentStatus == targetStatus2)
+                    {
                         logger_log_info("File %s reached target status %d", filename.c_str(), currentStatus);
                         return true;
                     }
-                    
+
                     // 如果文件出错，也返回失败
-                    if (currentStatus == FILE_STATUS_ERROR) {
+                    if (currentStatus == FILE_STATUS_ERROR)
+                    {
                         logger_log_info("File %s is in error state, stop waiting for status change", filename.c_str());
                         return false;
                     }
-                } else {
+                }
+                else
+                {
                     // 文件在等待过程中被删除，这种情况很少见，但我们需要处理
                     logger_log_info("File %s no longer in status map during waiting", filename.c_str());
                     return true;
                 }
-                
+
                 // 检查是否应该停止
-                if (shouldStop) {
+                if (shouldStop)
+                {
                     logger_log_info("Task processor stopping, stop waiting for file status");
                     return false;
                 }
             }
         }
-        catch (const std::system_error& e) {
+        catch (const std::system_error &e)
+        {
             logger_log_error("System error in waitForFileStatus for %s: %s", filename.c_str(), e.what());
             logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
             return false;
         }
-        catch (const std::exception& e) {
+        catch (const std::exception &e)
+        {
             logger_log_error("Exception in waitForFileStatus for %s: %s", filename.c_str(), e.what());
             return false;
         }
-        catch (...) {
+        catch (...)
+        {
             logger_log_error("Unknown exception in waitForFileStatus for %s", filename.c_str());
             return false;
         }
-        
+
         return false;
     }
-    
 
     // 处理创建文件任务
     void FileQueueManager::processCreateFileTask(const FileTask &task)
     {
-        logger_log_info("Processing create file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing create file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
         {
@@ -394,8 +414,8 @@ namespace filemanager
             bool isReady = waitForFileStatus(task.filename, FILE_STATUS_CREATED, FILE_STATUS_CLOSED, 30);
             if (!isReady)
             {
-                logger_log_error("File %s is not ready for creating, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("File %s is not ready for creating, timeout or error occurred",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
                 return;
             }
@@ -409,40 +429,40 @@ namespace filemanager
             {
                 // 更新文件状态为就绪
                 updateFileStatus(task.filename, FILE_STATUS_READY);
-                logger_log_info("Successfully created file: %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_info("Successfully created file: %s",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
             else
             {
                 // 更新文件状态为错误
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to create file");
-                logger_log_error("Failed to create file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Failed to create file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processCreateFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processCreateFileTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processCreateFileTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processCreateFileTask for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing create file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing create file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理更新文件任务
     void FileQueueManager::processUpdateFileTask(const FileTask &task)
     {
-        logger_log_info("Processing update file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing update file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
         {
@@ -450,8 +470,8 @@ namespace filemanager
             bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
             if (!isReady)
             {
-                logger_log_error("File %s is not ready for updating, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("File %s is not ready for updating, timeout or error occurred",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
                 return;
             }
@@ -461,8 +481,8 @@ namespace filemanager
 
             if (!task.taskData)
             {
-                logger_log_error("Update file task has no data for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Update file task has no data for file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Update file task has no data");
                 return;
             }
@@ -473,33 +493,33 @@ namespace filemanager
             {
                 // 更新文件状态为就绪
                 updateFileStatus(task.filename, FILE_STATUS_READY);
-                logger_log_info("Successfully updated file: %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_info("Successfully updated file: %s",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
             else
             {
                 // 更新文件状态为错误
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to update file");
-                logger_log_error("Failed to update file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Failed to update file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processUpdateFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processUpdateFileTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processUpdateFileTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processUpdateFileTask for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing update file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing update file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理关闭文件任务
@@ -516,15 +536,15 @@ namespace filemanager
         // 更新文件状态为已关闭
         updateFileStatus(task.filename, FILE_STATUS_CLOSED);
 
-        logger_log_info("Finished processing close file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing close file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理删除文件任务
     void FileQueueManager::processDeleteFileTask(const FileTask &task)
     {
-        logger_log_info("Processing delete file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing delete file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
         {
@@ -541,44 +561,47 @@ namespace filemanager
             rtl::OUString fileNameOUString = convertStringToOUString(task.filename.c_str());
             rtl::OUString absoluteFilePath;
             filemanager::getAbsolutePath(fileNameOUString, absoluteFilePath);
-            
+
             // 将OUString路径转换为std::string
             std::string filePath = filemanager::convertOUStringToString(absoluteFilePath);
 
             // 删除文件
-            if (unlink(filePath.c_str()) == 0) {
-                logger_log_info("Successfully deleted file: %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
-            } else {
-                logger_log_error("Failed to delete file: %s, errno: %d", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                                errno);
+            if (unlink(filePath.c_str()) == 0)
+            {
+                logger_log_info("Successfully deleted file: %s",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            }
+            else
+            {
+                logger_log_error("Failed to delete file: %s, errno: %d",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                                 errno);
             }
         }
-        catch (const std::system_error& e)
+        catch (const std::system_error &e)
         {
-            logger_log_error("System error in processDeleteFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("System error in processDeleteFileTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("System error: ") + e.what());
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processDeleteFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processDeleteFileTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processDeleteFileTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processDeleteFileTask for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing delete file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing delete file task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理更新模板任务
@@ -606,15 +629,15 @@ namespace filemanager
             logger_log_error("Unknown exception while updating template");
         }
 
-        logger_log_info("Finished processing update template task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing update template task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理新增工作表任务
     void FileQueueManager::processAddWorksheetTask(const FileTask &task)
     {
-        logger_log_info("Processing add worksheet task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing add worksheet task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
         {
@@ -622,8 +645,8 @@ namespace filemanager
             bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
             if (!isReady)
             {
-                logger_log_error("File %s is not ready for adding worksheet, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("File %s is not ready for adding worksheet, timeout or error occurred",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
                 return;
             }
@@ -633,8 +656,8 @@ namespace filemanager
 
             if (!task.taskData)
             {
-                logger_log_error("Add worksheet task has no data for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Add worksheet task has no data for file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Add worksheet task has no data");
                 return;
             }
@@ -645,40 +668,40 @@ namespace filemanager
             {
                 // 更新文件状态为就绪
                 updateFileStatus(task.filename, FILE_STATUS_READY);
-                logger_log_info("Successfully added worksheet for file: %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_info("Successfully added worksheet for file: %s",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
             else
             {
                 // 更新文件状态为错误
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to add worksheet");
-                logger_log_error("Failed to add worksheet for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Failed to add worksheet for file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processAddWorksheetTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processAddWorksheetTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processAddWorksheetTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processAddWorksheetTask for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing add worksheet task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing add worksheet task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
-    
+
     // 处理删除工作表任务
     void FileQueueManager::processRemoveWorksheetTask(const FileTask &task)
     {
-        logger_log_info("Processing remove worksheet task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing remove worksheet task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
         {
@@ -686,8 +709,8 @@ namespace filemanager
             bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
             if (!isReady)
             {
-                logger_log_error("File %s is not ready for removing worksheet, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("File %s is not ready for removing worksheet, timeout or error occurred",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
                 return;
             }
@@ -697,8 +720,8 @@ namespace filemanager
 
             if (!task.taskData)
             {
-                logger_log_error("Remove worksheet task has no data for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Remove worksheet task has no data for file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Remove worksheet task has no data");
                 return;
             }
@@ -709,33 +732,33 @@ namespace filemanager
             {
                 // 更新文件状态为就绪
                 updateFileStatus(task.filename, FILE_STATUS_READY);
-                logger_log_info("Successfully removed worksheet for file: %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_info("Successfully removed worksheet for file: %s",
+                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
             else
             {
                 // 更新文件状态为错误
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to remove worksheet");
-                logger_log_error("Failed to remove worksheet for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("Failed to remove worksheet for file: %s",
+                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processRemoveWorksheetTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processRemoveWorksheetTask for %s: %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
+                             e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processRemoveWorksheetTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processRemoveWorksheetTask for %s",
+                             filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing remove worksheet task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing remove worksheet task: %s",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理重命名工作表任务
@@ -772,23 +795,27 @@ namespace filemanager
                 // 更新文件状态为就绪
                 updateFileStatus(task.filename, FILE_STATUS_READY);
                 logger_log_info("Successfully renamed worksheet for file: %s", task.filename.c_str());
+                return;
             }
             else
             {
                 // 更新文件状态为错误
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to rename worksheet");
                 logger_log_error("Failed to rename worksheet for file: %s", task.filename.c_str());
+                return;
             }
         }
         catch (const std::exception &e)
         {
             logger_log_error("Exception in processRenameWorksheetTask for %s: %s", task.filename.c_str(), e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
+            return;
         }
         catch (...)
         {
             logger_log_error("Unknown exception in processRenameWorksheetTask for %s", task.filename.c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
+            return;
         }
 
         logger_log_info("Finished processing rename worksheet task: %s", task.filename.c_str());
@@ -796,8 +823,7 @@ namespace filemanager
     // 处理重命名文件任务
     void FileQueueManager::processRenameFileTask(const FileTask &task)
     {
-        logger_log_info("Processing rename file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Processing rename file task: %s",ensureOdsExtension(task.filename).c_str());
 
         try
         {
@@ -805,8 +831,7 @@ namespace filemanager
             bool isReady = waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
             if (!isReady)
             {
-                logger_log_error("File %s is not ready for renaming, timeout or error occurred", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+                logger_log_error("File %s is not ready for renaming, timeout or error occurred",ensureOdsExtension(task.filename).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Timeout waiting for file to be ready");
                 return;
             }
@@ -816,93 +841,88 @@ namespace filemanager
 
             // 获取新文件名
             std::string newFilename;
-            if (task.taskData) {
-                cJSON* newFilenameItem = cJSON_GetObjectItem(task.taskData, "newFilename");
-                if (newFilenameItem && cJSON_IsString(newFilenameItem)) {
+            if (task.taskData)
+            {
+                cJSON *newFilenameItem = cJSON_GetObjectItem(task.taskData, "newFilename");
+                if (newFilenameItem && cJSON_IsString(newFilenameItem))
+                {
                     newFilename = std::string(newFilenameItem->valuestring);
                 }
             }
 
-            if (newFilename.empty()) {
-                logger_log_error("New filename is empty for file: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            if (newFilename.empty())
+            {
+                logger_log_error("New filename is empty for file: %s",ensureOdsExtension(task.filename).c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "New filename is empty");
                 return;
             }
 
             // 获取旧文件和新文件的绝对路径
-            rtl::OUString oldFileNameOUString = convertStringToOUString(task.filename.c_str());
-            rtl::OUString newFileNameOUString = convertStringToOUString(newFilename.c_str());
-            
+            rtl::OUString oldFileNameOUString = convertStringToOUString(ensureOdsExtension(task.filename).c_str());
+            rtl::OUString newFileNameOUString = convertStringToOUString(ensureOdsExtension(newFilename).c_str());
+
             rtl::OUString oldAbsoluteFilePath, newAbsoluteFilePath;
             filemanager::getAbsolutePath(oldFileNameOUString, oldAbsoluteFilePath);
             filemanager::getAbsolutePath(newFileNameOUString, newAbsoluteFilePath);
-            
+
             // 将OUString路径转换为std::string
             std::string oldFilePath = filemanager::convertOUStringToString(oldAbsoluteFilePath);
             std::string newFilePath = filemanager::convertOUStringToString(newAbsoluteFilePath);
 
             // 检查源文件是否存在
-            if (access(oldFilePath.c_str(), F_OK) != 0) {
-                logger_log_error("Source file does not exist: %s", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(oldFilePath.c_str())).c_str());
+            if (access(oldFilePath.c_str(), F_OK) != 0)
+            {
+                logger_log_error("Source file does not exist: %s", oldFilePath.c_str());
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Source file does not exist");
                 return;
             }
 
             // 重命名文件
-            if (rename(oldFilePath.c_str(), newFilePath.c_str()) == 0) {
+            if (rename(oldFilePath.c_str(), newFilePath.c_str()) == 0)
+            {
                 // 更新文件状态映射表中的文件名
                 {
                     std::lock_guard<std::mutex> lock(statusMutex);
                     auto it = fileStatusMap.find(task.filename);
-                    if (it != fileStatusMap.end()) {
+                    if (it != fileStatusMap.end())
+                    {
                         FileInfo fileInfo = it->second;
                         fileInfo.filename = newFilename;
                         fileStatusMap.erase(it);
                         fileStatusMap[newFilename] = fileInfo;
                     }
                 }
-                
+
                 updateFileStatus(newFilename, FILE_STATUS_READY);
-                logger_log_info("Successfully renamed file from %s to %s", 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                               filemanager::convertOUStringToString(filemanager::convertStringToOUString(newFilename.c_str())).c_str());
-            } else {
-                logger_log_error("Failed to rename file from %s to %s, errno: %d", 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(newFilename.c_str())).c_str(), 
-                                errno);
+                logger_log_info("Successfully renamed file from %s to %s",oldFilePath.c_str(), newFilePath.c_str());
+            }
+            else
+            {
+                logger_log_error("Failed to rename file from %s to %s, errno: %d",oldFilePath.c_str(),newFilePath.c_str(),errno);
                 updateFileStatus(task.filename, FILE_STATUS_ERROR, "Failed to rename file");
                 return;
             }
         }
-        catch (const std::system_error& e)
+        catch (const std::system_error &e)
         {
-            logger_log_error("System error in processRenameFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("System error in processRenameFileTask for %s: %s",ensureOdsExtension(task.filename).c_str(),e.what());
             logger_log_error("Error code: %d, Error category: %s", e.code().value(), e.code().category().name());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("System error: ") + e.what());
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Exception in processRenameFileTask for %s: %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(), 
-                            e.what());
+            logger_log_error("Exception in processRenameFileTask for %s: %s",ensureOdsExtension(task.filename).c_str(),e.what());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception in processRenameFileTask for %s", 
-                            filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+            logger_log_error("Unknown exception in processRenameFileTask for %s",ensureOdsExtension(task.filename).c_str());
             updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing rename file task: %s", 
-                       filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
+        logger_log_info("Finished processing rename file task: %s",ensureOdsExtension(task.filename).c_str());
     }
-    
+
     // 处理获取工作表数据任务
     void FileQueueManager::processSheetDataTask(const FileTask &task)
     {
