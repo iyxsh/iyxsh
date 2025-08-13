@@ -335,6 +335,22 @@ void deal_renameworksheet_request(RequestBody requestbody, ResponseBody *respons
     send_response(responsebody, results, STATUS_SUCCESS);
 }
 
+void deal_sheetlist_request(RequestBody requestbody, ResponseBody *responsebody)
+{
+    if (!validate_request(requestbody, responsebody, "POST", "/api/sheetlist")) {
+        return;
+    }
+
+    if (handle_empty_body(requestbody, responsebody)) {
+        return;
+    }
+
+    cJSON *results = cJSON_CreateArray();
+    printf("request sheetlist body:%s\n", requestbody.body_start);
+    filemanager::sheetlist(results, requestbody.body_start);
+    send_response(responsebody, results, STATUS_SUCCESS);
+}
+
 /**
  * 处理工作表数据请求
  */

@@ -217,6 +217,9 @@ const ensureElementStyleIntegrity = (style) => {
   return result
 }
 
+// 初始化标志，防止在表单初始化时触发验证
+const isInitializing = ref(true);
+
 // 表单状态
 /** @type {Form} */
 const formState = reactive({
@@ -283,6 +286,13 @@ const rules = {
   ],
   media: [
     { validator: (rule, value, callback) => {
+      // 在初始化阶段跳过验证
+      if (isInitializing.value) {
+        callback();
+        return;
+      }
+      
+      // 只有在显示媒体且用户主动输入时才进行验证
       if (formState.showMedia && value) {
         // 处理MediaUploader传递的对象
         let mediaUrl = '';
@@ -297,14 +307,40 @@ const rules = {
           return;
         }
         
-        // 支持本地URL(blob:)和普通URL
-        if (mediaUrl && (
-          mediaUrl.startsWith('blob:') || 
-          /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/.test(mediaUrl)
-        )) {
+        // 如果mediaUrl为空，说明没有媒体内容，这是有效的
+        if (!mediaUrl || mediaUrl.trim() === '') {
+          callback();
+          return;
+        }
+        
+        // 支持多种有效的媒体格式
+        const isValidMediaUrl = (
+          // blob URL (本地文件预览)
+          mediaUrl.startsWith('blob:') ||
+          // base64 数据URL (图片/视频数据)
+          mediaUrl.startsWith('data:image/') ||
+          mediaUrl.startsWith('data:video/') ||
+          // 普通HTTP/HTTPS URL
+          /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/.test(mediaUrl) ||
+          // 相对路径 (如果支持)
+          mediaUrl.startsWith('./') ||
+          mediaUrl.startsWith('/') ||
+          // 文件路径 (本地文件)
+          /^[a-zA-Z]:\\/.test(mediaUrl) ||
+          /^\/[^\/]+/.test(mediaUrl)
+        );
+        
+        if (isValidMediaUrl) {
           callback();
         } else {
-          callback(new Error('请输入有效的URL'));
+          // 提供更友好的错误信息
+          if (mediaUrl.includes(' ')) {
+            callback(new Error('媒体URL不能包含空格，请检查输入'));
+          } else if (mediaUrl.length > 1000) {
+            callback(new Error('媒体URL过长，请使用较短的URL或上传文件'));
+          } else {
+            callback(new Error('请输入有效的媒体URL或选择文件'));
+          }
         }
       } else {
         callback();
@@ -782,6 +818,12 @@ onMounted(async () => {
       handleError(error, '自动聚焦失败');
     }
   }
+  
+  // 延迟设置初始化完成标志，确保所有数据都已加载
+  setTimeout(() => {
+    isInitializing.value = false;
+    console.log('FormEditor initialization completed');
+  }, 100);
 })
 
 // 组件卸载时清理创建的blob URL

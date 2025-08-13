@@ -246,9 +246,10 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
             cJSON *result = readSheetData(filePath, sheetName);
             if (result)
             {
@@ -382,9 +383,10 @@ namespace filemanager
             }
 
             // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
             cJSON *contentMap = readSheetData(filePath, sheetName);
             if (contentMap)
             {
@@ -668,76 +670,70 @@ namespace filemanager
     }
     int sheetdata(cJSON *taskData)
     {
+        logger_log_info("Processing sheetdata with pagination support");
+
+        // 检查输入参数
+        cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
+        cJSON *pageSizeItem = cJSON_GetObjectItem(taskData, "pageSize");
+        cJSON *pageIndexItem = cJSON_GetObjectItem(taskData, "pageIndex");
+
+        if (!filenameItem || !cJSON_IsString(filenameItem) ||
+            !sheetnameItem || !cJSON_IsString(sheetnameItem) ||
+            !pageSizeItem || !cJSON_IsNumber(pageSizeItem) ||
+            !pageIndexItem || !cJSON_IsNumber(pageIndexItem))
+        {
+            logger_log_error("Invalid or missing parameters in sheetdata task data");
+            return -1;
+        }
+
         try
         {
-            // 从taskData中提取文件名和工作表名
-            cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
-            cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
+            // 转换参数
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+            int pageSize = pageSizeItem->valueint;
+            int pageIndex = pageIndexItem->valueint;
 
-            if (!filenameItem || !cJSON_IsString(filenameItem) ||
-                !sheetnameItem || !cJSON_IsString(sheetnameItem))
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
+
+            // 获取工作表总记录数
+            int totalRecords = getTotalRecordCount(filePath, sheetName);
+            if (totalRecords < 0)
             {
-                logger_log_error("Missing filename or sheetname in sheetdata task data");
+                logger_log_error("Failed to get total record count for file: %s, sheet: %s",
+                                filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
 
-            // 使用UTF-8编码处理文件名和sheet名
-            rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+            // 计算分页范围
+            int startIndex = pageIndex * pageSize;
+            int endIndex = std::min(startIndex + pageSize, totalRecords);
 
-            // 读取工作表数据
-            cJSON *sheetContent = readSheetData(filePath, sheetName);
-            if (sheetContent)
-            {
-                // 创建结果文件
-                std::string resultFilename = std::string(filenameItem->valuestring) + "_" + std::string(sheetnameItem->valuestring) + "_data.json";
-
-                // 将数据写入结果文件
-                FILE *resultFile = fopen(resultFilename.c_str(), "w");
-                if (resultFile)
-                {
-                    // 创建结果数组
-                    cJSON *rowsArray = cJSON_CreateArray();
-
-                    // 创建第一行数据对象
-                    cJSON *firstRow = cJSON_CreateObject();
-
-                    // 遍历sheetContent中的所有键值对
-                    cJSON *currentItem = sheetContent->child;
-                    while (currentItem)
-                    {
-                        // 将内容作为key，位置作为value添加到firstRow对象中
-                        cJSON_AddStringToObject(firstRow, currentItem->string, currentItem->valuestring);
-                        currentItem = currentItem->next;
-                    }
-
-                    // 将第一行添加到结果数组中
-                    cJSON_AddItemToArray(rowsArray, firstRow);
-
-                    // 将结果写入文件
-                    char *resultString = cJSON_Print(rowsArray);
-                    fputs(resultString, resultFile);
-                    fclose(resultFile);
-                    free(resultString);
-
-                    // 清理cJSON对象
-                    cJSON_Delete(rowsArray);
-                }
-                else
-                {
-                    logger_log_error("Failed to create result file: %s", resultFilename.c_str());
-                    cJSON_Delete(sheetContent);
-                    return -1;
-                }
-
-                cJSON_Delete(sheetContent);
-            }
-            else
+            // 读取指定范围的数据
+            cJSON *sheetContent = readSheetDataRange(filePath, sheetName, startIndex, endIndex);
+            if (!sheetContent)
             {
                 logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s",
-                                 filenameItem->valuestring, sheetnameItem->valuestring);
+                                filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
+
+            // 构造返回结果
+            cJSON *result = cJSON_CreateObject();
+            cJSON_AddNumberToObject(result, "totalRecords", totalRecords);
+            cJSON_AddNumberToObject(result, "pageSize", pageSize);
+            cJSON_AddNumberToObject(result, "pageIndex", pageIndex);
+            cJSON_AddItemToObject(result, "data", sheetContent);
+
+            // 将结果写入全局 cJSON 对象（模拟接口返回）
+            cJSON_AddItemToObject(taskData, "response", result);
+
+            logger_log_info("Successfully processed sheetdata for file: %s, sheet: %s",
+                            filenameItem->valuestring, sheetnameItem->valuestring);
+            return 0;
         }
         catch (const uno::Exception &e)
         {
@@ -755,8 +751,6 @@ namespace filemanager
             logger_log_error("Unknown exception in sheetdata");
             return -1;
         }
-
-        return 0;
     }
 
 } // namespace filemanager

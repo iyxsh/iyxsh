@@ -254,6 +254,14 @@ void handle_renameworksheet_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
+void handle_sheetlist_request(SSL *ssl, RequestBody requestbody)
+{
+    ResponseBody responsebody;
+    ResponseBodyInit(&responsebody);
+    deal_sheetlist_request(requestbody, &responsebody);
+    send_response(ssl, responsebody);
+}
+
 void handle_sheetdata_request(SSL *ssl, RequestBody requestbody)
 {
     ResponseBody responsebody;
@@ -284,6 +292,7 @@ struct Route routes[] = {
     {"POST", "/api/addworksheet", handle_addworksheet_request},
     {"POST", "/api/removeworksheet", handle_removeworksheet_request},
     {"POST", "/api/renameworksheet", handle_renameworksheet_request},
+    {"POST", "/api/sheetlist", handle_sheetlist_request},
     {"POST", "/api/sheetdata", handle_sheetdata_request},
     {"POST", "/api/renamefile", handle_renamefile_request},
     // 添加通用OPTIONS处理路由
@@ -299,6 +308,7 @@ struct Route routes[] = {
     {"OPTIONS", "/api/addworksheet", handle_options_request},
     {"OPTIONS", "/api/removeworksheet", handle_options_request},
     {"OPTIONS", "/api/renameworksheet", handle_options_request},
+    {"OPTIONS", "/api/sheetlist", handle_options_request},
     {"OPTIONS", "/api/sheetdata", handle_options_request},
     {"OPTIONS", "/api/renamefile", handle_options_request},
     {NULL, NULL, NULL}};

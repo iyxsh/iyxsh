@@ -19,6 +19,9 @@ namespace filemanager
     void renameworksheet(cJSON *results, const char *body);
     void renamefile(cJSON *results, const char *body);
     
+    /// @brief 获取文件的所有工作表名称
+    void sheetlist(cJSON *results, const char *body);
+
     // 添加获取工作表数据的函数声明
     void sheetdata(cJSON *results, const char *body);
     

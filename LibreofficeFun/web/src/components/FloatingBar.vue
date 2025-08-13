@@ -193,80 +193,23 @@ export default {
         showUnlockMessage()
         return
       }
-      
+      // 添加表单空表单不发送后台
       emit('add-form')
-
-      // 使用 ApiServiceManager 发送请求
-      try {
-        const apiService = getApiService()
-        if (apiService) {
-          await apiService.updateFile({
-            action: 'addForm',
-            timestamp: new Date().toISOString()
-          })
-        } else {
-          console.warn('[FloatingBar] ApiServiceManager 未找到')
-        }
-      } catch (error) {
-        console.error('发送表单数据到后台失败:', error);
-      }
     };
 
     const handleToggleCardStyle = async () => {
       emit('toggle-card-style')
-
-      // 使用 ApiServiceManager 发送请求
-      try {
-        const apiService = getApiService()
-        if (apiService) {
-          await apiService.updateFile({
-            action: 'toggleCardStyle',
-            timestamp: new Date().toISOString()
-          })
-        } else {
-          console.warn('[FloatingBar] ApiServiceManager 未找到')
-        }
-      } catch (error) {
-        console.error('发送表单数据到后台失败:', error);
-      }
+      // 卡片样式切换是本地操作，不需要同步到服务器
     }
 
     const handlePrevPage = async () => {
       emit('prev-page')
-
-      // 使用 ApiServiceManager 发送请求
-      try {
-        const apiService = getApiService()
-        if (apiService) {
-          await apiService.updateFile({
-            action: 'prevPage',
-            timestamp: new Date().toISOString()
-          })
-        } else {
-          console.warn('[FloatingBar] ApiServiceManager 未找到')
-        }
-      } catch (error) {
-        console.error('发送表单数据到后台失败:', error);
-      }
+      // 页面切换是本地操作，不需要同步到服务器
     }
 
     const handleNextPage = async () => {
       emit('next-page')
-
-      // 使用 ApiServiceManager 发送请求
-      try {
-        const apiService = getApiService()
-        if (apiService) {
-          await apiService.updateFile({
-            action: 'nextPage',
-            timestamp: new Date().toISOString()
-          })
-        } else {
-          console.warn('[FloatingBar] ApiServiceManager 未找到')
-        }
-      } catch (error) {
-        console.error('发送表单数据到后台失败:', error);
-      }
+      // 页面切换是本地操作，不需要同步到服务器
     }
 
     // 切换页面类型（表单/卡片）
@@ -279,22 +222,7 @@ export default {
       
       const newType = props.currentPageType === 'form' ? 'cards' : 'form'
       emit('change-page-type', newType)
-      
-      // 发送表单数据到后台
-      try {
-        const apiService = getApiService()
-        if (apiService) {
-          await apiService.updateFile({
-            action: 'changePageType',
-            pageType: newType,
-            timestamp: new Date().toISOString()
-          })
-        } else {
-          console.warn('[FloatingBar] ApiServiceManager 未找到')
-        }
-      } catch (error) {
-        console.error('发送表单数据到后台失败:', error);
-      }
+      // 页面类型切换是本地操作，不需要同步到服务器
     }
 
     // 点击外部区域收起面板

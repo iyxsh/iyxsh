@@ -1,46 +1,74 @@
 import { ref, watch } from 'vue'
-const STORAGE_KEY = 'form-pages'
+
+// 获取当前文件名（作为修文名）
+const getCurrentFileName = () => {
+  // 从URL参数中获取文件名
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('fileName') || '';
+};
+
+// 获取存储键名（支持文件名区分）
+const getStorageKey = () => {
+  const fileName = getCurrentFileName();
+  return fileName ? `form-pages-${fileName}` : 'form-pages';
+};
+
 export function usePages() {
   const pages = ref([])
-  // 加载缓存
-  const cache = localStorage.getItem(STORAGE_KEY)
-  if (cache) {
-    try {
-      const parsedCache = JSON.parse(cache)
-      if (Array.isArray(parsedCache)) {
-        // 确保每个页面都有完整的数据结构
-        pages.value = parsedCache.map(page => ({
-          id: page.id || Date.now() + Math.random(),
-          name: page.name || '新页面',
-          forms: Array.isArray(page.forms) ? page.forms.map(form => ({
-            ...form,
-            id: form.id || Date.now() + Math.random()
-          })) : [],
-          pageSize: page.pageSize || {
-            name: 'A4',
-            width: 210,
-            height: 297,
-            unit: 'mm'
-          },
-          orientation: page.orientation || 'portrait'
-        }))
-      }
-      console.log('[usePages] 从本地存储加载页面数据，页面数量:', pages.value.length);
-    } catch (error) {
-      console.error('[usePages] 解析缓存数据失败:', error)
-      pages.value = []
-    }
-  }
   
-  // 监听页面数据变化并保存到本地存储
+  // 加载缓存（支持文件名区分）
+  const loadCache = () => {
+    const storageKey = getStorageKey();
+    const cache = localStorage.getItem(storageKey);
+    if (cache) {
+      try {
+        const parsedCache = JSON.parse(cache);
+        if (Array.isArray(parsedCache)) {
+          // 确保每个页面都有完整的数据结构
+          pages.value = parsedCache.map(page => ({
+            id: page.id || Date.now() + Math.random(),
+            name: page.name || '新页面',
+            forms: Array.isArray(page.forms) ? page.forms.map(form => ({
+              ...form,
+              id: form.id || Date.now() + Math.random()
+            })) : [],
+            pageSize: page.pageSize || {
+              name: 'A4',
+              width: 210,
+              height: 297,
+              unit: 'mm'
+            },
+            orientation: page.orientation || 'portrait'
+          }));
+        }
+        console.log(`[usePages] 从本地存储加载页面数据（${storageKey}），页面数量:`, pages.value.length);
+      } catch (error) {
+        console.error('[usePages] 解析缓存数据失败:', error);
+        pages.value = [];
+      }
+    } else {
+      console.log(`[usePages] 未找到缓存数据（${storageKey}）`);
+    }
+  };
+  
+  // 初始加载缓存
+  loadCache();
+  
+  // 监听页面数据变化并保存到本地存储（支持文件名区分）
   watch(pages, v => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(v))
-      console.log('[usePages] 页面数据已保存到本地存储，页面数量:', v.length)
+      const storageKey = getStorageKey();
+      localStorage.setItem(storageKey, JSON.stringify(v));
+      console.log(`[usePages] 页面数据已保存到本地存储（${storageKey}），页面数量:`, v.length);
     } catch (error) {
-      console.error('[usePages] 保存数据到本地存储失败:', error)
+      console.error('[usePages] 保存数据到本地存储失败:', error);
     }
-  }, { deep: true })
+  }, { deep: true });
+  
+  // 重新加载缓存（当文件名改变时调用）
+  const reloadCache = () => {
+    loadCache();
+  };
   
   function addPage(pageData) {
     // 如果传入的是完整页面对象
@@ -120,5 +148,5 @@ export function usePages() {
   }
 
   console.log('[usePages] 初始化完成，页面数量:', pages.value.length);
-  return { pages, addPage, removePage, updatePage, rotatePageOrientation }
+  return { pages, addPage, removePage, updatePage, rotatePageOrientation, reloadCache }
 }

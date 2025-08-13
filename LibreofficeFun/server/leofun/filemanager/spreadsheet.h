@@ -8,7 +8,14 @@
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
+#include <com/sun/star/sheet/XSheetCellRanges.hpp>
+#include <com/sun/star/sheet/XSheetCellCursor.hpp>
+#include <com/sun/star/sheet/XArrayFormulaRange.hpp>
+#include <com/sun/star/sheet/XCellRangesQuery.hpp>
+#include <com/sun/star/sheet/CellFlags.hpp>
+#include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/table/XCell.hpp>
+#include <com/sun/star/table/XColumnRowRange.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
@@ -80,10 +87,14 @@ namespace filemanager
     cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
     cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
     rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData);
-    
+
     // 公共函数用于加载文档
-    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> 
-    loadSpreadsheetDocument(const rtl::OUString& filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent>& xComp);
+    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
+    loadSpreadsheetDocument(const rtl::OUString &filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp);
+    // 获取工作表总记录数
+    int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+    // 分页读取工作表内容
+    cJSON *readSheetDataRange(const rtl::OUString &filePath, const rtl::OUString &sheetName, int startIndex, int endIndex);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H

@@ -53,7 +53,7 @@ void deal_addworksheet_request(RequestBody requestbody,ResponseBody *responsebod
 void deal_removeworksheet_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_renamefile_request(RequestBody requestbody, ResponseBody *responsebody);
 void deal_renameworksheet_request(RequestBody requestbody, ResponseBody *responsebody);
-
+void deal_sheetlist_request(RequestBody requestbody, ResponseBody *responsebody);
 // 添加处理工作表数据请求的函数声明
 void deal_sheetdata_request(RequestBody requestbody, ResponseBody *responsebody);
 

@@ -230,16 +230,24 @@ namespace filemanager
 
     void getAbsolutePath(const rtl::OUString &fileName, rtl::OUString &absoluteFilePath)
     {
-        // 从配置文件中获取数据路径和默认文件名
+        // 先判断 fileName 是否为绝对路径
+        std::string fileNameStr = rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr();
+        bool isAbsolute = false;
+        // Windows 绝对路径判断（如 C:/ 或 C:\ 或以 / 开头）
+        if (fileNameStr.length() > 2 && (iswalpha(fileNameStr[0]) && fileNameStr[1] == ':' && (fileNameStr[2] == '/' || fileNameStr[2] == '\\')) || fileNameStr[0] == '/') {
+            isAbsolute = true;
+        }
+        if (isAbsolute) {
+            absoluteFilePath = fileName;
+            logger_log_info("absoluteFilePath (already absolute): %s", fileNameStr.c_str());
+            return;
+        }
+        // 非绝对路径，拼接数据路径
         const char *datapath = json_config_get_string("datapath");
         if (!datapath)
-            datapath = "../data"; // 默认数据路径
-                                  // 构建默认文件的完整路径
-        std::string FilePathStr = std::string(datapath) + "/" + ensureOdsExtension(rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr());
-
-        // 处理相对路径，转换为绝对路径
+            datapath = "../data";
+        std::string FilePathStr = std::string(datapath) + "/" + ensureOdsExtension(fileNameStr);
         std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
-
         rtl::OString absoluteFilePathOStr = rtl::OString(absoluteFilePathStr.c_str());
         absoluteFilePath = rtl::OStringToOUString(absoluteFilePathOStr, RTL_TEXTENCODING_UTF8);
         logger_log_info("absoluteFilePath: %s", rtl::OUStringToOString(absoluteFilePath, RTL_TEXTENCODING_UTF8).getStr());

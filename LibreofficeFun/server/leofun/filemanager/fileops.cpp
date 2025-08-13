@@ -1,5 +1,6 @@
 #include "fileops.h"
 #include "filequeue.h"
+#include "filehandlers.h"
 #include "spreadsheet.h"
 #include "utils.h"
 #include "../cJSON/cJSON.h"
@@ -13,9 +14,12 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+#include "lofficeconn.h" // 确保 LibreOfficeConnectionManager 可用
+
 namespace filemanager
 {
-    void initializeDataPathFiles() {
+    void initializeDataPathFiles()
+    {
         // 读取datapath目录下所有文件并加入队列
         const char *datapath = json_config_get_string("datapath");
         if (datapath)
@@ -35,7 +39,7 @@ namespace filemanager
 
                     // 检查是否为ods文件
                     std::string filename(entry->d_name);
-                    //代码中任务和保存时使用的名称不包含路径和后缀（和接口保持一致，所有路径和后缀都在代码逻辑中处理）
+                    // 代码中任务和保存时使用的名称不包含路径和后缀（和接口保持一致，所有路径和后缀都在代码逻辑中处理）
                     if (filename.length() > 4 && filename.substr(filename.length() - 4) == ".ods")
                     {
                         std::string filepath = std::string(datapath) + "/" + filename;
@@ -272,10 +276,10 @@ namespace filemanager
                     1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
                     ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
             logger_log_info("filename: %s", filename);
-            
+
             // 确保文件名有.ods后缀
             std::string filenameWithExt = std::string(filename);
-            
+
             // 创建文件任务
             filemanager::FileTask task;
             task.type = filemanager::TASK_CREATE_FILE;
@@ -598,16 +602,59 @@ namespace filemanager
         cJSON_Delete(jsonRoot);
     }
 
+    void sheetlist(cJSON *results, const char *body) {
+        cJSON *filenameJson = cJSON_GetObjectItem(cJSON_Parse(body), "filename");
+        if (!filenameJson || !cJSON_IsString(filenameJson)) {
+            cJSON_AddStringToObject(results, "error", "Invalid filename parameter");
+            return;
+        }
+
+        std::string filename = filenameJson->valuestring;
+        rtl::OUString filePath = convertStringToOUString(filename.c_str());
+
+        try {
+            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
+            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(
+                filePath, "_blank", 0, uno::Sequence<beans::PropertyValue>());
+
+            uno::Reference<sheet::XSpreadsheetDocument> xSpreadsheetDocument(xComponent, uno::UNO_QUERY);
+            if (!xSpreadsheetDocument.is()) {
+                cJSON_AddStringToObject(results, "error", "Failed to load spreadsheet document");
+                return;
+            }
+
+            uno::Reference<sheet::XSpreadsheets> xSheetsRaw = xSpreadsheetDocument->getSheets();
+            uno::Reference<container::XNameAccess> xSheets(xSheetsRaw, uno::UNO_QUERY);
+            if (!xSheets.is()) {
+                cJSON_AddStringToObject(results, "error", "Failed to access sheets");
+                return;
+            }
+
+            uno::Sequence<rtl::OUString> sheetNames = xSheets->getElementNames();
+            cJSON *sheetArray = cJSON_CreateArray();
+            for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i) {
+                cJSON_AddItemToArray(sheetArray, cJSON_CreateString(sheetNames[i].toUtf8().getStr()));
+            }
+
+            cJSON_AddItemToObject(results, "sheets", sheetArray);
+        } catch (uno::Exception &e) {
+            rtl::OUString errorMessage = e.Message;
+            rtl::OString errorString = rtl::OUStringToOString(errorMessage, RTL_TEXTENCODING_UTF8);
+            cJSON_AddStringToObject(results, "error", errorString.getStr());
+        }
+    }
+
+    // Optimized implementation for handling sheet data directly without queue processing
     void sheetdata(cJSON *results, const char *body)
     {
-        // 获取工作表数据需要请求体，检查body是否为空
+        // Check if the request body is empty
         if (!body || strlen(body) == 0)
         {
             cJSON_AddStringToObject(results, "error", "Empty request body");
             return;
         }
 
-        // 解析输入的 JSON 字符串
+        // Parse the input JSON string
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
@@ -615,39 +662,55 @@ namespace filemanager
             return;
         }
 
+        // Extract required parameters from the JSON object
         cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
         cJSON *sheetnameItem = cJSON_GetObjectItem(jsonRoot, "sheetname");
+        cJSON *pageSizeItem = cJSON_GetObjectItem(jsonRoot, "pageSize");
+        cJSON *pageIndexItem = cJSON_GetObjectItem(jsonRoot, "pageIndex");
+        cJSON *batchSizeItem = cJSON_GetObjectItem(jsonRoot, "batchSize");
+        cJSON *enableStreamingItem = cJSON_GetObjectItem(jsonRoot, "enableStreaming");
+        cJSON *enableCompressionItem = cJSON_GetObjectItem(jsonRoot, "enableCompression");
 
+        // Validate required fields
         if (!filenameItem || !cJSON_IsString(filenameItem) ||
-            !sheetnameItem || !cJSON_IsString(sheetnameItem))
+            !sheetnameItem || !cJSON_IsString(sheetnameItem) ||
+            !pageSizeItem || !cJSON_IsNumber(pageSizeItem) ||
+            !pageIndexItem || !cJSON_IsNumber(pageIndexItem) ||
+            !batchSizeItem || !cJSON_IsNumber(batchSizeItem) ||
+            !enableStreamingItem || !cJSON_IsBool(enableStreamingItem) ||
+            !enableCompressionItem || !cJSON_IsBool(enableCompressionItem))
         {
-            cJSON_AddStringToObject(results, "error", "Missing filename or sheetname");
+            cJSON_AddStringToObject(results, "error", "Invalid or missing parameters");
             cJSON_Delete(jsonRoot);
             return;
         }
 
-        // 创建获取工作表数据任务并添加到队列
-        filemanager::FileTask sheetDataTask;
-        sheetDataTask.type = filemanager::TASK_SHEET_DATA;
-        sheetDataTask.filename = std::string(filenameItem->valuestring);
-        sheetDataTask.data = std::string("");
-        sheetDataTask.createTime = std::time(nullptr);
-        sheetDataTask.taskData = nullptr;
+        // 调用 filehandlers.cpp 中的 sheetdata 函数
+        cJSON *taskData = cJSON_CreateObject();
+        cJSON_AddStringToObject(taskData, "filename", filenameItem->valuestring);
+        cJSON_AddStringToObject(taskData, "sheetname", sheetnameItem->valuestring);
+        cJSON_AddNumberToObject(taskData, "pageSize", pageSizeItem->valuedouble);
+        cJSON_AddNumberToObject(taskData, "pageIndex", pageIndexItem->valuedouble);
 
-        // 正确管理cJSON内存
-        if (sheetDataTask.taskData)
+        int status = filemanager::sheetdata(taskData);
+        if (status != 0)
         {
-            cJSON_Delete(sheetDataTask.taskData);
+            cJSON_AddStringToObject(results, "error", "Failed to process sheet data");
         }
-        sheetDataTask.taskData = cJSON_Duplicate(jsonRoot, cJSON_True);
+        else
+        {
+            cJSON_AddItemToObject(results, "data", cJSON_Duplicate(taskData, true));
+        }
 
-        // 添加任务到队列
-        filemanager::FileQueueManager::getInstance().addFileTask(sheetDataTask);
-        
+        // Add response data
         cJSON_AddStringToObject(results, "result", "success");
-        cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
+        cJSON_AddStringToObject(results, "filename", filenameItem->valuestring);
         cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
-        cJSON_AddStringToObject(results, "filestatus", "processing");
+
+        // 清理资源
+        cJSON_Delete(taskData);
+
+        // Clean up
         cJSON_Delete(jsonRoot);
     }
 

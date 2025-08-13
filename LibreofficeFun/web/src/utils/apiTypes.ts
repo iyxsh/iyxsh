@@ -1,6 +1,7 @@
 import { CardGroups } from './styleConfig';
 
-export type CardGroups = Record<string, any>;
+// 导出 CardGroups 类型
+export { CardGroups } from './styleConfig';
 
 // 带文件名的文件创建接口
 export interface NewFileRequest {
@@ -100,12 +101,32 @@ export interface RenameWorksheetResponse {
 export interface SheetDataRequest {
   filename: string;
   sheetname: string;
+  // 大数据量读取策略参数
+  pageSize?: number; // 每页数据量，默认1000
+  pageIndex?: number; // 页码，从0开始
+  batchSize?: number; // 批处理大小，默认50
+  enableStreaming?: boolean; // 是否启用流式读取
+  enableCompression?: boolean; // 是否启用数据压缩
 }
 
 // sheetdata 接口响应数据
 export interface SheetDataResponse {
   [key: string]: string;
 }[]
+
+// sheetlist 接口请求数据
+export interface SheetListRequest {
+  filename: string; // 文件名
+}
+
+// sheetlist 接口响应数据
+export interface SheetListResponse {
+  sheets: Array<{
+    sheetname: string; // 工作表名称
+    lastModified: number; // 最后修改时间（时间戳）
+    size: number; // 工作表大小（字节数）
+  }>;
+}
 
 // 更新数据接口
 export interface UpdateData {

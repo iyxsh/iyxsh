@@ -1,5 +1,11 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, CancelToken } from 'axios';
-import { CardGroups, NewFileRequest, UpdateFileRequest, FileListItem, StyleConfig, BatchOperation, NewFileResponse, UpdateFileResponse, FileStatusRequest, FileStatusResponse, DeleteFileRequest, DeleteFileResponse, AddWorksheetRequest, AddWorksheetResponse, RemoveWorksheetRequest, RemoveWorksheetResponse, RenameFileRequest, RenameFileResponse, RenameWorksheetRequest, RenameWorksheetResponse, SheetDataRequest, SheetDataResponse } from './apiTypes';
+import { NewFileRequest, UpdateFileRequest, FileListItem, StyleConfig, BatchOperation, NewFileResponse, UpdateFileResponse, FileStatusRequest, FileStatusResponse, DeleteFileRequest, DeleteFileResponse, AddWorksheetRequest, AddWorksheetResponse, RemoveWorksheetRequest, RemoveWorksheetResponse, RenameFileRequest, RenameFileResponse, RenameWorksheetRequest, RenameWorksheetResponse, SheetDataRequest, SheetDataResponse } from './apiTypes';
+
+// 导入新增的类型
+import { SheetListRequest, SheetListResponse } from './apiTypes';
+
+// 重新导入 CardGroups 类型
+import { CardGroups } from './apiTypes';
 
 // 创建高级axios实例，支持更多功能
 const advancedApiClient: AxiosInstance = axios.create({
@@ -21,10 +27,20 @@ advancedApiClient.interceptors.request.use(
       };
     }
     
+    // 记录请求信息用于调试
+    console.log('API Request:', {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`,
+      data: config.data
+    });
+    
     // 可以在这里添加认证token等
     return config;
   },
   (error: any) => {
+    console.error('Request Interceptor Error:', error);
     return Promise.reject(error);
   }
 );
@@ -36,6 +52,19 @@ advancedApiClient.interceptors.response.use(
   },
   (error: any) => {
     console.error('Advanced API Error:', error);
+    
+    // 添加更详细的错误信息
+    if (error.response) {
+      console.error('Error Response:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data,
+        url: error.config?.url,
+        method: error.config?.method,
+        baseURL: error.config?.baseURL
+      });
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -162,9 +191,24 @@ export const advancedCardApi = {
     return advancedApiClient.post<SheetDataResponse>('/sheetdata', sheetDataRequest, { cancelToken: cancelToken || undefined });
   },
   
+  // 获取工作表列表
+  sheetlist(sheetListRequest: SheetListRequest, cancelToken: CancelToken | null = null) {
+    return advancedApiClient.post<SheetListResponse>('/sheetlist', sheetListRequest, { cancelToken: cancelToken || undefined });
+  },
+  
   // 删除文件
   deleteFile(deleteFileRequest: DeleteFileRequest, cancelToken: CancelToken | null = null) {
     return advancedApiClient.post<DeleteFileResponse>('/deletefile', deleteFileRequest, { cancelToken: cancelToken || undefined });
+  },
+  
+  // 健康检查
+  healthCheck(cancelToken: CancelToken | null = null) {
+    return advancedApiClient.get('/health', { cancelToken: cancelToken || undefined });
+  },
+  
+  // 测试连接
+  testConnection(cancelToken: CancelToken | null = null) {
+    return advancedApiClient.get('/', { cancelToken: cancelToken || undefined });
   }
 };
 

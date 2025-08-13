@@ -269,7 +269,7 @@ const fileStatus = async (/** @type {FileStatusRequest} */ fileStatusRequest) =>
   }
 };
 
-// 获取工作表数据
+// 获取工作表数据（支持大数据量读取策略）
 const getSheetData = async (/** @type {import('@/utils/apiTypes').SheetDataRequest} */ sheetDataRequest) => {
   serviceState.isLoading = true;
   serviceState.error = null;
@@ -285,9 +285,106 @@ const getSheetData = async (/** @type {import('@/utils/apiTypes').SheetDataReque
       throw new Error('Missing required fields: filename and sheetname are required');
     }
     
-    const response = await advancedCardApi.getSheetData(sheetDataRequest);
+    // 设置默认的大数据量读取策略参数
+    const optimizedRequest = {
+      ...sheetDataRequest,
+      pageSize: sheetDataRequest.pageSize || 1000, // 默认每页1000条数据
+      pageIndex: sheetDataRequest.pageIndex || 0, // 默认从第一页开始
+      batchSize: sheetDataRequest.batchSize || 50, // 默认批处理大小50
+      enableStreaming: sheetDataRequest.enableStreaming !== false, // 默认启用流式读取
+      enableCompression: sheetDataRequest.enableCompression !== false // 默认启用压缩
+    };
+    
+    console.log('[ApiServiceManager] 获取工作表数据，优化参数:', optimizedRequest);
+    
+    const response = await advancedCardApi.getSheetData(optimizedRequest);
     serviceState.lastSync = new Date();
     return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
+  }
+};
+
+// 大数据量分页读取工作表数据
+const getSheetDataWithPagination = async (/** @type {import('@/utils/apiTypes').SheetDataRequest} */ sheetDataRequest, /** @type {Function} */ onProgress = null) => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+
+  try {
+    // 类型验证
+    if (!sheetDataRequest || typeof sheetDataRequest !== 'object') {
+      throw new Error('Invalid sheetDataRequest parameter');
+    }
+    
+    // 验证必需字段
+    if (!sheetDataRequest.filename || !sheetDataRequest.sheetname) {
+      throw new Error('Missing required fields: filename and sheetname are required');
+    }
+    
+    const pageSize = sheetDataRequest.pageSize || 1000;
+    const batchSize = sheetDataRequest.batchSize || 50;
+    let allData = [];
+    let currentPage = 0;
+    let hasMoreData = true;
+    
+    console.log('[ApiServiceManager] 开始分页读取工作表数据');
+    
+    // 分页读取数据
+    while (hasMoreData) {
+      const pageRequest = {
+        ...sheetDataRequest,
+        pageIndex: currentPage,
+        pageSize: pageSize,
+        batchSize: batchSize,
+        enableStreaming: true,
+        enableCompression: true
+      };
+      
+      console.log(`[ApiServiceManager] 读取第 ${currentPage + 1} 页数据`);
+      
+      const response = await advancedCardApi.getSheetData(pageRequest);
+      
+      if (!response || !response.data) {
+        console.warn(`[ApiServiceManager] 第 ${currentPage + 1} 页数据为空`);
+        hasMoreData = false;
+        break;
+      }
+      
+      const pageData = Array.isArray(response.data) ? response.data : [response.data];
+      allData = allData.concat(pageData);
+      
+      // 检查是否还有更多数据
+      hasMoreData = pageData.length === pageSize;
+      currentPage++;
+      
+      // 报告进度
+      if (onProgress && typeof onProgress === 'function') {
+        onProgress({
+          currentPage: currentPage,
+          totalPages: hasMoreData ? 'unknown' : currentPage,
+          loadedRecords: allData.length,
+          isComplete: !hasMoreData
+        });
+      }
+      
+      // 防止无限循环
+      if (currentPage > 100) {
+        console.warn('[ApiServiceManager] 达到最大页数限制，停止读取');
+        break;
+      }
+    }
+    
+    serviceState.lastSync = new Date();
+    console.log(`[ApiServiceManager] 分页读取完成，总共读取 ${allData.length} 条记录`);
+    
+    return {
+      data: allData,
+      totalPages: currentPage,
+      totalRecords: allData.length
+    };
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -457,6 +554,33 @@ const getFileList = async () => {
   }
 };
 
+// 获取工作表列表
+const getSheetList = async (/** @type {import('@/utils/apiTypes').SheetListRequest} */ sheetListRequest) => {
+  serviceState.isLoading = true;
+  serviceState.error = null;
+
+  try {
+    // 类型验证
+    if (!sheetListRequest || typeof sheetListRequest !== 'object') {
+      throw new Error('Invalid sheetListRequest parameter');
+    }
+
+    // 验证必需字段
+    if (!sheetListRequest.filename) {
+      throw new Error('Missing required field: filename is required');
+    }
+
+    const response = await advancedCardApi.sheetlist(sheetListRequest);
+    serviceState.lastSync = new Date();
+    return response;
+  } catch (error) {
+    serviceState.error = error.message;
+    throw error;
+  } finally {
+    serviceState.isLoading = false;
+  }
+};
+
 // 数据同步方法
 const syncData = async () => {
   serviceState.isLoading = true;
@@ -494,8 +618,8 @@ defineExpose({
   deleteFile, // 添加deleteFile方法
   fileStatus, // 添加fileStatus方法
   getSheetData, // 添加getSheetData方法
-  
-  // 状态
+  getSheetDataWithPagination, // 添加大数据量分页读取方法
+  getSheetList, // 添加 getSheetList 方法
   serviceState,
   
   // 任务管理

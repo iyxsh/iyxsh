@@ -217,9 +217,10 @@ namespace filemanager
                         removeOldestCacheEntry();
                     }
                 }
-                
+                rtl::OUString filePathAbs;
+                getAbsolutePath(filePath, filePathAbs);
                 // 读取数据
-                cJSON *data = readSheetData(filePath, sheetName);
+                cJSON *data = readSheetData(filePathAbs, sheetName);
                 logger_log_info("data: %s", cJSON_PrintUnformatted(data));
                 if (data) {
                     {

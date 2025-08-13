@@ -165,15 +165,27 @@ namespace filemanager
 #endif
             logger_log_info("saveDocument: URL path: %s", urlPath.c_str());
 
-            rtl::OUString url =rtl::OStringToOUString((std::string("file:///") + urlPath).c_str(), RTL_TEXTENCODING_UTF8);
+            rtl::OUString url = rtl::OStringToOUString((std::string("file:///") + urlPath).c_str(), RTL_TEXTENCODING_UTF8);
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);
             props[0].Name = convertStringToOUString("Overwrite");
             props[0].Value <<= true;
 
+            // 检查文件是否存在，如果存在则删除
+            std::string filePathStr = rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr();
+            if (access(filePathStr.c_str(), F_OK) == 0)
+            {
+                logger_log_info("File already exists, removing: %s", filePathStr.c_str());
+                if (unlink(filePathStr.c_str()) != 0)
+                {
+                    logger_log_error("Failed to remove existing file: %s", filePathStr.c_str());
+                    return;
+                }
+            }
+
             xStorable->storeAsURL(url, props);
-            logger_log_info("saveDocument: Successfully saved to: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_info("saveDocument: Successfully saved to: %s", filePathStr.c_str());
         }
         catch (const com::sun::star::uno::Exception &e)
         {
@@ -1208,5 +1220,88 @@ namespace filemanager
 
         // 返回组合的位置字符串
         return resultBuffer.makeStringAndClear();
+    }
+
+    // 获取工作表总行数（简单实现：假设每行有内容）
+    int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    {
+        try
+        {
+            uno::Reference<lang::XComponent> xComp;
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            if (!xDoc.is())
+                return -1;
+            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
+            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            if (!nameAccess->hasByName(sheetName))
+            {
+                closeDocument(xComp);
+                return -1;
+            }
+            uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
+            // 修复：遍历所有行，统计有效（非空）行数
+            int maxRows = json_config_get_int("maxRows");
+            int maxCols = json_config_get_int("maxCols");
+            int validRowCount = 0;
+            for (int row = 0; row < maxRows; ++row) {
+                bool rowHasData = false;
+                for (int col = 0; col < maxCols; ++col) {
+                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+                    if (cellValue != 0.0 || cellFormula.getLength() > 0) {
+                        rowHasData = true;
+                        break;
+                    }
+                }
+                if (rowHasData) ++validRowCount;
+            }
+            closeDocument(xComp);
+            return validRowCount;
+        }
+        catch (...)
+        {
+            return -1;
+        }
+    }
+
+    // 分页读取工作表内容（简单实现：返回 startIndex 到 endIndex 行的内容）
+    cJSON *readSheetDataRange(const rtl::OUString &filePath, const rtl::OUString &sheetName, int startIndex, int endIndex)
+    {
+        cJSON *result = cJSON_CreateArray();
+        try
+        {
+            uno::Reference<lang::XComponent> xComp;
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            if (!xDoc.is())
+                return result;
+            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
+            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            if (!nameAccess->hasByName(sheetName))
+            {
+                closeDocument(xComp);
+                return result;
+            }
+            uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
+            for (int row = startIndex; row < endIndex; ++row)
+            {
+                cJSON *rowObj = cJSON_CreateObject();
+                // 假设最多100列
+                for (int col = 0; col < 100; ++col)
+                {
+                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                    rtl::OUString cellValue = cell->getFormula();
+                    std::string key = "C" + std::to_string(col);
+                    cJSON_AddStringToObject(rowObj, key.c_str(), rtl::OUStringToOString(cellValue, RTL_TEXTENCODING_UTF8).getStr());
+                }
+                cJSON_AddItemToArray(result, rowObj);
+            }
+            closeDocument(xComp);
+        }
+        catch (...)
+        {
+            // 忽略异常，返回已收集内容
+        }
+        return result;
     }
 }

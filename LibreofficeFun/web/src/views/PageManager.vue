@@ -13,7 +13,39 @@
 
     <!-- 导航区域 -->
     <div class="navigation">
-      <router-link to="/files" class="home-link">返回文件列表</router-link>
+      <div class="nav-left">
+        <router-link to="/files" class="home-link">返回文件列表</router-link>
+      </div>
+      
+      <div class="nav-center">
+        <!-- 当前文件名显示 -->
+        <div class="file-name-display" v-if="route.query?.fileName">
+          <el-button 
+            type="info"
+            size="small"
+            disabled
+            :title="`当前文件: ${route.query.fileName}`"
+          >
+            <el-icon><Document /></el-icon>
+            {{ route.query.fileName }}
+          </el-button>
+        </div>
+      </div>
+      
+      <div class="nav-right">
+        <!-- 大数据量读取策略控制 -->
+        <div v-if="route.query?.fileName" class="data-strategy-control">
+          <el-button 
+            :type="useLargeDataStrategy ? 'primary' : 'default'"
+            size="small"
+            @click="toggleLargeDataStrategy"
+            :title="useLargeDataStrategy ? '当前使用大数据量读取策略' : '当前使用标准读取策略'"
+          >
+            <el-icon><DataAnalysis /></el-icon>
+            {{ useLargeDataStrategy ? '大数据量模式' : '标准模式' }}
+          </el-button>
+        </div>
+      </div>
     </div>
 
     <!-- 页面管理功能 -->
@@ -40,11 +72,18 @@
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
-          <FormGrid v-if="pages[currentPageIdx]" v-model="pages[currentPageIdx].forms" 
-            :editable="editPageIdx === currentPageIdx" :cardStyleOn="cardStyleOn"
-            :pageSize="pages[currentPageIdx]?.pageSize" @update:modelValue="handleFormUpdate" 
-            @containerResize="handleContainerResize" ref="formGridRef" 
-            :key="`formgrid-${currentPageIdx}`" />
+          <FormGrid 
+            v-if="pages[currentPageIdx]" 
+            v-model="pages[currentPageIdx].forms" 
+            :editable="editPageIdx === currentPageIdx" 
+            :cardStyleOn="cardStyleOn"
+            :pageSize="pages[currentPageIdx]?.pageSize" 
+            @update:modelValue="handleFormUpdate" 
+            @containerResize="handleContainerResize" 
+            ref="formGridRef" 
+            :key="`formgrid-${currentPageIdx}`" 
+            :currentPageName="pages[currentPageIdx]?.name"
+          />
         </template>
 
         <!-- 卡片转换页面 -->
@@ -123,12 +162,15 @@
         </span>
       </template>
     </el-dialog>
+
+
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, watch, onMounted, computed, nextTick, onUnmounted, getCurrentInstance } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
+import { DataAnalysis, Document } from '@element-plus/icons-vue'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
 import Toolbar from '../components/Toolbar.vue'
@@ -143,7 +185,7 @@ import { useEventBus } from '../utils/eventBus'
 import errorLogService from '@/services/errorLogService'
 
 // 创建响应式对象
-const { pages, addPage, updatePage, removePage, rotatePageOrientation } = usePages()
+const { pages, addPage, updatePage, removePage, rotatePageOrientation, reloadCache } = usePages()
 const currentPageIdx = ref(0)
 const editIdxMap = reactive({})
 const editName = ref('')
@@ -154,8 +196,22 @@ const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
 const router = useRouter()
 
+// 大数据量读取配置
+const useLargeDataStrategy = ref(true) // 是否使用大数据量读取策略
+
+// 切换大数据量读取策略
+const toggleLargeDataStrategy = () => {
+  useLargeDataStrategy.value = !useLargeDataStrategy.value;
+  console.log('[PageManager] 大数据量读取策略已切换为:', useLargeDataStrategy.value ? '启用' : '禁用');
+  ElMessage.info(`大数据量读取策略已${useLargeDataStrategy.value ? '启用' : '禁用'}`);
+};
+
+
+
 // 获取路由信息
 const route = useRoute()
+
+
 
 // 默认页面尺寸
 const defaultPageSize = {
@@ -199,8 +255,35 @@ const initializePages = () => {
 
 // 添加 getApiService 方法
 const getApiService = () => {
-  const instance = getCurrentInstance();
-  return instance?.appContext.config.globalProperties.$apiService;
+  try {
+    const instance = getCurrentInstance();
+    if (!instance) {
+      console.warn('[PageManager] Vue实例不可用');
+      return null;
+    }
+    
+    const apiService = instance.appContext?.config?.globalProperties?.$apiService;
+    if (!apiService) {
+      console.warn('[PageManager] API服务实例不可用');
+      return null;
+    }
+    
+    // 检查API服务是否有必要的方法
+    if (typeof apiService.getSheetData !== 'function') {
+      console.warn('[PageManager] API服务缺少getSheetData方法');
+      return null;
+    }
+    
+    // 检查是否有分页读取方法（可选）
+    if (typeof apiService.getSheetDataWithPagination !== 'function') {
+      console.warn('[PageManager] API服务缺少getSheetDataWithPagination方法，将使用标准方法');
+    }
+    
+    return apiService;
+  } catch (error) {
+    console.error('[PageManager] 获取API服务时出错:', error);
+    return null;
+  }
 };
 
 onBeforeMount(async () => {
@@ -226,25 +309,102 @@ onBeforeMount(async () => {
         return;
       }
 
-      // 调用 getSheetData 获取工作表数据
+      // 调用 getSheetList 获取工作表列表
+      const sheetListRequest = {
+        filename: route.query.fileName,
+      };
+
+      let sheetListResponse;
+      try {
+        sheetListResponse = await apiService.getSheetList(sheetListRequest);
+      } catch (error) {
+        console.error('[PageManager] 获取工作表列表失败:', error);
+        ElMessage.error('加载工作表列表失败: ' + (error.message || '未知错误'));
+        return;
+      }
+
+      // 检查响应数据
+      if (!sheetListResponse || !Array.isArray(sheetListResponse.data)) {
+        console.warn('[PageManager] 工作表列表为空或格式不正确:', sheetListResponse);
+        ElMessage.warning('工作表列表为空或格式不正确');
+        return;
+      }
+
+      // 更新 pages 数据
+      pages.value = sheetListResponse.data.map(sheet => ({
+        forms: [],
+        pageSize: defaultPageSize,
+        name: sheet.name,
+      }));
+
+      // 随机选取一个工作表作为当前页面名称
+      const randomIndex = Math.floor(Math.random() * pages.value.length);
+      currentPageIdx.value = randomIndex;
+
+      console.log('[PageManager] 随机选取的工作表名称:', pages.value[currentPageIdx.value].name);
+
+      // 使用现有逻辑获取工作表数据
+      const currentPage = pages.value[currentPageIdx.value];
+      const currentPageName = currentPage?.name || `页面 ${currentPageIdx.value + 1}`;
+
+      console.log('[PageManager] 使用当前页面名称作为工作表名称:', currentPageName);
+
+      // 调用 getSheetData 获取工作表数据（优化大数据量读取）
       const sheetDataRequest = {
         filename: route.query.fileName,
-        sheetname: 'Sheet1' // 默认工作表名称，可根据需要调整
+        sheetname: currentPageName, // 使用当前页面名称作为工作表名称
+        // 大数据量读取策略参数
+        pageSize: 1000, // 每页1000条数据
+        pageIndex: 0, // 从第一页开始
+        batchSize: 50, // 批处理大小50
+        enableStreaming: true, // 启用流式读取
+        enableCompression: true // 启用数据压缩
       };
 
       try {
-        const response = await apiService.getSheetData(sheetDataRequest);
+        // 根据配置选择使用分页读取方法还是标准方法
+        let response;
+        if (useLargeDataStrategy.value && typeof apiService.getSheetDataWithPagination === 'function') {
+          console.log('[PageManager] 使用分页读取方法获取大数据量工作表数据');
+
+          // 定义进度回调函数
+          const onProgress = (progress) => {
+            console.log('[PageManager] 数据读取进度:', progress);
+            if (progress.isComplete) {
+              ElMessage.success(`数据加载完成，共读取 ${progress.loadedRecords} 条记录`);
+            }
+          };
+
+          response = await apiService.getSheetDataWithPagination(sheetDataRequest, onProgress);
+        } else {
+          console.log('[PageManager] 使用标准方法获取工作表数据');
+          response = await apiService.getSheetData(sheetDataRequest);
+        }
+
+        // 检查响应数据
+        if (!response || !response.data) {
+          console.warn('[PageManager] API响应数据为空:', response);
+          ElMessage.warning('工作表数据为空');
+          return;
+        }
 
         // 将返回的工作表数据转换为多条表单数据
         const formDataArray = convertSheetDataToForms(response.data);
 
+        // 检查转换结果
+        if (formDataArray.length === 0) {
+          console.warn('[PageManager] 转换后的表单数据为空');
+          ElMessage.warning('工作表数据格式不正确或为空');
+          return;
+        }
+
         // 清理并写入表单缓存
         updateFormCache(formDataArray);
 
-        console.log('[PageManager] 工作表数据已成功加载并缓存');
+        console.log('[PageManager] 工作表数据已成功加载并缓存，表单数量:', formDataArray.length);
       } catch (error) {
         console.error('[PageManager] 获取工作表数据失败:', error);
-        ElMessage.error('加载工作表数据失败');
+        ElMessage.error('加载工作表数据失败: ' + (error.message || '未知错误'));
       }
     }
 
@@ -295,6 +455,15 @@ watch(currentPageIdx, (newIndex, oldIndex) => {
     }
   });
 }, { immediate: true });
+
+// 监听路由变化，当文件名改变时重新加载缓存
+watch(() => route.query.fileName, (newFileName, oldFileName) => {
+  if (newFileName !== oldFileName) {
+    console.log('[PageManager] 文件名发生变化，重新加载缓存:', { oldFileName, newFileName });
+    // 重新加载缓存以使用新的文件名
+    reloadCache();
+  }
+})
 
 // 纸张尺寸选择对话框相关
 const showPageSizeDialog = ref(false)
@@ -1372,6 +1541,12 @@ const handleFileInfoClose = () => {
 
 // 添加辅助方法：将工作表数据转换为表单格式
 function convertSheetDataToForms(sheetData) {
+  // 添加空值检查，确保 sheetData 是有效的数组
+  if (!sheetData || !Array.isArray(sheetData)) {
+    console.warn('[PageManager] 工作表数据无效或不是数组:', sheetData);
+    return [];
+  }
+  
   return sheetData.map(row => ({
     id: Date.now() + Math.random(),
     type: 'text',
@@ -1385,16 +1560,32 @@ function convertSheetDataToForms(sheetData) {
   }));
 }
 
-// 添加辅助方法：更新表单缓存
+// 添加辅助方法：更新表单缓存（支持文件名区分）
 function updateFormCache(formDataArray) {
-  // 假设使用 store 来管理表单缓存
-  const currentPage = pages.value[currentPageIdx.value];
-  if (currentPage) {
+  try {
+    // 检查输入参数
+    if (!formDataArray || !Array.isArray(formDataArray)) {
+      console.warn('[PageManager] 表单数据无效或不是数组:', formDataArray);
+      return;
+    }
+
+    // 确保当前页面存在
+    if (!pages.value[currentPageIdx.value]) {
+      console.warn('[PageManager] 当前页面不存在，无法更新表单缓存');
+      return;
+    }
+
+    const currentPage = pages.value[currentPageIdx.value];
+    
+    // 更新表单数据
     currentPage.forms = [...formDataArray];
     pages.value = [...pages.value]; // 触发响应式更新
 
-    // 保存到本地存储或其它缓存机制
-    localStorage.setItem('form-cache', JSON.stringify(pages.value));
+    // 表单数据会自动通过usePages的watch保存到对应的文件名缓存中
+    console.log(`[PageManager] 表单缓存更新成功，表单数量:`, formDataArray.length);
+  } catch (error) {
+    console.error('[PageManager] 更新表单缓存失败:', error);
+    ElMessage.error('更新表单缓存失败');
   }
 }
 
@@ -1416,6 +1607,82 @@ function updateFormCache(formDataArray) {
 
 .navigation {
   margin: 10px 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.nav-left {
+  display: flex;
+  align-items: center;
+}
+
+.nav-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+}
+
+/* 文件名显示样式 */
+.file-name-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-name-display .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.file-name-display .el-button .el-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* 大数据量读取策略控制样式 */
+.data-strategy-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.data-strategy-control .el-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.data-strategy-control .el-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.data-strategy-control .el-button .el-icon {
+  font-size: 14px;
 }
 
 .home-link {
