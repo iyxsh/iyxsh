@@ -7,17 +7,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-//返回码
-#define STATUS_SUCCESS 200
-#define STATUS_METHOD_NOT_ALLOWED 405
-#define STATUS_INTERNAL_SERVER_ERROR 500
-#define STATUS_BAD_REQUEST 400 
-#define STATUS_UNAUTHORIZED 401
-#define STATUS_FORBIDDEN 403
-#define STATUS_NOT_FOUND 404
-#define STATUS_SERVICE_UNAVAILABLE 503
-#define STATUS_GATEWAY_TIMEOUT 504
-#define STATUS_UNSUPPORTED_MEDIA_TYPE 415
 
 #define BUFFER_SIZE 4096
 #define MAX_PAGE_SIZE 100     // 最大单页数据量
@@ -32,6 +21,7 @@ typedef struct RequestBody {
 }RequestBody;
 typedef struct ResponseBody {
     int status;
+    char errorMessage[512];
     char content_type[20];
     char body[BUFFER_SIZE];
     unsigned int total_count;  // 总数据量

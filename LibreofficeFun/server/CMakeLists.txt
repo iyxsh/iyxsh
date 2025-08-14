@@ -50,6 +50,7 @@ set(SOURCES
     ./leofun/cJSON/cJSON.c
     ./leofun/logger/logger.cpp
     ./leofun/config/json_config.cpp
+    ./leofun/error/error_codes.cpp
 )
 
 # 头文件
@@ -65,6 +66,7 @@ set(HEADERS
     ./leofun/cJSON/cJSON.h
     ./leofun/logger/logger.h
     ./leofun/config/json_config.h
+    ./leofun/error/error_codes.h
 )
 
 # 创建可执行文件

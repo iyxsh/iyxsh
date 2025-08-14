@@ -13,7 +13,7 @@
 #include <unistd.h> // 添加 getcwd 头文件
 #include <dirent.h>
 #include <sys/stat.h>
-
+#include "../error/error_codes.h"
 #include "lofficeconn.h" // 确保 LibreOfficeConnectionManager 可用
 
 namespace filemanager
@@ -74,7 +74,10 @@ namespace filemanager
         }
         else
         {
-            logger_log_warn("datapath not configured in config file");
+            int errorCode = RESPONSE_FILE_PATH_NOT_FOUND; // 错误码宏定义
+            std::string errorMessage = ErrorCodeManager::getErrorMessage(errorCode);
+            logger_log_warn("%s", errorMessage.c_str());
+            return;
         }
     }
 
@@ -87,7 +90,7 @@ namespace filemanager
             cJSON *root = cJSON_Parse(body);
             if (!root)
             {
-                cJSON_AddStringToObject(results, "error", "Invalid JSON body");
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
                 return;
             }
             cJSON_Delete(root);
@@ -105,6 +108,7 @@ namespace filemanager
         auto fileStatusMap = filemanager::FileQueueManager::getInstance().getFileStatusMapCopy();
 
         // 遍历所有文件状态信息并添加到结果中
+        cJSON *fileArray = cJSON_CreateArray();
         for (const auto &pair : fileStatusMap)
         {
             const filemanager::FileInfo &fileInfo = pair.second;
@@ -150,8 +154,10 @@ namespace filemanager
                 cJSON_AddStringToObject(fileObj, "errorMessage", fileInfo.errorMessage.c_str());
             }
 
-            cJSON_AddItemToArray(results, fileObj);
+            cJSON_AddItemToArray(fileArray, fileObj);
         }
+        cJSON_AddItemToObject(results, "files", fileArray);
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
 
     void filestatus(cJSON *results, const char *body)
@@ -159,21 +165,21 @@ namespace filemanager
         // 解析请求体获取文件名
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *root = cJSON_Parse(body);
         if (!root)
         {
-            cJSON_AddStringToObject(results, "error", "Invalid JSON body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
         if (!filenameItem || !cJSON_IsString(filenameItem))
         {
-            cJSON_AddStringToObject(results, "error", "Missing or invalid filename");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             cJSON_Delete(root);
             return;
         }
@@ -187,7 +193,7 @@ namespace filemanager
         // 检查文件信息是否有效
         if (fileInfo.filename.empty())
         {
-            cJSON_AddStringToObject(results, "error", "File not found");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_NOT_FOUND);
             cJSON_Delete(root);
             return;
         }
@@ -227,6 +233,7 @@ namespace filemanager
             cJSON_AddStringToObject(results, "errorMessage", fileInfo.errorMessage.c_str());
         }
 
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(root);
     }
     void newfileCreate(cJSON *results, const char *body)
@@ -238,7 +245,7 @@ namespace filemanager
             cJSON *jsonRoot = cJSON_Parse(body);
             if (!jsonRoot)
             {
-                cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
                 return;
             }
 
@@ -254,14 +261,13 @@ namespace filemanager
                 filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
                 filemanager::FileQueueManager::getInstance().addFileTask(task);
                 // 构造返回结果
-                cJSON_AddStringToObject(results, "result", "success");
                 cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
                 cJSON_AddStringToObject(results, "filestatus", "processing");
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
             }
             else
             {
-                cJSON_AddStringToObject(results, "result", "failed");
-                cJSON_AddStringToObject(results, "message", "Filename is missing or invalid");
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_NAME_INVALID);
                 return;
             }
         }
@@ -289,9 +295,9 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().addFileTask(task);
 
             // 构造返回结果
-            cJSON_AddStringToObject(results, "result", "success");
             cJSON_AddStringToObject(results, "filename", filename);
             cJSON_AddStringToObject(results, "filestatus", "processing");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         }
     }
 
@@ -300,7 +306,7 @@ namespace filemanager
         // 更新文件需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -315,14 +321,14 @@ namespace filemanager
         // body 应为 JSON 字符串，支持单个或批量更新
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -332,9 +338,7 @@ namespace filemanager
         {
             logger_log_error("error Missing filename or updatedata in updatefile data");
             cJSON_AddStringToObject(results, "error", "Missing filename or updatedata in updatefile data");
-
-            // 使用智能指针后需要正确清理
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -349,9 +353,9 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(createTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 
@@ -374,7 +378,7 @@ namespace filemanager
         // 删除文件需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -389,14 +393,14 @@ namespace filemanager
         // body 应为 JSON 字符串，包含要删除的文件名
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -405,8 +409,7 @@ namespace filemanager
         {
             logger_log_error("error Missing filename in deletefile data");
             cJSON_AddStringToObject(results, "error", "Missing filename in deletefile data");
-
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -414,9 +417,9 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(deleteTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "deleted");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 
@@ -425,7 +428,7 @@ namespace filemanager
         // 添加工作表需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -440,14 +443,14 @@ namespace filemanager
         // body 应为 JSON 字符串，包含文件名和工作表名
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -457,8 +460,7 @@ namespace filemanager
         {
             logger_log_error("error Missing filename or sheetname in addworksheet data");
             cJSON_AddStringToObject(results, "error", "Missing filename or sheetname in addworksheet data");
-
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -473,10 +475,10 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(addSheetTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 
@@ -485,7 +487,7 @@ namespace filemanager
         // 删除工作表需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -500,14 +502,14 @@ namespace filemanager
         // body 应为 JSON 字符串，包含文件名和工作表名
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -515,10 +517,7 @@ namespace filemanager
         cJSON *sheetnameItem = cJSON_GetObjectItem(jsonRoot, "sheetname");
         if (!filenameItem || !sheetnameItem)
         {
-            logger_log_error("error Missing filename or sheetname in removeworksheet data");
-            cJSON_AddStringToObject(results, "error", "Missing filename or sheetname in removeworksheet data");
-
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -533,10 +532,10 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(removeSheetTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 
@@ -545,7 +544,7 @@ namespace filemanager
         // 重命名工作表需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -560,14 +559,14 @@ namespace filemanager
         // body 应为 JSON 字符串，包含文件名、原工作表名和新工作表名
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -577,9 +576,7 @@ namespace filemanager
         if (!filenameItem || !sheetnameItem || !newsheetnameItem)
         {
             logger_log_error("error Missing filename, sheetname or newsheetname in renameworksheet data");
-            cJSON_AddStringToObject(results, "error", "Missing filename, sheetname or newsheetname in renameworksheet data");
-
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -594,54 +591,67 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(renameSheetTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "sheetname", removeFileExtension(std::string(sheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "newsheetname", removeFileExtension(std::string(newsheetnameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 
-    void sheetlist(cJSON *results, const char *body) {
+    void sheetlist(cJSON *results, const char *body)
+    {
         cJSON *filenameJson = cJSON_GetObjectItem(cJSON_Parse(body), "filename");
-        if (!filenameJson || !cJSON_IsString(filenameJson)) {
-            cJSON_AddStringToObject(results, "error", "Invalid filename parameter");
+        if (!filenameJson || !cJSON_IsString(filenameJson))
+        {
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         std::string filename = filenameJson->valuestring;
-        rtl::OUString filePath = convertStringToOUString(filename.c_str());
-
-        try {
-            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(
-                filePath, "_blank", 0, uno::Sequence<beans::PropertyValue>());
-
-            uno::Reference<sheet::XSpreadsheetDocument> xSpreadsheetDocument(xComponent, uno::UNO_QUERY);
-            if (!xSpreadsheetDocument.is()) {
-                cJSON_AddStringToObject(results, "error", "Failed to load spreadsheet document");
+        rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(filename).c_str());
+        rtl::OUString filePath;
+        getAbsolutePath(filePathStr, filePath);
+        rtl::OUString defaultfilePath, wordsSheetName;
+        getDefaultData(defaultfilePath, wordsSheetName);
+        try
+        {
+            uno::Reference<lang::XComponent> xComp;
+            uno::Reference<sheet::XSpreadsheetDocument> xSpreadsheetDocument = loadSpreadsheetDocument(filePath, xComp);
+            if (!xSpreadsheetDocument.is())
+            {
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_NOT_FOUND);
                 return;
             }
 
             uno::Reference<sheet::XSpreadsheets> xSheetsRaw = xSpreadsheetDocument->getSheets();
             uno::Reference<container::XNameAccess> xSheets(xSheetsRaw, uno::UNO_QUERY);
-            if (!xSheets.is()) {
-                cJSON_AddStringToObject(results, "error", "Failed to access sheets");
+            if (!xSheets.is())
+            {
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
                 return;
             }
 
             uno::Sequence<rtl::OUString> sheetNames = xSheets->getElementNames();
             cJSON *sheetArray = cJSON_CreateArray();
-            for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i) {
+            for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i)
+            {
+                // 过滤wordsSheetName
+                if (sheetNames[i] == wordsSheetName)
+                {
+                    continue;
+                }
                 cJSON_AddItemToArray(sheetArray, cJSON_CreateString(sheetNames[i].toUtf8().getStr()));
             }
-
             cJSON_AddItemToObject(results, "sheets", sheetArray);
-        } catch (uno::Exception &e) {
+        }
+        catch (uno::Exception &e)
+        {
             rtl::OUString errorMessage = e.Message;
             rtl::OString errorString = rtl::OUStringToOString(errorMessage, RTL_TEXTENCODING_UTF8);
             cJSON_AddStringToObject(results, "error", errorString.getStr());
         }
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
 
     // Optimized implementation for handling sheet data directly without queue processing
@@ -650,7 +660,7 @@ namespace filemanager
         // Check if the request body is empty
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -658,7 +668,7 @@ namespace filemanager
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -680,7 +690,7 @@ namespace filemanager
             !enableStreamingItem || !cJSON_IsBool(enableStreamingItem) ||
             !enableCompressionItem || !cJSON_IsBool(enableCompressionItem))
         {
-            cJSON_AddStringToObject(results, "error", "Invalid or missing parameters");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             cJSON_Delete(jsonRoot);
             return;
         }
@@ -695,7 +705,8 @@ namespace filemanager
         int status = filemanager::sheetdata(taskData);
         if (status != 0)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to process sheet data");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_INVALID_CONTENT);
+            return;
         }
         else
         {
@@ -706,6 +717,7 @@ namespace filemanager
         cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "filename", filenameItem->valuestring);
         cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
 
         // 清理资源
         cJSON_Delete(taskData);
@@ -719,7 +731,7 @@ namespace filemanager
         // 重命名文件需要请求体，检查body是否为空
         if (!body || strlen(body) == 0)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -734,14 +746,14 @@ namespace filemanager
         // body 应为 JSON 字符串，包含原文件名和新文件名
         if (!body)
         {
-            cJSON_AddStringToObject(results, "error", "Empty request body");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
         cJSON *jsonRoot = cJSON_Parse(body);
         if (!jsonRoot)
         {
-            cJSON_AddStringToObject(results, "error", "Failed to parse JSON");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -750,9 +762,7 @@ namespace filemanager
         if (!oldFilenameItem || !newFilenameItem)
         {
             logger_log_error("error Missing oldFilename or newFilename in renamefile data");
-            cJSON_AddStringToObject(results, "error", "Missing oldFilename or newFilename in renamefile data");
-
-            cJSON_Delete(jsonRoot);
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
@@ -767,10 +777,10 @@ namespace filemanager
 
         // 添加任务到队列
         filemanager::FileQueueManager::getInstance().addFileTask(renameFileTask);
-        cJSON_AddStringToObject(results, "result", "success");
         cJSON_AddStringToObject(results, "oldFilename", removeFileExtension(std::string(oldFilenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "newFilename", removeFileExtension(std::string(newFilenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         cJSON_Delete(jsonRoot);
     }
 } // namespace filemanager

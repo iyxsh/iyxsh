@@ -3,7 +3,7 @@
 #include "../filemanager/filequeue.h"  // 添加文件队列管理器头文件
 #include "../cJSON/cJSON.h"
 #include <stdbool.h>
-
+#include "../error/error_codes.h"
 extern char* databasedata;
 extern char* defaultname;
 
@@ -73,6 +73,7 @@ static bool handle_empty_body(RequestBody requestbody, ResponseBody *responsebod
 {
     if (!requestbody.body_start) {
         responsebody->status = STATUS_BAD_REQUEST;
+        sprintf(responsebody->errorMessage,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
         strcpy(responsebody->content_type, "application/json");
         cJSON *error_obj = cJSON_CreateObject();
         cJSON_AddStringToObject(error_obj, "error", "Empty request body");
@@ -196,7 +197,7 @@ void deal_filelist_request(RequestBody requestbody, ResponseBody *responsebody)
         return;
     }
     
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     filemanager::filelist(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
@@ -345,7 +346,7 @@ void deal_sheetlist_request(RequestBody requestbody, ResponseBody *responsebody)
         return;
     }
 
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     printf("request sheetlist body:%s\n", requestbody.body_start);
     filemanager::sheetlist(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
@@ -364,7 +365,7 @@ void deal_sheetdata_request(RequestBody requestbody, ResponseBody *responsebody)
         return;
     }
 
-    cJSON *results = cJSON_CreateArray();
+    cJSON *results = cJSON_CreateObject();
     printf("request sheetdata body:%s\n", requestbody.body_start);
     filemanager::sheetdata(results, requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
