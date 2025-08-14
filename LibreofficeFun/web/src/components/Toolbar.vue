@@ -277,7 +277,13 @@ const addPage = async () => {
         }
         
         // 调用API服务的addWorksheet方法
-        await apiService.addWorksheet(worksheetData)
+        const response = await apiService.addWorksheet(worksheetData)
+        if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          console.error('[Toolbar] 添加工作表失败:', response);
+          ElMessage.error('添加工作表失败: ' + (response.errorMessage || '未知错误'));
+          return;
+        }
+
         console.log('[Toolbar] 成功调用 addWorksheet API')
       } else {
         console.warn('[Toolbar] ApiService不可用或缺少addWorksheet方法')
@@ -389,10 +395,16 @@ const removeCurrentPage = async () => {
           '未命名文件';
         
         // 调用API服务的removeWorksheet方法
-        await apiService.removeWorksheet({
+        const response = await apiService.removeWorksheet({
           filename: fileName,
           sheetname: pageName
         });
+        if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          console.error('[Toolbar] 删除工作表失败:', response);
+          ElMessage.error('删除工作表失败: ' + (response.errorMessage || '未知错误'));
+          return;
+        }
+
         console.log('[Toolbar] 成功调用 removeWorksheet API');
       } else {
         console.warn('[Toolbar] ApiService不可用或缺少removeWorksheet方法');
@@ -700,11 +712,16 @@ const savePageName = async (index) => {
             '未命名文件'
           
           // 调用API服务的renameWorksheet方法
-          await apiService.renameWorksheet({
+          const response = await apiService.renameWorksheet({
             filename: fileName,
             sheetname: oldName,
             newsheetname: trimmedName
-          })
+          });
+          if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            console.error('[Toolbar] 重命名工作表失败:', response);
+            ElMessage.error('重命名工作表失败: ' + (response.errorMessage || '未知错误'));
+            return;
+          }
           console.log('[Toolbar] 成功调用 renameWorksheet API')
         } else {
           console.warn('[Toolbar] ApiService不可用或缺少renameWorksheet方法')

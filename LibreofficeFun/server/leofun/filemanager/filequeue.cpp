@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
-
+#include "spreadsheet.h"
 namespace filemanager
 {
 
@@ -141,6 +141,7 @@ namespace filemanager
         info.filename = filename;
         info.status = FILE_STATUS_CLOSED;
         info.lastModified = 0;
+        info.xComponent = nullptr;
         return info;
     }
 
@@ -564,7 +565,25 @@ namespace filemanager
 
             // 将OUString路径转换为std::string
             std::string filePath = filemanager::convertOUStringToString(absoluteFilePath);
-
+            
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(absoluteFilePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("processDeleteFileTask -- Failed to load document: %s", task.filename.c_str());
+                    return ;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+            closeDocument(xComp); // 关闭文档
             // 删除文件
             if (unlink(filePath.c_str()) == 0)
             {

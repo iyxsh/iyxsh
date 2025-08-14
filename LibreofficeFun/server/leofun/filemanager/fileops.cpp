@@ -54,7 +54,10 @@ namespace filemanager
                             info.status = filemanager::FILE_STATUS_READY;
                             info.lastModified = fileStat.st_mtime; // 使用文件的真实修改时间
                             info.errorMessage = "";
-
+                            rtl::OUString AbsolutefilePath;
+                            getAbsolutePath(convertStringToOUString(filepath.c_str()), AbsolutefilePath);
+                            // 如果文件已经存在，则加载到 LibreOffice 并添加到队列
+                            loadSpreadsheetDocument(AbsolutefilePath, info.xComponent);
                             filemanager::FileQueueManager::getInstance().addFileStatus(info);
                             logger_log_info("Added existing file to queue: %s with mtime: %ld", filename.c_str(), (long)fileStat.st_mtime);
                         }
@@ -146,7 +149,7 @@ namespace filemanager
                 break;
             }
 
-            cJSON_AddStringToObject(fileObj, "status", statusStr);
+            cJSON_AddStringToObject(fileObj, "filestatus", statusStr);
             cJSON_AddNumberToObject(fileObj, "lastModified", static_cast<double>(fileInfo.lastModified));
 
             if (!fileInfo.errorMessage.empty())
@@ -225,7 +228,7 @@ namespace filemanager
             break;
         }
 
-        cJSON_AddStringToObject(results, "status", statusStr);
+        cJSON_AddStringToObject(results, "filestatus", statusStr);
         cJSON_AddNumberToObject(results, "lastModified", static_cast<double>(fileInfo.lastModified));
 
         if (!fileInfo.errorMessage.empty())

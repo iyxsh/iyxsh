@@ -20,13 +20,6 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include "lofficeconn.h"
 
-// Helper function to create UNO URL
-static rtl::OUString createUnoUrl(const char *path)
-{
-    return rtl::OUString::createFromAscii("file:///") +
-           rtl::OUString::createFromAscii(path);
-}
-
 namespace filemanager
 {
     int createfile(std::string filename)
@@ -419,7 +412,7 @@ namespace filemanager
 
     int worksheetAdd(cJSON *taskData)
     {
-        logger_log_info("Adding worksheet");
+        logger_log_info("Adding worksheet...........................");
 
         if (!taskData)
         {
@@ -442,8 +435,24 @@ namespace filemanager
             // 获取绝对路径
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            uno::Reference<lang::XComponent> xComp;
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    return -1;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+
             if (!xDoc.is())
             {
                 return -1;
@@ -470,7 +479,7 @@ namespace filemanager
             saveDocument(xDoc, filePath);
 
             // 关闭文档
-            closeDocument(xComp);
+            // closeDocument(xComp);
 
             logger_log_info("Successfully added worksheet %s to file: %s",
                             std::string(sheetnameItem->valuestring).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
@@ -551,7 +560,7 @@ namespace filemanager
             saveDocument(xDoc, absoluteFilePath);
 
             // 关闭文档
-            closeDocument(xComp);
+            // closeDocument(xComp);
 
             logger_log_info("Successfully removed worksheet %s from file: %s",
                             sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
@@ -647,7 +656,7 @@ namespace filemanager
 
             // 保存文档
             saveDocument(xDoc, filePath);
-            closeDocument(xComp);
+            // closeDocument(xComp);
             return 0;
         }
         catch (const uno::Exception &e)
@@ -704,7 +713,7 @@ namespace filemanager
             if (totalRecords < 0)
             {
                 logger_log_error("Failed to get total record count for file: %s, sheet: %s",
-                                filenameItem->valuestring, sheetnameItem->valuestring);
+                                 filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
 
@@ -717,7 +726,7 @@ namespace filemanager
             if (!sheetContent)
             {
                 logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s",
-                                filenameItem->valuestring, sheetnameItem->valuestring);
+                                 filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
 

@@ -404,7 +404,7 @@ namespace filemanager
                             
                             // 构建缓存键
                             std::string cacheKey = buildCacheKey(g_defaultFilePath, g_wordsSheetName);
-                            
+                            waitForLoading(cacheKey); // 等待加载完成
                             // 检查缓存中的时间戳
                             bool needUpdate = false;
                             {
@@ -507,7 +507,7 @@ namespace filemanager
                 const FileInfo& fileInfo = fileEntry.second;
 
                 // 只处理就绪状态的文件，并排除默认模板文件
-                if (fileInfo.status == FILE_STATUS_READY && filename != defaultTemplateFile) {
+                if (fileInfo.status == FILE_STATUS_READY && filename != removeFileExtension(defaultTemplateFile)) {
                     logger_log_info("Updating WordsSheet for file: %s", filename.c_str());
                     
                     try {
@@ -520,6 +520,8 @@ namespace filemanager
                             logger_log_error("templateData is not an object: %s", cJSON_PrintUnformatted(const_cast<cJSON*>(templateData)));
                             continue;
                         }
+                        // 更新文件状态为处理中
+                        FileQueueManager::getInstance().updateFileStatus(filename, FILE_STATUS_PROCESSING);
                         cJSON* result = batchUpdateSpreadsheetContent(absoluteFilePath, wordsSheetName, templateData);
                         
                         if (!result) {
@@ -528,6 +530,8 @@ namespace filemanager
                         } else {
                             cJSON_Delete(result); // 清理返回的结果对象
                             updatedFiles++;
+                            // 更新文件状态为处理中
+                            FileQueueManager::getInstance().updateFileStatus(filename, FILE_STATUS_READY, "Template updated successfully");
                         }
                     } catch (const uno::Exception& e) {
                         logger_log_error("UNO Exception updating WordsSheet for file %s: %s", 

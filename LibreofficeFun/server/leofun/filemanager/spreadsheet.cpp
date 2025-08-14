@@ -48,7 +48,7 @@ namespace filemanager
             }
 
             // 加载文档
-            rtl::OUString url = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString url = convertStringToOUString("file://") + filePath.replaceAll("\\", "/");
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> args(0);
             com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComponent = xLoader->loadComponentFromURL(
                 url, convertStringToOUString("_blank"), 0, args);
@@ -127,10 +127,18 @@ namespace filemanager
 
     /// @brief 保存文档到指定路径
     void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface,
-                      const rtl::OUString &filePath)
+                  const rtl::OUString &filePath)
     {
         try
         {
+            // 检查接口有效性
+            if (!docIface.is())
+            {
+                logger_log_error("saveDocument error: Invalid document interface");
+                return;
+            }
+
+            // 转换为可存储接口
             com::sun::star::uno::Reference<com::sun::star::frame::XStorable> xStorable(docIface, com::sun::star::uno::UNO_QUERY);
             if (!xStorable.is())
             {
@@ -138,14 +146,14 @@ namespace filemanager
                 return;
             }
 
-            // 规范路径，自动创建父目录
-            std::string nativePath = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
+            // 规范化路径
+            std::string nativePath = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
             logger_log_info("saveDocument: Saving to native path: %s", nativePath.c_str());
 
-            // 标准化路径分隔符
+            // 替换路径分隔符为 /
             std::replace(nativePath.begin(), nativePath.end(), '\\', '/');
 
-            // 处理相对路径
+            // 处理相对路径，转换为绝对路径
             std::string absolutePath = convertToAbsolutePath(nativePath);
             logger_log_info("saveDocument: Absolute path: %s", absolutePath.c_str());
 
@@ -158,34 +166,31 @@ namespace filemanager
                 make_dirs(dir);
             }
 
-#if __cplusplus >= 201703L
-            std::string urlPath = std::filesystem::path(absolutePath).generic_string();
-#else
-            std::string urlPath = absolutePath;
-#endif
-            logger_log_info("saveDocument: URL path: %s", urlPath.c_str());
-
-            rtl::OUString url = rtl::OStringToOUString((std::string("file:///") + urlPath).c_str(), RTL_TEXTENCODING_UTF8);
+            // 构造文件 URL
+            std::string urlPath = "file://" + absolutePath;
+            //转换 UTF8 编码，防止保存文件出现异常
+            rtl::OUString url = convertStringToOUString(urlPath.c_str());
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
+            // 设置保存属性
             com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);
             props[0].Name = convertStringToOUString("Overwrite");
             props[0].Value <<= true;
 
-            // 检查文件是否存在，如果存在则删除
-            std::string filePathStr = rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr();
-            if (access(filePathStr.c_str(), F_OK) == 0)
-            {
-                logger_log_info("File already exists, removing: %s", filePathStr.c_str());
-                if (unlink(filePathStr.c_str()) != 0)
-                {
-                    logger_log_error("Failed to remove existing file: %s", filePathStr.c_str());
-                    return;
-                }
-            }
+            // 检查文件是否存在，如果存在则删除（用物理路径而不是 URL）
+            //if (access(absolutePath.c_str(), F_OK) == 0)
+            //{
+            //    logger_log_info("File already exists, removing: %s", absolutePath.c_str());
+            //    if (unlink(absolutePath.c_str()) != 0)
+            //    {
+            //        logger_log_error("Failed to remove existing file: %s", absolutePath.c_str());
+            //        return;
+            //    }
+            //}
 
+            // 保存文档
             xStorable->storeAsURL(url, props);
-            logger_log_info("saveDocument: Successfully saved to: %s", filePathStr.c_str());
+            logger_log_info("saveDocument: Successfully saved to: %s", absolutePath.c_str());
         }
         catch (const com::sun::star::uno::Exception &e)
         {
@@ -253,7 +258,7 @@ namespace filemanager
                 return nullptr;
             }
 
-            rtl::OUString url = convertStringToOUString("file:///") + convertStringToOUString(absolutePath.c_str());
+            rtl::OUString url = convertStringToOUString("file://") + convertStringToOUString(absolutePath.c_str());
             std::string urlStr = std::string(rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
             std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
 
@@ -342,7 +347,7 @@ namespace filemanager
                 std::cerr << "readSpreadsheetFile: Finished processing sheet: " << sheetName << std::endl;
             }
 
-            closeDocument(xComp);
+            //closeDocument(xComp);
             std::cerr << "readSpreadsheetFile: Successfully read file" << std::endl;
             return root;
         }
@@ -587,7 +592,7 @@ namespace filemanager
             std::string filePathStr = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
             std::cerr << "createNewSpreadsheetFile: Saving document to: " << filePathStr << std::endl;
             saveDocument(xDoc, filePath);
-            closeDocument(xComp);
+            //closeDocument(xComp);
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
@@ -665,7 +670,7 @@ namespace filemanager
             getAbsolutePath(filePath, curFilePath);
 
             // 构造文件URL
-            rtl::OUString fileUrl = convertStringToOUString("file:///") + curFilePath.replaceAll("\\", "/");
+            rtl::OUString fileUrl = convertStringToOUString("file://") + curFilePath.replaceAll("\\", "/");
             logger_log_info("curFilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
             logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
             // 加载文档
@@ -737,7 +742,7 @@ namespace filemanager
 
             // 保存文档
             saveDocument(xDoc, curFilePath);
-            closeDocument(xComp);
+            //closeDocument(xComp);
 
             return cJSON_CreateString("success");
         }
@@ -805,7 +810,7 @@ namespace filemanager
             }
 
             // 构造文件URL
-            rtl::OUString fileUrl = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString fileUrl = convertStringToOUString("file://") + filePath.replaceAll("\\", "/");
 
             // 加载文档
             uno::Sequence<beans::PropertyValue> args(0);
@@ -898,53 +903,68 @@ namespace filemanager
             }
             else if (updatecells && cJSON_IsObject(const_cast<cJSON *>(updatecells)))
             {
-                // 新的对象格式处理 {"value": "cellAddress", ...}
-                cJSON *item = nullptr;
+                // 新的对象格式处理：{"cellAddress": "value", ...}
                 rtl::OUString defaultFilePath, wordsSheetName;
                 getDefaultData(defaultFilePath, wordsSheetName);
                 cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
                 logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
-                cJSON_ArrayForEach(item, const_cast<cJSON *>(updatecells))
+
+                // 遍历对象中的每个键值对
+                cJSON *item = updatecells->child;
+                while (item)
                 {
-                    // item->string 是键（值），item->valuestring 是值（单元格地址）
-                    if (cJSON_IsString(item) && item->string)
+                    if (item->type == cJSON_String && item->valuestring)
                     {
-                        rtl::OUString newValue = convertStringToOUString(item->string);
-                        rtl::OUString cellAddr = convertStringToOUString(item->valuestring);
+                        // 获取单元格地址（值）和要写入的内容（键）
+                        const char *cellAddress = item->valuestring;
+                        if (cellAddress && item->string)
+                        {
+                            rtl::OUString cellAddr = rtl::OStringToOUString(cellAddress, RTL_TEXTENCODING_UTF8);
+                            logger_log_info("Processing cell address: %s", cellAddress);
+                            rtl::OUString newValue = convertStringToOUString(item->string);
 
-                        // 解析单元格地址
-                        sal_Int32 col = 0, row = 0;
-                        parseCellAddress(cellAddr, col, row);
+                            // 解析单元格地址
+                            sal_Int32 col = 0, row = 0;
+                            parseCellAddress(cellAddr, col, row);
 
-                        // 获取单元格
-                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                        if (!cell.is())
-                        {
-                            std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                            closeDocument(xComp);
-                            return cJSON_CreateString("Cannot get cell");
-                        }
-                        if (sheetName == wordsSheetName)
-                        {
-                            // 直接默认覆盖值
-                            cell->setFormula(newValue);
-                        }
-                        else
-                        {
-                            if (cachedSheetData)
+                            // 获取单元格
+                            uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                            if (!cell.is())
                             {
-                                rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                                logger_log_info("batchUpdateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                                cell->setFormula(tmp);
+                                std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
+                                closeDocument(xComp);
+                                return cJSON_CreateString("Cannot get cell");
+                            }
+
+                            // 写入单元格内容
+                            if (sheetName == wordsSheetName)
+                            {
+                                // 直接设置字符串值
+                                cell->setFormula(newValue);
                             }
                             else
                             {
-                                std::cerr << "batchUpdateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                                closeDocument(xComp);
-                                return nullptr;
+                                if (cachedSheetData)
+                                {
+                                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
+                                    logger_log_info("batchUpdateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
+                                    cell->setFormula(tmp);
+                                }
+                                else
+                                {
+                                    std::cerr << "batchUpdateSpreadsheetContent error: cachedSheetData is null" << std::endl;
+                                    closeDocument(xComp);
+                                    return nullptr;
+                                }
                             }
                         }
+                        else
+                        {
+                            logger_log_error("Invalid cell address or missing string key in updatecells");
+                        }
                     }
+                    // 移动到下一个元素
+                    item = item->next;
                 }
             }
             else
@@ -955,7 +975,7 @@ namespace filemanager
 
             // 保存文档
             saveDocument(xDoc, filePath);
-            closeDocument(xComp);
+            //closeDocument(xComp);
 
             return cJSON_CreateString("success");
         }
@@ -1011,7 +1031,7 @@ namespace filemanager
                 return nullptr;
             }
 
-            rtl::OUString url = convertStringToOUString("file:///") + filePath.replaceAll("\\", "/");
+            rtl::OUString url = convertStringToOUString("file://") + filePath.replaceAll("\\", "/");
             uno::Sequence<beans::PropertyValue> args(0);
             uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, convertStringToOUString("_blank"), 0, args);
             xComp = xComponent;
@@ -1243,20 +1263,20 @@ namespace filemanager
             int maxRows = json_config_get_int("maxRows");
             int maxCols = json_config_get_int("maxCols");
             int validRowCount = 0;
-            for (int row = 0; row < maxRows; ++row) {
-                bool rowHasData = false;
-                for (int col = 0; col < maxCols; ++col) {
-                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                    double cellValue = cell->getValue();
-                    rtl::OUString cellFormula = cell->getFormula();
-                    if (cellValue != 0.0 || cellFormula.getLength() > 0) {
-                        rowHasData = true;
-                        break;
-                    }
-                }
-                if (rowHasData) ++validRowCount;
-            }
-            closeDocument(xComp);
+            //for (int row = 0; row < maxRows; ++row) {
+            //    bool rowHasData = false;
+            //    for (int col = 0; col < maxCols; ++col) {
+            //        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+            //        double cellValue = cell->getValue();
+            //        rtl::OUString cellFormula = cell->getFormula();
+            //        if (cellValue != 0.0 || cellFormula.getLength() > 0) {
+            //            rowHasData = true;
+            //            break;
+            //        }
+            //    }
+            //    if (rowHasData) ++validRowCount;
+            //}
+            //closeDocument(xComp);
             return validRowCount;
         }
         catch (...)
@@ -1296,7 +1316,7 @@ namespace filemanager
                 }
                 cJSON_AddItemToArray(result, rowObj);
             }
-            closeDocument(xComp);
+            //closeDocument(xComp);
         }
         catch (...)
         {

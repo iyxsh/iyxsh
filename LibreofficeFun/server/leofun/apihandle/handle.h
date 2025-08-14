@@ -21,7 +21,7 @@ typedef struct RequestBody {
 }RequestBody;
 typedef struct ResponseBody {
     int status;
-    char errorMessage[512];
+    char errmsg[512]; // 错误信息
     char content_type[20];
     char body[BUFFER_SIZE];
     unsigned int total_count;  // 总数据量

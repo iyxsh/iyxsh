@@ -6,31 +6,32 @@ const lazyLoadView = (view) => {
 };
 
 const routes = [
-  {
-    path: '/',
-    name: 'home',
-    // 统一使用动态导入
-    component: lazyLoadView('HomeView'),
-    meta: { title: 'Home' }
-  },
-  {
-    path: '/about',
-    name: 'about',
-    // 统一使用动态导入
-    component: lazyLoadView('AboutView')
-  },
-  {
-    path: '/page',
-    name: 'page',
-    // 使用异步组件加载
-    component: lazyLoadView('PageManager')
-  },
-  {
-    path: '/files',
-    name: 'files',
-    // 使用异步组件加载文件管理器
-    component: lazyLoadView('FileManager')
-  }
+    {
+        path: '/',
+        name: 'home',
+        component: lazyLoadView('HomeView'),
+        meta: { title: 'Home' }
+    },
+    {
+        path: '/about',
+        name: 'about',
+        component: lazyLoadView('AboutView')
+    },
+    {
+        path: '/page',
+        name: 'page',
+        component: lazyLoadView('PageManager'),
+        props: route => ({ fileName: route.query.fileName }) // 添加查询参数处理
+    },
+    {
+        path: '/files',
+        name: 'files',
+        component: lazyLoadView('FileManager')
+    },
+    {
+        path: '/:pathMatch(.*)*', // 捕获未定义路径
+        redirect: '/' // 重定向到根路径
+    }
 ];
 
 const router = createRouter({

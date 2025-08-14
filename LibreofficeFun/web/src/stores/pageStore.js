@@ -41,22 +41,52 @@ export const usePageStore = defineStore('pages', () => {
   }
 
   // 添加页面
-  const addPage = (name = '新页面', pageSizeObj = { name: 'A4', width: 210, height: 297, unit: 'mm' }) => {
-    const newPage = {
-      id: generateId(),
-      name: name,
-      forms: [],
-      pageSize: pageSizeObj,
-      orientation: 'portrait', // 默认为纵向
-      createdAt: new Date().toISOString()
+  function addPage(pageData) {
+    // 检查是否已存在相同名称或 ID 的页面
+    const isDuplicate = pages.value.some(page => 
+      (page.id && page.id === pageData.id) || (page.name && page.name === pageData.name)
+    );
+
+    if (isDuplicate) {
+      console.warn('[usePages] 页面已存在，跳过添加:', pageData);
+      return;
     }
 
-    pages.value.push(newPage)
-    currentPageIndex.value = pages.value.length - 1
-    editPageIndex.value = currentPageIndex.value // 新页面默认可编辑
+    // 如果传入的是完整页面对象
+    if (typeof pageData === 'object' && pageData !== null && !Array.isArray(pageData)) {
+      pages.value.push({
+        id: pageData.id || Date.now() + Math.random(),
+        name: pageData.name || '新页面',
+        forms: Array.isArray(pageData.forms) ? pageData.forms.map(form => ({
+          ...form,
+          id: form.id || Date.now() + Math.random()
+        })) : [],
+        pageSize: pageData.pageSize || {
+          name: 'A4',
+          width: 210,
+          height: 297,
+          unit: 'mm'
+        },
+        orientation: pageData.orientation || 'portrait'
+      });
+    } else {
+      // 向后兼容：如果传入的是页面名称
+      const name = typeof pageData === 'string' ? pageData : '新页面';
+      pages.value.push({
+        id: Date.now() + Math.random(),
+        name,
+        forms: [],
+        pageSize: {
+          name: 'A4',
+          width: 210,
+          height: 297,
+          unit: 'mm'
+        },
+        orientation: 'portrait'
+      });
+    }
 
-    savePagesToStorage()
-    return newPage
+    console.log('[usePages] 添加新页面，当前页面数量:', pages.value.length);
   }
 
   // 更新页面
@@ -190,14 +220,20 @@ export const usePageStore = defineStore('pages', () => {
     return true
   }
 
-  // 清空所有页面
-  const clearAllPages = () => {
-    pages.value = []
-    currentPageIndex.value = 0
-    editPageIndex.value = -1
-    localStorage.removeItem('form-pages')
-    return true
-  }
+  const clearAllPages = async () => {
+
+    // 批量更新以优化性能
+    pages.value = [];
+    currentPageIndex.value = 0;
+    editPageIndex.value = -1;
+
+    // 移除本地存储中的页面数据
+    localStorage.removeItem('form-pages');
+
+    // 输出详细日志
+    console.log('[pageStore] 所有页面已成功清除');
+    return true;
+  };
 
   // 初始化加载
   initialize()

@@ -10,6 +10,8 @@
 #include <memory>
 #include <chrono>
 #include "../cJSON/cJSON.h"
+#include <com/sun/star/uno/XComponentContext.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 
 namespace filemanager {
 
@@ -42,6 +44,8 @@ namespace filemanager {
         FileStatus status;
         time_t lastModified;
         std::string errorMessage;
+        com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComponent;
+        int refCount = 0;      // 引用计数，用于文件关闭时的处理
     };
 
     // 文件任务结构

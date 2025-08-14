@@ -73,7 +73,7 @@ static bool handle_empty_body(RequestBody requestbody, ResponseBody *responsebod
 {
     if (!requestbody.body_start) {
         responsebody->status = STATUS_BAD_REQUEST;
-        sprintf(responsebody->errorMessage,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+        sprintf(responsebody->errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
         strcpy(responsebody->content_type, "application/json");
         cJSON *error_obj = cJSON_CreateObject();
         cJSON_AddStringToObject(error_obj, "error", "Empty request body");

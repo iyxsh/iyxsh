@@ -125,7 +125,7 @@ void send_response(SSL *ssl, ResponseBody responsebody)
                        "X-Page-Size: %d\r\n"    // 每页条数
                        "Content-Length: %zu\r\n\r\n",
                        responsebody.status,
-                       responsebody.errorMessage,
+                       responsebody.errmsg,
                        responsebody.content_type,
                        responsebody.total_count,
                        responsebody.current_page,
@@ -391,8 +391,8 @@ void handle_request(SSL *ssl, int client_socket)
         ResponseBody responsebody;
         ResponseBodyInit(&responsebody);
         responsebody.status = STATUS_BAD_REQUEST;
-        memset(responsebody.errorMessage,0,sizeof(responsebody.errorMessage));
-        sprintf(responsebody.errorMessage,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+        memset(responsebody.errmsg,0,sizeof(responsebody.errmsg));
+        sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
         memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
         sprintf(responsebody.content_type, "text/plain");
         memset(responsebody.body, 0, sizeof(responsebody.body));
@@ -448,7 +448,7 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
                 ResponseBody responsebody;
                 ResponseBodyInit(&responsebody);
                 responsebody.status = STATUS_BAD_REQUEST;
-                sprintf(responsebody.errorMessage,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+                sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
                 memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
                 sprintf(responsebody.content_type, "text/plain");
                 memset(responsebody.body, 0, sizeof(responsebody.body));
@@ -479,7 +479,7 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
     ResponseBody responsebody;
     ResponseBodyInit(&responsebody);
     responsebody.status = STATUS_BAD_REQUEST;
-    sprintf(responsebody.errorMessage,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+    sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
     memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
     sprintf(responsebody.content_type, "text/plain");
     memset(responsebody.body, 0, sizeof(responsebody.body));

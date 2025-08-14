@@ -36,31 +36,14 @@
           <el-table-column label="操作" width="120">
             <template #default="scope">
               <el-tooltip content="编辑" placement="top">
-                <el-button 
-                  type="primary" 
-                  icon="Edit" 
-                  size="small" 
-                  circle 
-                  @click.stop="useInPageManager(scope.row)"
-                />
+                <el-button type="primary" icon="Edit" size="small" circle @click.stop="useInPageManager(scope.row)" />
               </el-tooltip>
               <el-tooltip content="加载" placement="top">
-                <el-button 
-                  type="success" 
-                  icon="Download" 
-                  size="small" 
-                  circle 
-                  @click.stop="loadFileContent(scope.row)"
-                />
+                <el-button type="success" icon="Download" size="small" circle
+                  @click.stop="loadFileContent(scope.row)" />
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
-                <el-button 
-                  type="danger" 
-                  icon="Delete" 
-                  size="small" 
-                  circle 
-                  @click.stop="deleteFile(scope.row)"
-                />
+                <el-button type="danger" icon="Delete" size="small" circle @click.stop="deleteFile(scope.row)" />
               </el-tooltip>
             </template>
           </el-table-column>
@@ -109,6 +92,10 @@
 
     <!-- API服务管理组件 -->
     <ApiServiceManager ref="apiServiceManager" />
+
+    <!-- 添加 PageManager 容器 -->
+    <div id="page-manager-container" style="margin-top: 20px;"></div>
+
   </div>
 </template>
 
@@ -117,6 +104,7 @@ import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import ApiServiceManager from '@/components/ApiServiceManager.vue';
+import { createApp } from 'vue';
 
 export default {
   name: 'FileManager',
@@ -210,14 +198,14 @@ export default {
     const formatDate = (date) => {
       // 检查日期是否有效
       if (!date) return '-';
-      
+
       // 使用parseDate函数处理日期
       const parsedDate = parseDate(date);
       if (!parsedDate) return '-';
-      
+
       return parsedDate.toLocaleString();
     };
-    
+
     // 移除文件名后缀
     const removeFileExtension = (filename) => {
       if (!filename) return '';
@@ -246,14 +234,26 @@ export default {
           };
 
           // 调用ApiServiceManager组件的新功能创建新修文
-          await apiServiceManager.value.newFile(newFileData);
+          const response = await apiServiceManager.value.newFile(newFileData);
+          console.log('[FileManager] 创建新修文响应:', response);
+          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            console.error('创建新修文失败:', response);
+            ElMessage.error('创建新修文失败: ' + (response.errorMessage || '未知错误'));
+            return;
+          }
 
           // 显示修改成功后的信息
           ElMessage.success(`修文 "${newFileName.value}" 添加成功`);
         }
         else {
           // 调用ApiServiceManager组件的新功能创建新修文
-          await apiServiceManager.value.newFile();
+          const response = await apiServiceManager.value.newFile();
+          console.log('[FileManager] 创建新修文响应:', response);
+          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            console.error('创建新修文失败:', response);
+            ElMessage.error('创建新修文失败: ' + (response.errorMessage || '未知错误'));
+            return;
+          }
 
           // 显示修改成功后的信息
           ElMessage.success(`修文添加成功`);
@@ -265,13 +265,20 @@ export default {
         // 无论是否输入文件名，都重新加载修文列表
         // 使用ApiServiceManager组件的新功能获取修文列表
         const response = await apiServiceManager.value.getFileList();
-        fileList.value = Array.isArray(response) ? response.map((item, index) => ({
-          id: index,
-          name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
-          status: item.status || '未知',
-          modified: parseDate(item.lastModified) || new Date(),
-          type: 'ods'
-        })) : [];
+        console.log('获取修文列表:', response);
+        if (response.errorCode === 1000 && response.errorMessage === "Success") {
+          fileList.value = Array.isArray(response.files) ? response.files.map((item, index) => ({
+            id: index,
+            name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
+            status: item.status || '未知',
+            modified: parseDate(item.lastModified) || new Date(),
+            type: 'ods',
+            size: item.size || 0
+          })) : [];
+        }
+        else {
+          ElMessage.error('获取修文列表失败: ' + (response.errorMessage || '未知错误'));
+        }
       } catch (error) {
         console.error('操作失败:', error);
         ElMessage.error('操作失败: ' + (error.message || '未知错误'));
@@ -286,7 +293,13 @@ export default {
         loading.value = true;
         // 使用ApiServiceManager组件的新功能获取修文列表
         const response = await apiServiceManager.value.getFileList();
-        fileList.value = Array.isArray(response) ? response.map((item, index) => ({
+        console.log('获取修文列表:', response);
+        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          console.error('加载修文列表失败:', response);
+          ElMessage.error('加载修文列表失败: ' + (response.errorMessage || '未知错误'));
+          return;
+        }
+        fileList.value = Array.isArray(response.files) ? response.files.map((item, index) => ({
           id: index,
           name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
           status: item.status || '未知',
@@ -306,7 +319,7 @@ export default {
     const handleFileSelect = (row) => {
       selectedFile.value = row;
     };
-    
+
     // 删除修文
     const deleteFile = async (file) => {
       try {
@@ -319,13 +332,18 @@ export default {
             type: 'warning'
           }
         );
-        
+
         // 调用ApiServiceManager组件的删除文件功能
-        await apiServiceManager.value.deleteFile({ filename: file.name });
-        
+        const response = await apiServiceManager.value.deleteFile({ filename: file.name });
+        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          console.error('[ApiServiceManager] 删除文件失败:', response);
+          ElMessage.error('删除文件失败: ' + (response.errorMessage || '未知错误'));
+          return;
+        }
+
         // 重新加载文件列表
         await loadFileList();
-        
+
         ElMessage.success('修文删除成功');
       } catch (error) {
         if (error !== 'cancel') {
@@ -334,7 +352,7 @@ export default {
         }
       }
     };
-    
+
     // 加载修文内容
     const loadFileContent = async (file) => {
       try {
@@ -342,6 +360,19 @@ export default {
         selectedFile.value = file;
         // 调用ApiServiceManager组件获取指定修文的内容
         const response = await apiServiceManager.value.getFileList();
+        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          console.error('加载修文内容失败:', response);
+          ElMessage.error('加载修文内容失败: ' + (response.errorMessage || '未知错误'));
+          fileContent.value = null;
+          return;
+        }
+        if (!Array.isArray(response.files) || !response.files.find((f) => f.filename === file.name)) {
+          console.error('加载修文内容失败: 修文不存在');
+          ElMessage.error('加载修文内容失败: 修文不存在');
+          fileContent.value = null;
+          return;
+        }
+        selectedFile.value = response.files.find((f) => f.filename === file.name);
         fileContent.value = response;
         ElMessage.success(`修文 "${file.name}" 加载成功`);
       } catch (error) {
@@ -354,36 +385,92 @@ export default {
     };
 
     // 在页面管理器中使用
-    const useInPageManager = (file) => {
-      // 如果传入了文件参数，直接使用该文件
-      if (file) {
-        router.push({
-          name: 'page',
-          query: {
-            fileName: file.name
-          }
-        });
-      } 
-      // 否则使用已加载的文件内容
-      else if (fileContent.value) {
-        // 将修文内容传递给PageManager组件
-        router.push({
-          name: 'page',
-          query: {
-            fileData: JSON.stringify(fileContent.value),
-            fileName: selectedFile.value.name
-          }
-        });
+    const useInPageManager = async (file) => {
+      // 参数校验
+      if (!file || !file.name) {
+        console.warn('[FileManager] 文件名为空，无法跳转');
+        ElMessage.warning('文件名为空，无法跳转');
+        return;
       }
-      // 如果没有文件内容但有选中的文件，只传递文件名
-      else if (selectedFile.value) {
-        router.push({
-          name: 'page',
-          query: {
-            fileName: selectedFile.value.name
+
+      const MAX_ATTEMPTS = 10; // 最大尝试次数
+      let attempts = 0;        // 当前尝试次数
+
+      // 确保传递给 API 的参数包含 filename 字段
+      const fileWithFilename = { filename: file.name };
+
+      const checkFileStatus = async () => {
+        try {
+          const response = await apiServiceManager.value.fileStatus(fileWithFilename);
+
+          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            console.error('获取文件状态失败:', response);
+            ElMessage.error('获取文件状态失败: ' + (response.errorMessage || '未知错误'));
+            return;
           }
-        });
+
+          // 检查状态是否为 ready 或 closed
+          if (response.filestatus === 'ready' || response.filestatus === 'closed') {
+            clearInterval(intervalId); // 停止定时器
+
+            // 直接使用 PageManager 组件，而不是跳转到 /page 页面
+            showPageManager(file.name);
+          } else {
+            attempts++;
+            if (attempts >= MAX_ATTEMPTS) {
+              clearInterval(intervalId); // 停止定时器
+              ElMessage.error('30秒内未检测到正常状态，操作已取消');
+            }
+          }
+        } catch (error) {
+            clearInterval(intervalId); // 停止定时器
+            console.error('获取文件状态失败:', error);
+            ElMessage.error('获取文件状态失败: ' + (error.message || '未知错误'));
+        }
+      };
+
+      // 启动定时器，每3秒检查一次状态
+      const intervalId = setInterval(checkFileStatus, 3000);
+
+      // 30秒后自动停止定时器
+      setTimeout(() => {
+        clearInterval(intervalId);
+        if (attempts < MAX_ATTEMPTS) {
+          ElMessage.error('30秒内未检测到正常状态，操作已取消');
+        }
+      }, 30000);
+    };
+
+    // 动态加载 PageManager 组件
+    const showPageManager = (fileName) => {
+      // 检查 DOM 容器是否存在
+      const container = document.getElementById('page-manager-container');
+      if (!container) {
+          console.error('[FileManager] 无法找到挂载容器 #page-manager-container');
+          ElMessage.error('页面初始化失败，请刷新后重试');
+          return;
       }
+
+      // 清空容器内容，避免重复挂载
+      container.innerHTML = '';
+
+      // 动态加载 PageManager 组件
+      import('@/views/PageManager.vue')
+          .then((module) => {
+              const PageManager = module.default;
+
+              // 创建 PageManager 实例并传递参数
+              const pageManagerInstance = createApp(PageManager, {
+                  fileName // 传递文件名作为属性
+              });
+
+              // 挂载到 DOM
+              pageManagerInstance.mount('#page-manager-container');
+          })
+          .catch((error) => {
+              console.error('[FileManager] 加载 PageManager 组件失败:', error);
+              ElMessage.error('加载页面管理器失败，请稍后重试');
+          });
     };
 
     // 清除修文内容

@@ -466,7 +466,13 @@ const saveAddForm = async (formData) => {
           }]
         };
 
-        await apiService.updateFile(updateRequest);
+        const response = await apiService.updateFile(updateRequest);
+        if(response.errorCode !== 1000 || response.errorMessage !== "Success")
+        {
+          console.error('[FormGrid] 同步表单到服务器失败:', response);
+          ElMessage.error('同步表单到服务器失败: ' + (response.errorMessage || '未知错误'));
+          return;
+        }
         console.log('[FormGrid] 表单添加成功并同步到服务器')
       } catch (error) {
         console.error('[FormGrid] 同步表单到服务器失败:', error)
@@ -842,7 +848,7 @@ const handleFormSave = async (updatedForm) => {
 
             const row = index + 1;
             Object.keys(form).forEach(fieldName => {
-              const skipFields = ['id', 'createdAt', 'style', 'elementStyles', 'position', 'size', 'zIndex'];
+              const skipFields = ['createdAt', 'style', 'elementStyles', 'position', 'size', 'zIndex'];
               if (skipFields.includes(fieldName)) {
                 return;
               }
@@ -889,7 +895,13 @@ const handleFormSave = async (updatedForm) => {
             }]
           };
 
-          await apiService.updateFile(updateRequest);
+          const response = await apiService.updateFile(updateRequest);
+          if(response.errorCode !== 1000 || response.errorMessage !== "Success")
+          {
+            console.error('[FormGrid] 同步表单更新到服务器失败:', response);
+            ElMessage.error('同步表单更新到服务器失败: ' + (response.errorMessage || '未知错误'));
+            return;
+          }
         } catch (error) {
           console.error('[FormGrid] 同步表单更新到服务器失败:', error);
           let errorMessage = '表单更新同步失败';

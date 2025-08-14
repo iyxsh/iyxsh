@@ -50,15 +50,22 @@ const processQueue = async () => {
 const newFile = async (/** @type {NewFileRequest} */ fileData) => {
   serviceState.isSaving = true;
   serviceState.error = null;
-  
+
   try {
     // 类型验证
     if (fileData && typeof fileData === 'object') {
-      await advancedCardApi.newFile(fileData);
+      const response = await advancedCardApi.newFile(fileData);
+      console.log('[ApiServiceManager] 创建新文件成功:', response);
+      if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+        console.error('[ApiServiceManager] 创建新文件失败:', response);
+        ElMessage.error('创建新文件失败: ' + (response.errorMessage || '未知错误'));
+        return;
+      }
+      serviceState.lastSync = new Date();
+      return response;
     } else {
       throw new Error('Invalid fileData parameter');
     }
-    serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -75,11 +82,17 @@ const updateFile = async (/** @type {UpdateFileRequest} */ fileData) => {
   try {
     // 类型验证
     if (fileData && typeof fileData === 'object') {
-      await advancedCardApi.updateFile(fileData);
+      const response = await advancedCardApi.updateFile(fileData);
+      if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+        console.error('[ApiServiceManager] 更新文件失败:', response);
+        ElMessage.error('更新文件失败: ' + (response.errorMessage || '未知错误'));
+        return;
+      }
+      serviceState.lastSync = new Date();
+      return response;
     } else {
       throw new Error('Invalid fileData parameter');
     }
-    serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -98,7 +111,7 @@ const getFileData = async (/** @type {string} */ fileId) => {
     if (typeof fileId !== 'string' || !fileId) {
       throw new Error('Invalid fileId parameter');
     }
-    
+
     const response = await advancedCardApi.getFileData(fileId);
     serviceState.lastSync = new Date();
     return response;
@@ -120,14 +133,20 @@ const addWorksheet = async (/** @type {AddWorksheetRequest} */ worksheetData) =>
     if (!worksheetData || typeof worksheetData !== 'object') {
       throw new Error('Invalid worksheetData parameter');
     }
-    
+
     // 验证必需字段
     if (!worksheetData.filename || !worksheetData.sheetname) {
       throw new Error('Missing required fields: filename and sheetname are required');
     }
-    
-    await advancedCardApi.addWorksheet(worksheetData);
+
+    const response = await advancedCardApi.addWorksheet(worksheetData);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 添加工作表失败:', response);
+      ElMessage.error('添加工作表失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
+    return response;
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -146,14 +165,20 @@ const removeWorksheet = async (/** @type {RemoveWorksheetRequest} */ removeWorks
     if (!removeWorksheetRequest || typeof removeWorksheetRequest !== 'object') {
       throw new Error('Invalid removeWorksheetRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!removeWorksheetRequest.filename || !removeWorksheetRequest.sheetname) {
       throw new Error('Missing required fields: filename and sheetname are required');
     }
-    
-    await advancedCardApi.removeWorksheet(removeWorksheetRequest);
+
+    const response = await advancedCardApi.removeWorksheet(removeWorksheetRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 删除工作表失败:', response);
+      ElMessage.error('删除工作表失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
+    return response;
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -172,16 +197,22 @@ const renameWorksheet = async (/** @type {RenameWorksheetRequest} */ renameWorks
     if (!renameWorksheetRequest || typeof renameWorksheetRequest !== 'object') {
       throw new Error('Invalid renameWorksheetRequest parameter');
     }
-    
+
     // 验证必需字段
-    if (!renameWorksheetRequest.filename || 
-        !renameWorksheetRequest.sheetname || 
-        !renameWorksheetRequest.newsheetname) {
+    if (!renameWorksheetRequest.filename ||
+      !renameWorksheetRequest.sheetname ||
+      !renameWorksheetRequest.newsheetname) {
       throw new Error('Missing required fields: filename, sheetname and newsheetname are required');
     }
-    
-    await advancedCardApi.renameWorksheet(renameWorksheetRequest);
+
+    const response = await advancedCardApi.renameWorksheet(renameWorksheetRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 重命名工作表失败:', response);
+      ElMessage.error('重命名工作表失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
+    return response;
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -200,14 +231,20 @@ const renameFile = async (/** @type {import('@/utils/apiTypes').RenameFileReques
     if (!renameFileRequest || typeof renameFileRequest !== 'object') {
       throw new Error('Invalid renameFileRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!renameFileRequest.oldFilename || !renameFileRequest.newFilename) {
       throw new Error('Missing required fields: oldFilename and newFilename are required');
     }
-    
-    await advancedCardApi.renameFile(renameFileRequest);
+
+    const response = await advancedCardApi.renameFile(renameFileRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 重命名文件失败:', response);
+      ElMessage.error('重命名文件失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
+    return response;
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -220,20 +257,26 @@ const renameFile = async (/** @type {import('@/utils/apiTypes').RenameFileReques
 const deleteFile = async (/** @type {DeleteFileRequest} */ deleteFileRequest) => {
   serviceState.isSaving = true;
   serviceState.error = null;
-  
+
   try {
     // 类型验证
     if (!deleteFileRequest || typeof deleteFileRequest !== 'object') {
       throw new Error('Invalid deleteFileRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!deleteFileRequest.filename) {
       throw new Error('Missing required field: filename is required');
     }
-    
-    await advancedCardApi.deleteFile(deleteFileRequest);
+
+    const response = await advancedCardApi.deleteFile(deleteFileRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 删除文件失败:', response);
+      ElMessage.error('删除文件失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
+    return response;
   } catch (error) {
     serviceState.error = error.message;
     throw error;
@@ -252,13 +295,18 @@ const fileStatus = async (/** @type {FileStatusRequest} */ fileStatusRequest) =>
     if (!fileStatusRequest || typeof fileStatusRequest !== 'object') {
       throw new Error('Invalid fileStatusRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!fileStatusRequest.filename) {
       throw new Error('Missing required field: filename is required');
     }
-    
+
     const response = await advancedCardApi.fileStatus(fileStatusRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 获取文件状态失败:', response);
+      ElMessage.error('获取文件状态失败: ' + (response.errorMessage || '未知错误'));
+      return response;
+    }
     serviceState.lastSync = new Date();
     return response;
   } catch (error) {
@@ -279,12 +327,12 @@ const getSheetData = async (/** @type {import('@/utils/apiTypes').SheetDataReque
     if (!sheetDataRequest || typeof sheetDataRequest !== 'object') {
       throw new Error('Invalid sheetDataRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!sheetDataRequest.filename || !sheetDataRequest.sheetname) {
       throw new Error('Missing required fields: filename and sheetname are required');
     }
-    
+
     // 设置默认的大数据量读取策略参数
     const optimizedRequest = {
       ...sheetDataRequest,
@@ -294,10 +342,16 @@ const getSheetData = async (/** @type {import('@/utils/apiTypes').SheetDataReque
       enableStreaming: sheetDataRequest.enableStreaming !== false, // 默认启用流式读取
       enableCompression: sheetDataRequest.enableCompression !== false // 默认启用压缩
     };
-    
+
     console.log('[ApiServiceManager] 获取工作表数据，优化参数:', optimizedRequest);
-    
+
     const response = await advancedCardApi.getSheetData(optimizedRequest);
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[ApiServiceManager] 获取工作表数据失败:', response);
+      ElMessage.error('获取工作表数据失败: ' + (response.errorMessage || '未知错误'));
+      return response;
+    }
+    console.log('[ApiServiceManager] 获取工作表数据成功:', response);
     serviceState.lastSync = new Date();
     return response;
   } catch (error) {
@@ -318,20 +372,20 @@ const getSheetDataWithPagination = async (/** @type {import('@/utils/apiTypes').
     if (!sheetDataRequest || typeof sheetDataRequest !== 'object') {
       throw new Error('Invalid sheetDataRequest parameter');
     }
-    
+
     // 验证必需字段
     if (!sheetDataRequest.filename || !sheetDataRequest.sheetname) {
       throw new Error('Missing required fields: filename and sheetname are required');
     }
-    
+
     const pageSize = sheetDataRequest.pageSize || 1000;
     const batchSize = sheetDataRequest.batchSize || 50;
     let allData = [];
     let currentPage = 0;
     let hasMoreData = true;
-    
+
     console.log('[ApiServiceManager] 开始分页读取工作表数据');
-    
+
     // 分页读取数据
     while (hasMoreData) {
       const pageRequest = {
@@ -342,24 +396,23 @@ const getSheetDataWithPagination = async (/** @type {import('@/utils/apiTypes').
         enableStreaming: true,
         enableCompression: true
       };
-      
+
       console.log(`[ApiServiceManager] 读取第 ${currentPage + 1} 页数据`);
-      
+
       const response = await advancedCardApi.getSheetData(pageRequest);
-      
-      if (!response || !response.data) {
-        console.warn(`[ApiServiceManager] 第 ${currentPage + 1} 页数据为空`);
-        hasMoreData = false;
+      if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+        console.error(`[ApiServiceManager] 获取第 ${currentPage + 1} 页数据失败:`, response);
+        ElMessage.error('获取工作表数据失败: ' + (response.errorMessage || '未知错误'));
         break;
       }
-      
+      console.log(`[ApiServiceManager] 获取第 ${currentPage + 1} 页数据成功，共 ${response.data.length} 条记录`);
       const pageData = Array.isArray(response.data) ? response.data : [response.data];
       allData = allData.concat(pageData);
-      
+
       // 检查是否还有更多数据
       hasMoreData = pageData.length === pageSize;
       currentPage++;
-      
+
       // 报告进度
       if (onProgress && typeof onProgress === 'function') {
         onProgress({
@@ -369,17 +422,17 @@ const getSheetDataWithPagination = async (/** @type {import('@/utils/apiTypes').
           isComplete: !hasMoreData
         });
       }
-      
+
       // 防止无限循环
       if (currentPage > 100) {
         console.warn('[ApiServiceManager] 达到最大页数限制，停止读取');
         break;
       }
     }
-    
+
     serviceState.lastSync = new Date();
     console.log(`[ApiServiceManager] 分页读取完成，总共读取 ${allData.length} 条记录`);
-    
+
     return {
       data: allData,
       totalPages: currentPage,
@@ -397,7 +450,7 @@ const getSheetDataWithPagination = async (/** @type {import('@/utils/apiTypes').
 const getCardGroups = async () => {
   serviceState.isLoading = true;
   serviceState.error = null;
-  
+
   try {
     const response = await advancedCardApi.getCardGroups();
     serviceState.lastSync = new Date();
@@ -414,22 +467,22 @@ const getCardGroups = async () => {
 const saveCardGroups = async (/** @type {any[]} */ cardGroups) => {
   serviceState.isSaving = true;
   serviceState.error = null;
-  
+
   try {
     // 类型验证
     if (!Array.isArray(cardGroups)) {
       throw new Error('Invalid cardGroups parameter, must be an array');
     }
-    
+
     // 对于大数据量，分批处理
     if (cardGroups.length > 100) {
       const batchSize = 50;
       const batches = [];
-      
+
       for (let i = 0; i < cardGroups.length; i += batchSize) {
         batches.push(cardGroups.slice(i, i + batchSize));
       }
-      
+
       // 创建批量保存任务
       const batchTasks = batches.map((batch, index) => {
         return () => advancedCardApi.saveCardGroupsBatch({
@@ -438,13 +491,13 @@ const saveCardGroups = async (/** @type {any[]} */ cardGroups) => {
           totalBatches: batches.length
         });
       });
-      
+
       // 并行执行任务
       await Promise.all(batchTasks.map(task => enqueueTask(task)));
     } else {
       await advancedCardApi.saveCardGroups(cardGroups);
     }
-    
+
     serviceState.lastSync = new Date();
   } catch (error) {
     serviceState.error = error.message;
@@ -458,7 +511,7 @@ const saveCardGroups = async (/** @type {any[]} */ cardGroups) => {
 const getStyleConfig = async () => {
   serviceState.isLoading = true;
   serviceState.error = null;
-  
+
   try {
     const response = await advancedCardApi.getStyleConfig();
     serviceState.lastSync = new Date();
@@ -475,7 +528,7 @@ const getStyleConfig = async () => {
 const saveStyleConfig = async (/** @type {Partial<import('@/utils/apiTypes').StyleConfig>} */ styleConfig) => {
   serviceState.isSaving = true;
   serviceState.error = null;
-  
+
   try {
     await advancedCardApi.saveStyleConfig(styleConfig);
     serviceState.lastSync = new Date();
@@ -491,15 +544,15 @@ const saveStyleConfig = async (/** @type {Partial<import('@/utils/apiTypes').Sty
 const batchOperation = async (/** @type {import('@/utils/apiTypes').BatchOperation[]} */ operations) => {
   serviceState.isSaving = true;
   serviceState.error = null;
-  
+
   try {
     // 类型验证
     if (!Array.isArray(operations)) {
       throw new Error('Invalid operations parameter, must be an array');
     }
-    
+
     const results = [];
-    
+
     // 分组操作以提高效率
     const operationGroups = {};
     operations.forEach(op => {
@@ -508,7 +561,7 @@ const batchOperation = async (/** @type {import('@/utils/apiTypes').BatchOperati
       }
       operationGroups[op.type].push(op);
     });
-    
+
     // 并行处理不同类型的操作
     const groupPromises = Object.keys(operationGroups).map(async (type) => {
       const group = operationGroups[type];
@@ -524,10 +577,10 @@ const batchOperation = async (/** @type {import('@/utils/apiTypes').BatchOperati
         await advancedCardApi.batchOperation([{ type, data: group }]);
       }
     });
-    
+
     await Promise.all(groupPromises);
     serviceState.lastSync = new Date();
-    
+
     return results;
   } catch (error) {
     serviceState.error = error.message;
@@ -541,7 +594,7 @@ const batchOperation = async (/** @type {import('@/utils/apiTypes').BatchOperati
 const getFileList = async () => {
   serviceState.isLoading = true;
   serviceState.error = null;
-  
+
   try {
     const response = await advancedCardApi.getFileList();
     serviceState.lastSync = new Date();
@@ -571,6 +624,11 @@ const getSheetList = async (/** @type {import('@/utils/apiTypes').SheetListReque
     }
 
     const response = await advancedCardApi.sheetlist(sheetListRequest);
+    if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('获取工作表列表失败:', response);
+      ElMessage.error('获取工作表列表失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
     serviceState.lastSync = new Date();
     return response;
   } catch (error) {
@@ -621,7 +679,7 @@ defineExpose({
   getSheetDataWithPagination, // 添加大数据量分页读取方法
   getSheetList, // 添加 getSheetList 方法
   serviceState,
-  
+
   // 任务管理
   enqueueTask,
   processQueue
