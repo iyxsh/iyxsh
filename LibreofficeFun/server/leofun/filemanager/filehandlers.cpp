@@ -677,15 +677,15 @@ namespace filemanager
             return -1;
         }
     }
-    int sheetdata(cJSON *taskData)
+    int querysheetdata(cJSON *root,cJSON *results)
     {
         logger_log_info("Processing sheetdata with pagination support");
 
         // 检查输入参数
-        cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
-        cJSON *sheetnameItem = cJSON_GetObjectItem(taskData, "sheetname");
-        cJSON *pageSizeItem = cJSON_GetObjectItem(taskData, "pageSize");
-        cJSON *pageIndexItem = cJSON_GetObjectItem(taskData, "pageIndex");
+        cJSON *filenameItem = cJSON_GetObjectItem(root, "filename");
+        cJSON *sheetnameItem = cJSON_GetObjectItem(root, "sheetname");
+        cJSON *pageSizeItem = cJSON_GetObjectItem(root, "pageSize");
+        cJSON *pageIndexItem = cJSON_GetObjectItem(root, "pageIndex");
 
         if (!filenameItem || !cJSON_IsString(filenameItem) ||
             !sheetnameItem || !cJSON_IsString(sheetnameItem) ||
@@ -731,15 +731,11 @@ namespace filemanager
             }
 
             // 构造返回结果
-            cJSON *result = cJSON_CreateObject();
-            cJSON_AddNumberToObject(result, "totalRecords", totalRecords);
-            cJSON_AddNumberToObject(result, "pageSize", pageSize);
-            cJSON_AddNumberToObject(result, "pageIndex", pageIndex);
-            cJSON_AddItemToObject(result, "data", sheetContent);
-
-            // 将结果写入全局 cJSON 对象（模拟接口返回）
-            cJSON_AddItemToObject(taskData, "response", result);
-
+            cJSON_AddNumberToObject(results, "totalRecords", totalRecords);
+            cJSON_AddNumberToObject(results, "pageSize", pageSize);
+            cJSON_AddNumberToObject(results, "pageIndex", pageIndex);
+            cJSON_AddItemToObject(results, "data", sheetContent);
+            
             logger_log_info("Successfully processed sheetdata for file: %s, sheet: %s",
                             filenameItem->valuestring, sheetnameItem->valuestring);
             return 0;

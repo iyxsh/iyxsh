@@ -698,32 +698,13 @@ namespace filemanager
             return;
         }
 
-        // 调用 filehandlers.cpp 中的 sheetdata 函数
-        cJSON *taskData = cJSON_CreateObject();
-        cJSON_AddStringToObject(taskData, "filename", filenameItem->valuestring);
-        cJSON_AddStringToObject(taskData, "sheetname", sheetnameItem->valuestring);
-        cJSON_AddNumberToObject(taskData, "pageSize", pageSizeItem->valuedouble);
-        cJSON_AddNumberToObject(taskData, "pageIndex", pageIndexItem->valuedouble);
-
-        int status = filemanager::sheetdata(taskData);
+        int status = filemanager::querysheetdata(jsonRoot,results);
         if (status != 0)
         {
             ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_INVALID_CONTENT);
             return;
         }
-        else
-        {
-            cJSON_AddItemToObject(results, "data", cJSON_Duplicate(taskData, true));
-        }
-
-        // Add response data
-        cJSON_AddStringToObject(results, "result", "success");
-        cJSON_AddStringToObject(results, "filename", filenameItem->valuestring);
-        cJSON_AddStringToObject(results, "sheetname", sheetnameItem->valuestring);
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
-
-        // 清理资源
-        cJSON_Delete(taskData);
 
         // Clean up
         cJSON_Delete(jsonRoot);

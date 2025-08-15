@@ -957,7 +957,8 @@ namespace filemanager
             }
 
             // 调用filehandlers中的处理函数
-            int res = filemanager::sheetdata(task.taskData);
+            cJSON *results = cJSON_CreateObject();
+            int res = filemanager::querysheetdata(task.taskData,results);
             if (res == 0)
             {
                 logger_log_info("Successfully processed sheet data task");

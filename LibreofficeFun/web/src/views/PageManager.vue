@@ -156,7 +156,6 @@ const cardStyleOn = ref(true)
 const formGridRef = ref(null)
 const cardConverterRef = ref(null) // SimpleCardConverter组件引用
 const currentPageType = ref('form') // 当前页面类型：form 或 cards
-const router = useRouter()
 
 // 大数据量读取配置
 const useLargeDataStrategy = ref(true) // 是否使用大数据量读取策略
@@ -165,10 +164,13 @@ const useLargeDataStrategy = ref(true) // 是否使用大数据量读取策略
 const toggleLargeDataStrategy = () => {
   useLargeDataStrategy.value = !useLargeDataStrategy.value;
   console.log('[PageManager] 大数据量读取策略已切换为:', useLargeDataStrategy.value ? '启用' : '禁用');
-  ElMessage.info(`大数据量读取策略已${useLargeDataStrategy.value ? '启用' : '禁用'}`);
+
+  if (useLargeDataStrategy.value) {
+    console.log('[PageManager] 应用大数据量优化逻辑...');
+    // 示例：动态调整分页大小
+    applyOptimizedPagination();
+  }
 };
-
-
 
 // 获取路由信息
 const route = useRoute()
@@ -183,35 +185,42 @@ const defaultPageSize = {
 // 初始化页面数据
 const initializePages = () => {
   // 检查路由中是否有文件数据
-  if (route.query?.fileData) {
+  if (route?.query?.fileData) {
     try {
-      const fileData = JSON.parse(route.query.fileData)
+      const fileData = JSON.parse(route.query.fileData);
       // 使用传入的文件数据初始化页面
-      pages.value = Array.isArray(fileData) ? fileData : [fileData]
-      currentPageIdx.value = Math.min(currentPageIdx.value, pages.value.length - 1)
-
-      console.log('[PageManager] 从文件管理器加载数据:', fileData)
-
+      pages.value = Array.isArray(fileData) ? fileData : [fileData];
+      if (!pages.value || pages.value.length === 0) {
+        pages.value = [{ forms: [], pageSize: defaultPageSize }];
+      }
+      currentPageIdx.value = 0;
+      console.log('[PageManager] 从文件管理器加载数据:', fileData);
       // 检查是否有文件名
       if (route.query.fileName) {
-        console.log('[PageManager] 加载文件:', route.query.fileName)
+        console.log('[PageManager] 加载文件:', route.query.fileName);
       }
     } catch (e) {
-      console.error('[PageManager] 解析文件数据失败:', e)
+      console.error('[PageManager] 解析文件数据失败:', e);
       // 如果解析失败，使用默认初始化
-      if (pages.value.length === 0) {
-        pages.value = [{ forms: [], pageSize: defaultPageSize }]
-        currentPageIdx.value = 0
-      }
+      pages.value = [{ forms: [], pageSize: defaultPageSize }];
+      currentPageIdx.value = 0;
     }
   } else {
     // 默认初始化
-    if (pages.value.length === 0) {
-      pages.value = [{ forms: [], pageSize: defaultPageSize }]
-      currentPageIdx.value = 0
+    if (!pages.value || pages.value.length === 0) {
+      pages.value = [{ forms: [], pageSize: defaultPageSize }];
+      currentPageIdx.value = 0;
     }
   }
-}
+
+  // 添加默认文件名以避免路由参数缺失导致的错误
+  if (!route?.query?.fileName) {
+    console.warn('[PageManager] 路由参数缺失，使用默认文件名');
+    if (route && route.query) {
+      route.query.fileName = 'default-file';
+    }
+  }
+};
 
 // 添加 getApiService 方法
 const getApiService = () => {
@@ -253,123 +262,149 @@ const cacheStore = new Map();
  * 调用 getSheetList 获取工作表列表并更新缓存
  */
 async function fetchAndCacheSheets(fileName) {
-    try {
-        console.log('[PageManager] 调用 getSheetList 获取工作表列表:', fileName);
+  try {
+    console.log('[PageManager] 调用 getSheetList 获取工作表列表:', fileName);
 
-        // 假设 apiServiceManager 是可用的 API 服务管理器
-        const apiService = getApiService();
-        if (!apiService || typeof apiService.getSheetList !== 'function' || 
-            typeof apiService.getSheetData !== 'function') {
-            console.warn('[PageManager] API服务或方法不可用');
-            ElMessage.warning('API服务或方法不可用');
-            return;
-        }
-
-        // 调用 API 获取工作表列表
-        const response = await apiService.getSheetList({ fileName });
-
-        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
-            console.error('获取工作表列表失败:', response);
-            ElMessage.error('获取工作表列表失败: ' + (response.errorMessage || '未知错误'));
-            return;
-        }
-
-        // 默认使用第一个工作表
-        const sheetList = response.data;
-        if (!sheetList || sheetList.length === 0) {
-            console.warn('[PageManager] 当前文件没有工作表:', fileName);
-            ElMessage.warning('当前文件没有工作表');
-            return;
-        }
-
-        const firstSheet = sheetList[0];
-        console.log('[PageManager] 默认使用第一个工作表:', firstSheet.name);
-
-        // 调用 API 获取第一个工作表的数据
-        const sheetDataResponse = await apiService.getSheetData({
-            fileName,
-            sheetName: firstSheet.name
-        });
-
-        if (sheetDataResponse.errorCode !== 1000 || sheetDataResponse.errorMessage !== "Success") {
-            console.error('获取工作表数据失败:', sheetDataResponse);
-            ElMessage.error('获取工作表数据失败: ' + (sheetDataResponse.errorMessage || '未知错误'));
-            return;
-        }
-
-        // 转换工作表数据为页面缓存格式
-        const sheetData = sheetDataResponse.data.map(item => ({
-            id: item.id,
-            name: item.name,
-            content: item.content || ''
-        }));
-
-        // 更新缓存
-        cacheStore.set(fileName, { pages: sheetData, currentPageIdx: 0 });
-        console.log('[PageManager] 工作表数据已更新到缓存:', fileName);
-
-        // 加载缓存数据
-        loadPagesFromCache(cacheStore.get(fileName));
-    } catch (error) {
-        console.error('[PageManager] 获取工作表列表或数据时出错:', error);
-        ElMessage.error('获取工作表列表或数据失败: ' + (error.message || '未知错误'));
+    // 检查 API 服务是否可用
+    const apiService = getApiService();
+    if (!apiService || typeof apiService.getSheetList !== 'function') {
+      console.warn('[PageManager] API服务不可用');
+      ElMessage.warning('API服务不可用');
+      return;
     }
-}
+
+    // 获取工作表列表
+    const response = await apiService.getSheetList({ filename: fileName });
+    if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+      console.error('[PageManager] 获取工作表列表失败:', response);
+      ElMessage.error('获取工作表列表失败: ' + (response.errorMessage || '未知错误'));
+      return;
+    }
+
+    const sheetList = response.sheets;
+    if (!Array.isArray(sheetList) || sheetList.length === 0) {
+      console.warn('[PageManager] 当前文件没有工作表:', fileName);
+      ElMessage.warning('当前文件没有工作表');
+      return;
+    }
+
+    // 拉取所有工作表数据并组装页面数据
+    const pageData = [];
+    for (const sheetName of sheetList) {
+      const sheetDataResponse = await apiService.getSheetData({
+        filename: fileName,
+        sheetname: sheetName
+      });
+
+      if (sheetDataResponse.errorCode !== 1000 || sheetDataResponse.errorMessage !== "Success") {
+        console.error('[PageManager] 获取工作表数据失败:', sheetDataResponse);
+        ElMessage.error('获取工作表数据失败: ' + (sheetDataResponse.errorMessage || '未知错误'));
+        continue; // 跳过错误的sheet
+      }
+
+      const sheetData = Array.isArray(sheetDataResponse.data)
+        ? sheetDataResponse.data.map(item => ({
+            id: item.id,
+            title: item.title,
+            value: item.value,
+            remark: item.remark,
+            media: item.media,
+            showTitle: item.showTitle,
+            showValue: item.showValue,
+            showRemark: item.showRemark,
+            showMedia: item.showMedia,
+            titleFontSize: item.titleFontSize,
+            valueFontSize: item.valueFontSize,
+            remarkFontSize: item.remarkFontSize,
+            titleColor: item.titleColor,
+            valueColor: item.valueColor,
+            remarkColor: item.remarkColor
+          }))
+        : [];
+
+      pageData.push({
+        id: Date.now() + Math.random(),
+        name: sheetName,
+        forms: sheetData,
+        pageSize: {} // 可根据实际需求补充
+      });
+    }
+console.log('pageData', pageData);
+    // 更新缓存
+    cacheStore.set(fileName, { pages: pageData, currentPageIdx: 0 });
+    console.log('[PageManager] 工作表数据已更新到缓存:', fileName);
+
+    // 加载缓存数据
+    loadPagesFromCache(cacheStore.get(fileName));
+  } catch (error) {
+    console.error('[PageManager] 获取工作表列表或数据时出错:', error);
+    ElMessage.error('获取工作表列表或数据失败: ' + (error.message || '未知错误'));
+  }
+};
 
 onBeforeMount(async () => {
-    try {
-        console.log('[PageManager] 页面即将挂载，当前页面数量:', pages.value.length);
+  try {
+    console.log('[PageManager] 页面即将挂载，当前页面数量:', pages.value.length);
 
-        // 确保正确获取路由对象
-        const route = useRoute();
-        if (!route || !route.query || !route.query.fileName) {
-            console.warn('[PageManager] 路由参数缺失');
-            ElMessage.warning('路由参数缺失，无法加载页面');
-            return;
-        }
-
-        const fileName = route.query.fileName;
-        console.log('[PageManager] 获取到的文件名参数:', fileName);
-
-        // 清除当前文件的页面缓存
-        clearFileCache(fileName);
-
-        // 调用 getSheetList 获取工作表列表并更新缓存
-        await fetchAndCacheSheets(fileName);
-    } catch (error) {
-        console.error('[PageManager] 初始化页面数据时出错:', error);
-        ElMessage.error('初始化页面数据失败');
+    const route = useRoute();
+    if (!route || !route.query || !route.query.fileName) {
+      console.warn('[PageManager] 路由参数缺失');
+      ElMessage.warning('路由参数缺失，无法加载页面');
+      return;
     }
+
+    const fileName = route.query.fileName;
+    console.log('[PageManager] 获取到的文件名参数:', fileName);
+
+    // 验证文件名是否有效（本地校验，无需外部函数）
+    const processedFileName = fileName && typeof fileName === 'string' ? fileName.trim() : '';
+    if (!processedFileName) {
+      console.warn('[PageManager] 文件名验证失败:', fileName);
+      ElMessage.warning('文件名验证失败，无法加载页面');
+      return;
+    }
+
+    // 清除当前文件的页面缓存
+    clearFileCache(processedFileName);
+
+    // 调用 getSheetList 获取工作表列表并更新缓存
+    await fetchAndCacheSheets(processedFileName);
+  } catch (error) {
+    console.error('[PageManager] 初始化页面数据时出错:', error);
+    ElMessage.error('初始化页面数据失败');
+  }
 });
 
 /**
  * 清除指定文件的缓存
  */
 function clearFileCache(fileName) {
-    if (cacheStore.has(fileName)) {
-        console.log('[PageManager] 清除文件缓存:', fileName);
-        cacheStore.delete(fileName);
-    }
+  if (cacheStore.has(fileName)) {
+    console.log('[PageManager] 清除文件缓存:', fileName);
+    cacheStore.delete(fileName);
+  } else {
+    console.warn('[PageManager] 缓存中不存在文件:', fileName);
+  }
 }
 
 /**
  * 从缓存加载页面
  */
 function loadPagesFromCache(cache) {
-    // 加载缓存中的页面数据
-    pages.value = cache.pages;
-    currentPageIdx.value = cache.currentPageIdx;
+  // 加载缓存中的页面数据
+  pages.value = cache.pages;
+  currentPageIdx.value = cache.currentPageIdx;
 }
 
 /**
  * 初始化新页面
  */
 function initializeNewPages(fileName) {
-    // 初始化新页面并存储缓存
-    const initialPages = [];
-    cacheStore.set(fileName, { pages: initialPages, currentPageIdx: 0 });
-    pages.value = initialPages;
-    currentPageIdx.value = 0;
+  // 初始化新页面并存储缓存
+  const initialPages = [];
+  cacheStore.set(fileName, { pages: initialPages, currentPageIdx: 0 });
+  pages.value = initialPages;
+  currentPageIdx.value = 0;
 }
 
 // i18n相关
@@ -394,33 +429,137 @@ watch(currentPageIdx, (newIndex, oldIndex) => {
   console.log(`[PageManager] 页面索引从 ${oldIndex} 变更为 ${newIndex}`);
 
   // 确保页面数据存在
-  if (newIndex >= 0 && newIndex < pages.value.length) {
+  if (pages.value && newIndex >= 0 && newIndex < pages.value.length) {
     const currentPage = pages.value[newIndex];
     console.log('[PageManager] 当前页面信息:', {
       index: newIndex,
-      name: currentPage.name,
-      pageSize: currentPage.pageSize,
-      formsCount: currentPage.forms?.length || 0
+      name: currentPage?.name,
+      pageSize: currentPage?.pageSize,
+      formsCount: currentPage?.forms?.length || 0
     });
   }
 
   // 强制更新以确保组件接收到最新的页面数据
   nextTick(() => {
     // 触发响应式更新
-    if (pages.value.length > 0) {
+    if (pages.value && pages.value.length > 0) {
       pages.value = [...pages.value];
     }
   });
 }, { immediate: true });
 
-// 监听路由变化，当文件名改变时重新加载缓存
-watch(() => route.query.fileName, (newFileName, oldFileName) => {
-  if (newFileName !== oldFileName) {
-    console.log('[PageManager] 文件名发生变化，重新加载缓存:', { oldFileName, newFileName });
-    // 重新加载缓存以使用新的文件名
-    reloadCache();
+// 监听路由变化并处理
+watch(() => route.value, (newRoute) => {
+  if (newRoute && newRoute.query && newRoute.query.fileName) {
+    handleRouteChange(newRoute.query);
+  } else {
+    console.warn('[PageManager] 路由参数缺失');
+    // 自动初始化默认页面和文件名
+    if (!pages.value || pages.value.length === 0) {
+      pages.value = [{ forms: [], pageSize: defaultPageSize }];
+      currentPageIdx.value = 0;
+    }
+    if (newRoute && newRoute.query) {
+      newRoute.query.fileName = 'default-file';
+    }
   }
-})
+}, { deep: true, immediate: true });
+
+// 处理路由变化
+const handleRouteChange = async (query) => {
+  try {
+    // 获取新的文件名
+    const newFileName = query.fileName ? query.fileName : '';
+
+    // 获取当前文件名
+    const oldFileName = route.value && route.value.query && route.value.query.fileName
+      ? route.value.query.fileName : '';
+
+    console.log('[PageManager] 路由变化处理:', {
+      oldFileName,
+      newFileName,
+      timestamp: new Date().toISOString()
+    });
+
+    // 如果文件名变化或当前没有页面数据，则加载缓存
+    if (newFileName !== oldFileName || !pages.value || pages.value.length === 0) {
+      debounce(async () => {
+        console.log('[PageManager] 开始加载文件:', newFileName);
+
+        // 验证新文件名
+        const processedFileName = await validateAndProcessFilename(newFileName, false);
+        if (!processedFileName) {
+          console.warn('[PageManager] 新文件名验证失败:', newFileName);
+          ElMessage.warning('新文件名验证失败，无法加载文件');
+          return;
+        }
+
+        // 清除当前文件的页面缓存
+        if (oldFileName) {
+          clearFileCache(oldFileName);
+        }
+
+        // 调用 getSheetList 获取工作表列表并更新缓存
+        await fetchAndCacheSheets()
+          .then(() => {
+            console.log('[PageManager] 文件加载成功:', processedFileName);
+            ElMessage.success(`文件 "${processedFileName}" 加载成功`);
+          })
+          .catch((error) => {
+            console.error('[PageManager] 文件加载失败:', error);
+            ElMessage.error('文件加载失败: ' + (error.message || '未知错误'));
+          });
+      }, 300)();
+    }
+  } catch (error) {
+    console.error('[PageManager] 处理路由变化时出错:', error);
+    ElMessage.error('处理文件参数时出错');
+    errorLogService.addErrorLog(error, '处理路由变化失败', 'error');
+  }
+};
+
+// 更新缓存
+const updateCache = (fileName, sheetData) => {
+  try {
+    // 添加空值检查
+    if (!fileName || !sheetData || !Array.isArray(sheetData)) {
+      console.warn('[PageManager] 参数无效，无法更新缓存:', { fileName, sheetData });
+      throw new Error('参数无效，无法更新缓存');
+    }
+
+    // 创建缓存数据
+    const cacheData = {
+      pages: sheetData.map(item => ({
+        id: item.id || Date.now() + Math.random(),
+        name: item.name || `Sheet-${Date.now()}`,
+        content: item.content || '',
+        forms: item.forms || []
+      })),
+      currentPageIdx: 0,
+      timestamp: Date.now(),
+      version: 1
+    };
+
+    // 更新缓存
+    cacheStore.set(fileName, cacheData);
+
+    // 加载缓存数据
+    loadPagesFromCache(cacheData);
+
+    console.log('[PageManager] 缓存更新成功:', {
+      fileName,
+      pagesCount: cacheData.pages.length,
+      timestamp: new Date().toISOString()
+    });
+
+    return true;
+  } catch (error) {
+    console.error('[PageManager] 更新缓存失败:', error);
+    ElMessage.error('缓存更新失败，请稍后重试');
+    errorLogService.addErrorLog(error, '更新缓存失败', 'error');
+    return false;
+  }
+};
 
 // 纸张尺寸选择对话框相关
 const showPageSizeDialog = ref(false)
@@ -498,7 +637,7 @@ const pageSize = computed(() => {
   };
 });
 
-// 处理表单更新
+// 优化表单存储同步逻辑
 function handleFormUpdate(updatedForms) {
   try {
     console.log('[PageManager] 接收到表单更新:', updatedForms?.length || 0, '个表单');
@@ -532,27 +671,16 @@ function handleFormUpdate(updatedForms) {
     // 使用Vue的响应式系统进行更新
     pages.value = newPages;
 
+    // 验证存储数据的有效性
+    const storedData = JSON.parse(localStorage.getItem('form-pages')) || {};
+    if (storedData[currentPageIdx.value]?.forms?.length !== updatedForms.length) {
+      console.error('[PageManager] 存储数据同步失败');
+    }
+
     // 保存到本地存储
     localStorage.setItem('form-pages', JSON.stringify(pages.value));
 
-    // 验证存储的数据
-    const storedPages = JSON.parse(localStorage.getItem('form-pages'));
-    console.log('[PageManager] 本地存储更新验证:', storedPages);
-
-    console.log('[PageManager] 表单更新成功，当前页面表单数量:',
-      pages.value[currentPageIdx.value]?.forms?.length || 0);
-
-    // 额外验证存储的数据
-    if (storedPages && storedPages[currentPageIdx.value]) {
-      console.log('[PageManager] 存储中当前页面表单数量:',
-        storedPages[currentPageIdx.value]?.forms?.length || 0);
-    }
-
-    // 触发nextTick确保DOM更新
-    nextTick(() => {
-      console.log('[PageManager] 页面数据更新完成，当前表单数量:',
-        pages.value[currentPageIdx.value]?.forms?.length || 0);
-    });
+    console.log('[PageManager] 表单更新成功，当前页面表单数量:', pages.value[currentPageIdx.value]?.forms?.length || 0);
   } catch (error) {
     console.error('[PageManager] 更新表单时出错:', error);
     ElMessage.error('更新表单失败');
@@ -666,6 +794,9 @@ function checkAndFixFormDisplay() {
 
 // 在组件挂载时注册全局事件
 onMounted(() => {
+  // Call initializePages to initialize page data
+  initializePages();
+
   // 初始化事件总线
   const { on } = useEventBus()
 
@@ -1487,9 +1618,9 @@ const debugButton = (buttonName) => {
 // 处理文件信息关闭事件
 const handleFileInfoClose = () => {
   // 清除路由中的fileName参数
-  const query = { ...route.query };
-  delete query.fileName;
-  delete query.fileData;
+  const query = this.$route && this.$route.query ? this.$route.query : {};
+  // 确保即使 query 不存在，也不会抛出错误
+  console.log('当前路由参数:', query);
 
   // 这里我们不进行路由跳转，只是清除显示
   // 因为实际应用中用户可能希望继续编辑
@@ -1507,7 +1638,7 @@ function convertSheetDataToForms(sheetData) {
   return sheetData.map(row => ({
     id: Date.now() + Math.random(),
     type: 'text',
-    title: row.title || '',
+    title: row.name || row.title || '', // 确保使用工作表名称作为优先标题
     value: row.value || '',
     remark: row.remark || '',
     fontSize: 14,

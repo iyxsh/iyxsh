@@ -270,7 +270,7 @@ export default {
           fileList.value = Array.isArray(response.files) ? response.files.map((item, index) => ({
             id: index,
             name: (item.filename ? removeFileExtension(item.filename) : `修文${index + 1}`),
-            status: item.status || '未知',
+            status: item.filestatus || '未知',
             modified: parseDate(item.lastModified) || new Date(),
             type: 'ods',
             size: item.size || 0
@@ -386,59 +386,24 @@ export default {
 
     // 在页面管理器中使用
     const useInPageManager = async (file) => {
-      // 参数校验
-      if (!file || !file.name) {
-        console.warn('[FileManager] 文件名为空，无法跳转');
-        ElMessage.warning('文件名为空，无法跳转');
-        return;
-      }
-
-      const MAX_ATTEMPTS = 10; // 最大尝试次数
-      let attempts = 0;        // 当前尝试次数
-
-      // 确保传递给 API 的参数包含 filename 字段
-      const fileWithFilename = { filename: file.name };
-
-      const checkFileStatus = async () => {
-        try {
-          const response = await apiServiceManager.value.fileStatus(fileWithFilename);
-
-          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
-            console.error('获取文件状态失败:', response);
-            ElMessage.error('获取文件状态失败: ' + (response.errorMessage || '未知错误'));
+        if (!file || !file.name) {
+            console.warn('[FileManager] 文件名为空，无法跳转');
+            ElMessage.warning('文件名为空，无法跳转');
             return;
-          }
+        }
 
-          // 检查状态是否为 ready 或 closed
-          if (response.filestatus === 'ready' || response.filestatus === 'closed') {
-            clearInterval(intervalId); // 停止定时器
+        try {
+            // 使用 Vue Router 跳转到 PageManager 页面
+            await router.push({
+                path: '/page', // 假设 PageManager 的路径为 /page
+                query: { fileName: file.name } // 通过查询参数传递文件名
+            });
 
-            // 直接使用 PageManager 组件，而不是跳转到 /page 页面
-            showPageManager(file.name);
-          } else {
-            attempts++;
-            if (attempts >= MAX_ATTEMPTS) {
-              clearInterval(intervalId); // 停止定时器
-              ElMessage.error('30秒内未检测到正常状态，操作已取消');
-            }
-          }
+            ElMessage.success(`已跳转到页面管理器，编辑文件: ${file.name}`);
         } catch (error) {
-            clearInterval(intervalId); // 停止定时器
-            console.error('获取文件状态失败:', error);
-            ElMessage.error('获取文件状态失败: ' + (error.message || '未知错误'));
+            console.error('[FileManager] 路由跳转失败:', error);
+            ElMessage.error('跳转到页面管理器失败: ' + (error.message || '未知错误'));
         }
-      };
-
-      // 启动定时器，每3秒检查一次状态
-      const intervalId = setInterval(checkFileStatus, 3000);
-
-      // 30秒后自动停止定时器
-      setTimeout(() => {
-        clearInterval(intervalId);
-        if (attempts < MAX_ATTEMPTS) {
-          ElMessage.error('30秒内未检测到正常状态，操作已取消');
-        }
-      }, 30000);
     };
 
     // 动态加载 PageManager 组件
