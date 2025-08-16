@@ -53,6 +53,9 @@
 // =====================================================
 // = 1. 导入依赖
 // =====================================================
+import { fieldToColumnMapping, generateFieldToColumnMapping } from '@/utils/formUtils';
+
+// 修复重复的默认导出并调整导入顺序
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
@@ -61,6 +64,21 @@ import FormEditor from './FormEditor.vue'
 import errorLogService from '@/services/errorLogService'
 import { getCurrentInstance } from 'vue'
 import { savePositions } from '../services/formPositionService'
+import ApiService, { callApi } from '../services/ApiService';
+// 字段映射状态
+const fieldToColumn = ref(fieldToColumnMapping);
+
+// 动态更新字段映射
+const updateFieldMapping = (formDesign) => {
+  console.log('[FormGrid] 根据表单设计更新字段映射:', formDesign);
+  fieldToColumn.value = generateFieldToColumnMapping(formDesign);
+};
+
+// 初始化逻辑
+onMounted(() => {
+  console.log('[FormGrid] 初始化字段映射:', fieldToColumn.value);
+});
+
 
 // =====================================================
 // = 2. 定义 props
@@ -397,114 +415,51 @@ const saveAddForm = async (formData) => {
     // 触发更新事件，确保父组件接收到更新
     emit('update:modelValue', updatedForms);
 
-    // 调用ApiServiceManager保存表单数据
-    const apiService = getApiService()
-    if (apiService) {
+    if (ApiService) {
       try {
-        // 获取文件名和页面名称
+        // 获取文件名（从 URL 参数中获取）
         const urlParams = new URLSearchParams(window.location.search);
         const filename = urlParams.get('fileName');
-
         if (!filename) {
-          throw new Error('无法从URL参数中获取文件名');
+          throw new Error('无法从 URL 参数中获取文件名');
         }
+        // 验证必要参数
+        if (!filename || filename === '未命名文件') {
+          throw new Error('文件名无效，无法保存到服务器');
+        }
+        console.log('[FormGrid] currentForms:', currentForms);
 
-        // 将表单数据转换为符合接口要求的形式
-        const updatecells = {};
-        const fieldToColumn = {
-          'id': 'A',
-          'title': 'B',
-          'value': 'C',
-          'remark': 'D',
-          'media': 'E',
-          'mediaType': 'F',
-          'showTitle': 'G',
-          'showValue': 'H',
-          'showRemark': 'I',
-          'showMedia': 'J',
-        };
-
-        updatedForms.forEach((form, index) => {
-          const row = index + 1;
-
-          Object.keys(form).forEach(fieldName => {
-            const skipFields = ['id', 'createdAt', 'style', 'elementStyles', 'position', 'size', 'zIndex'];
-            if (skipFields.includes(fieldName)) {
-              return;
-            }
-
-            const fieldValue = form[fieldName];
-
-            if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
-              let cellValue = fieldValue;
-              if (typeof fieldValue === 'boolean') {
-                cellValue = fieldValue ? 'true' : 'false';
-              } else if (typeof fieldValue === 'object') {
-                cellValue = JSON.stringify(fieldValue);
-              }
-
-              let column = fieldToColumn[fieldName];
-              if (!column) {
-                const additionalFields = Object.keys(form).filter(
-                  key => !Object.keys(fieldToColumn).includes(key)
-                );
-                console.warn('[FormGrid] handleFormSave 发现未知字段:', additionalFields);
-              }
-
-              const cellAddress = `${column}${row}`;
-              updatecells[cellValue] = cellAddress;
-            }
-          });
-        });
-
+        // 动态生成字段映射
+        let fieldToColumn;
         // 构造符合接口定义的更新数据
+        let updatecells = {};
+        currentForms.forEach((form, index) => {
+          const row = index + 1;
+          console.log('FormGrid] 添加表单第', row, '行数据', form);
+          fieldToColumn = generateFieldToColumnMapping(form, row);
+          console.log('[FormGrid] 动态生成字段映射:', fieldToColumn);
+          updatecells = { ...updatecells, ...fieldToColumn };
+        });
+        console.log('[FormGrid] updatecells 更新数据:', updatecells);
+
         const updateRequest = {
           filename: filename,
           updatedata: [{
             sheetname: sheetname.value,
-            updatecells: updatecells
-          }]
+            updatecells: updatecells,
+          }],
         };
 
-        const response = await apiService.updateFile(updateRequest);
-        if(response.errorCode !== 1000 || response.errorMessage !== "Success")
-        {
-          console.error('[FormGrid] 同步表单到服务器失败:', response);
-          ElMessage.error('同步表单到服务器失败: ' + (response.errorMessage || '未知错误'));
-          return;
+        const response = await callApi(ApiService.updateFile, updateRequest);
+        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+          throw new Error(response.errorMessage || '未知错误');
         }
-        console.log('[FormGrid] 表单添加成功并同步到服务器')
+
+        console.log('[FormGrid] 表单更新成功并同步到服务器');
       } catch (error) {
-        console.error('[FormGrid] 同步表单到服务器失败:', error)
-
-        // 根据错误类型提供不同的用户提示
-        let errorMessage = '表单同步失败';
-        if (error.message) {
-          if (error.message.includes('网络') || error.message.includes('Network')) {
-            errorMessage = '网络连接失败，请检查网络后重试';
-          } else if (error.message.includes('文件名')) {
-            errorMessage = error.message;
-          } else if (error.message.includes('权限') || error.message.includes('Permission')) {
-            errorMessage = '权限不足，无法保存到服务器';
-          } else {
-            errorMessage = `同步失败: ${error.message}`;
-          }
-        }
-
-        ElMessage.error(errorMessage);
-
-        // 记录错误日志
-        errorLogService.addErrorLog(
-          error,
-          '表单添加同步失败',
-          'error'
-        );
+        handleError(error, '保存表单失败');
       }
-    } else {
-      console.warn('[FormGrid] ApiServiceManager不可用，仅保存到本地存储')
-      ElMessage.warning('当前仅保存到本地，无法同步到服务器')
     }
-
     // 确保在DOM更新后执行
     nextTick(() => {
       console.log('[FormGrid] 表单保存后DOM已更新');
@@ -754,18 +709,6 @@ const handleUpdatePosition = ({ formId, position }) => {
 // 表单保存处理函数
 const handleFormSave = async (updatedForm) => {
   try {
-    const instance = getCurrentInstance();
-    console.log('[FormGrid] handleFormSave instance:', instance);
-    if (instance && instance.appContext && instance.appContext.config && instance.appContext.config.globalProperties) {
-      console.log('[FormGrid] handleFormSave globalProperties:', instance.appContext.config.globalProperties);
-    } else {
-      console.warn('[FormGrid] handleFormSave globalProperties 不存在');
-    }
-  } catch (e) {
-    console.error('[FormGrid] handleFormSave 打印实例出错', e);
-  }
-
-  try {
     const index = forms.value.findIndex(form => form.id === updatedForm.id);
     if (index !== -1) {
       const currentForms = [...forms.value];
@@ -808,9 +751,7 @@ const handleFormSave = async (updatedForm) => {
       });
       savePositions(positions, sizes);
 
-      // 调用 ApiServiceManager 更新表单数据
-      const apiService = getApiService();
-      if (apiService) {
+      if (ApiService) {
         try {
           // 获取文件名（从 URL 参数中获取）
           const urlParams = new URLSearchParams(window.location.search);
@@ -822,120 +763,45 @@ const handleFormSave = async (updatedForm) => {
           if (!filename || filename === '未命名文件') {
             throw new Error('文件名无效，无法保存到服务器');
           }
+          console.log('[FormGrid] currentForms:', currentForms);
 
-          // 将表单数据转换为符合接口要求的形式
-          const updatecells = {};
-          const fieldToColumn = {
-            'id': 'A',
-            'title': 'B',
-            'value': 'C',
-            'remark': 'D',
-            'media': 'E',
-            'mediaType': 'F',
-            'showTitle': 'G',
-            'showValue': 'H',
-            'showRemark': 'I',
-            'showMedia': 'J',
-          };
-
+          // 动态生成字段映射
+          let fieldToColumn;
+          // 构造符合接口定义的更新数据
+          let updatecells = {};
           currentForms.forEach((form, index) => {
-            let safeMedia = form.media;
-            if (safeMedia && typeof safeMedia === 'object' && safeMedia.url) {
-              safeMedia = safeMedia.url;
-            } else if (typeof safeMedia !== 'string') {
-              safeMedia = '';
-            }
-
             const row = index + 1;
-            Object.keys(form).forEach(fieldName => {
-              const skipFields = ['createdAt', 'style', 'elementStyles', 'position', 'size', 'zIndex'];
-              if (skipFields.includes(fieldName)) {
-                return;
-              }
-
-              let fieldValue = form[fieldName];
-              if (fieldName === 'media') {
-                fieldValue = safeMedia;
-              }
-
-              if (fieldValue !== undefined && fieldValue !== null && fieldValue !== '') {
-                let cellValue = fieldValue;
-                if (typeof fieldValue === 'boolean') {
-                  cellValue = fieldValue ? 'true' : 'false';
-                } else if (typeof fieldValue === 'object') {
-                  cellValue = JSON.stringify(fieldValue);
-                }
-
-                let column = fieldToColumn[fieldName];
-                if (!column) {
-                  const additionalFields = Object.keys(form).filter(
-                    key => !skipFields.includes(key) && !fieldToColumn[key]
-                  );
-                  const fieldIndex = additionalFields.indexOf(fieldName);
-                  column = String.fromCharCode(75 + fieldIndex);
-                }
-
-                const cellAddress = `${column}${row}`;
-                updatecells[cellValue] = cellAddress;
-              }
-            });
+            console.log('FormGrid] 添加表单第', row, '行数据', form);
+            fieldToColumn = generateFieldToColumnMapping(form, row);
+            console.log('[FormGrid] 动态生成字段映射:', fieldToColumn);
+            updatecells = { ...updatecells, ...fieldToColumn };
           });
-
-          if (Object.keys(updatecells).length === 0) {
-            console.warn('[FormGrid] 没有有效的数据需要更新');
-            ElMessage.warning('没有有效的数据需要保存到服务器');
-            return;
-          }
+          console.log('[FormGrid] updatecells 更新数据:', updatecells);
 
           const updateRequest = {
             filename: filename,
             updatedata: [{
               sheetname: sheetname.value,
-              updatecells: updatecells
-            }]
+              updatecells: updatecells,
+            }],
           };
 
-          const response = await apiService.updateFile(updateRequest);
-          if(response.errorCode !== 1000 || response.errorMessage !== "Success")
-          {
-            console.error('[FormGrid] 同步表单更新到服务器失败:', response);
-            ElMessage.error('同步表单更新到服务器失败: ' + (response.errorMessage || '未知错误'));
-            return;
+          const response = await callApi(ApiService.updateFile, updateRequest);
+          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            throw new Error(response.errorMessage || '未知错误');
           }
+
+          console.log('[FormGrid] 表单更新成功并同步到服务器');
         } catch (error) {
-          console.error('[FormGrid] 同步表单更新到服务器失败:', error);
-          let errorMessage = '表单更新同步失败';
-
-          if (error.message) {
-            if (error.message.includes('网络') || error.message.includes('Network')) {
-              errorMessage = '网络连接失败，请检查网络后重试';
-            } else if (error.message.includes('文件名') || error.message.includes('页面名称')) {
-              errorMessage = error.message;
-            } else if (error.message.includes('权限') || error.message.includes('Permission')) {
-              errorMessage = '权限不足，无法保存到服务器';
-            } else {
-              errorMessage = `同步失败: ${error.message}`;
-            }
-          }
-
-          ElMessage.error(errorMessage);
-          errorLogService.addErrorLog(error, '表单更新同步失败', 'error');
+          handleError(error, '保存表单失败');
         }
-      } else {
-        console.warn('[FormGrid] ApiServiceManager不可用，仅保存到本地存储')
-        ElMessage.warning('当前仅保存到本地，无法同步到服务器')
       }
-
-      hideFormEditor();
-      ElMessage.success('表单更新成功');
-    } else {
-      ElMessage.error('未找到要更新的表单');
     }
   } catch (error) {
-    console.error('[FormGrid] 处理表单保存失败:', error);
-    handleError(error, '处理表单保存失败');
+    console.error('[FormGrid] 保存表单失败:', error);
+    handleError(error, '保存表单失败');
   }
-};
+}
 
 // 处理编辑表单
 const handleEditForm = (formToEdit) => {
@@ -1093,43 +959,7 @@ onMounted(() => {
   }
 });
 
-// 获取ApiServiceManager实例
-const getApiService = () => {
-  try {
-    // 首先尝试通过getCurrentInstance获取
-    const instance = getCurrentInstance()
-    if (instance && instance.appContext && instance.appContext.config && instance.appContext.config.globalProperties) {
-      const apiService = instance.appContext.config.globalProperties.$apiService
-      if (apiService && typeof apiService.updateFile === 'function') {
-        console.log('[FormGrid] 通过Vue实例获取到ApiServiceManager');
-        return apiService
-      }
-    }
-
-    // 如果通过实例无法获取，则尝试通过window对象获取
-    if (typeof window !== 'undefined' && window.$apiService && typeof window.$apiService.updateFile === 'function') {
-      console.log('[FormGrid] 通过window对象获取到ApiServiceManager');
-      return window.$apiService
-    }
-
-    // 如果都获取不到，输出详细错误信息
-    console.warn('[FormGrid] 无法获取有效的ApiServiceManager实例', {
-      instanceExists: !!instance,
-      hasGlobalProperties: instance ? !!(instance.appContext && instance.appContext.config && instance.appContext.config.globalProperties) : false,
-      globalPropertiesKeys: instance && instance.appContext && instance.appContext.config && instance.appContext.config.globalProperties
-        ? Object.keys(instance.appContext.config.globalProperties)
-        : 'No globalProperties',
-      windowExists: typeof window !== 'undefined',
-      hasWindowApiService: typeof window !== 'undefined' ? !!window.$apiService : false,
-      windowApiServiceType: typeof window !== 'undefined' && window.$apiService ? typeof window.$apiService.updateFile : 'No updateFile method'
-    })
-
-    return null
-  } catch (error) {
-    console.error('[FormGrid] 获取ApiServiceManager实例时发生错误:', error);
-    return null
-  }
-}
+// 所有 API 操作统一通过 callApi(ApiService.方法, 参数...) 调用，无需 getApiService
 
 // 计算网格容器样式
 const gridContainerStyle = computed(() => {

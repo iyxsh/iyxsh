@@ -15,13 +15,14 @@
 
 <script setup>
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
 
 const retryLoading = () => {
   // 刷新当前路由
-  const currentRoute = router.currentRoute.value
+  const currentRoute = route.value
   router.replace({
     path: '/redirect',
     query: { path: currentRoute.fullPath }

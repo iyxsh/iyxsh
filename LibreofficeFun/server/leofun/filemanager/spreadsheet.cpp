@@ -125,9 +125,58 @@ namespace filemanager
         return nullptr;
     }
 
+    /// @brief 直接保存当前文档（不指定路径，保存到原始位置）
+    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface)
+    {
+        try
+        {
+            if (!docIface.is())
+            {
+                logger_log_error("saveDocumentDirect error: Invalid document interface");
+                return;
+            }
+            com::sun::star::uno::Reference<com::sun::star::frame::XStorable> xStorable(docIface, com::sun::star::uno::UNO_QUERY);
+            if (!xStorable.is())
+            {
+                logger_log_error("saveDocumentDirect error: Invalid storable interface");
+                return;
+            }
+            // 直接保存到原始位置（store 无参数）
+            try
+            {
+                xStorable->store();
+                logger_log_info("Document saved directly to original location.");
+            }
+            catch (const com::sun::star::uno::Exception &e)
+            {
+                rtl::OUString errorMessage = e.Message;
+                if (errorMessage.getLength() > 0)
+                {
+                    logger_log_error("UNO Exception during direct save: %s", convertOUStringToString(errorMessage).c_str());
+                }
+                else
+                {
+                    logger_log_error("Unknown UNO Exception occurred during direct save.");
+                }
+            }
+        }
+        catch (const com::sun::star::uno::Exception &e)
+        {
+            logger_log_error("saveDocumentDirect UNO exception: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("saveDocumentDirect std exception: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("saveDocumentDirect unknown exception occurred");
+        }
+    }
+
     /// @brief 保存文档到指定路径
     void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface,
-                  const rtl::OUString &filePath)
+                      const rtl::OUString &filePath)
     {
         try
         {
@@ -168,29 +217,37 @@ namespace filemanager
 
             // 构造文件 URL
             std::string urlPath = "file://" + absolutePath;
-            //转换 UTF8 编码，防止保存文件出现异常
+            // 转换 UTF8 编码，防止保存文件出现异常
             rtl::OUString url = convertStringToOUString(urlPath.c_str());
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
-            // 设置保存属性
-            com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(1);
+            // 设置保存属性，确保包含 Overwrite 和 FilterName 属性
+            com::sun::star::uno::Sequence<com::sun::star::beans::PropertyValue> props(2);
             props[0].Name = convertStringToOUString("Overwrite");
-            props[0].Value <<= true;
+            props[0].Value <<= true; // 强制覆盖已有文件
+            props[1].Name = convertStringToOUString("FilterName");
+            props[1].Value <<= convertStringToOUString("calc8"); // 指定 ODS 文件格式
 
-            // 检查文件是否存在，如果存在则删除（用物理路径而不是 URL）
-            //if (access(absolutePath.c_str(), F_OK) == 0)
-            //{
-            //    logger_log_info("File already exists, removing: %s", absolutePath.c_str());
-            //    if (unlink(absolutePath.c_str()) != 0)
-            //    {
-            //        logger_log_error("Failed to remove existing file: %s", absolutePath.c_str());
-            //        return;
-            //    }
-            //}
-
-            // 保存文档
-            xStorable->storeAsURL(url, props);
-            logger_log_info("saveDocument: Successfully saved to: %s", absolutePath.c_str());
+            try
+            {
+                // 直接调用 storeAsURL，依赖 UNO API 实现覆盖逻辑
+                xStorable->storeAsURL(url, props);
+                logger_log_info("Document saved successfully: %s", convertOUStringToString(url).c_str());
+            }
+            catch (const com::sun::star::uno::Exception &e)
+            {
+                // 记录详细的错误信息
+                rtl::OUString errorMessage = e.Message;
+                if (errorMessage.getLength() > 0)
+                {
+                    logger_log_error("UNO Exception during save: %s",
+                                     convertOUStringToString(errorMessage).c_str());
+                }
+                else
+                {
+                    logger_log_error("Unknown UNO Exception occurred during save.");
+                }
+            }
         }
         catch (const com::sun::star::uno::Exception &e)
         {
@@ -347,7 +404,7 @@ namespace filemanager
                 std::cerr << "readSpreadsheetFile: Finished processing sheet: " << sheetName << std::endl;
             }
 
-            //closeDocument(xComp);
+            // closeDocument(xComp);
             std::cerr << "readSpreadsheetFile: Successfully read file" << std::endl;
             return root;
         }
@@ -591,8 +648,8 @@ namespace filemanager
             // 保存文档前输出文件路径信息
             std::string filePathStr = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
             std::cerr << "createNewSpreadsheetFile: Saving document to: " << filePathStr << std::endl;
-            saveDocument(xDoc, filePath);
-            //closeDocument(xComp);
+            saveDocumentDirect(xDoc);
+            // closeDocument(xComp);
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
@@ -741,8 +798,8 @@ namespace filemanager
             }
 
             // 保存文档
-            saveDocument(xDoc, curFilePath);
-            //closeDocument(xComp);
+            saveDocumentDirect(xDoc);
+            // closeDocument(xComp);
 
             return cJSON_CreateString("success");
         }
@@ -909,6 +966,12 @@ namespace filemanager
                 cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
                 logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
 
+                // 从配置文件读取最大列数和行数限制
+                int maxCols = json_config_get_int("maxCols");
+                int maxRows = json_config_get_int("maxRows");
+                logger_log_info("maxRows: %d", maxRows);
+                logger_log_info("maxCols: %d", maxCols);
+
                 // 遍历对象中的每个键值对
                 cJSON *item = updatecells->child;
                 while (item)
@@ -926,7 +989,12 @@ namespace filemanager
                             // 解析单元格地址
                             sal_Int32 col = 0, row = 0;
                             parseCellAddress(cellAddr, col, row);
-
+                            if (row >= maxRows || col >= maxCols)
+                            {
+                                logger_log_error("Cell address %s is out of bounds (maxRows: %d, maxCols: %d)", cellAddress, maxRows, maxCols);
+                                item = item->next;
+                                continue; // 跳过这个单元格，继续处理下一个
+                            }
                             // 获取单元格
                             uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
                             if (!cell.is())
@@ -974,8 +1042,8 @@ namespace filemanager
             }
 
             // 保存文档
-            saveDocument(xDoc, filePath);
-            //closeDocument(xComp);
+            saveDocumentDirect(xDoc);
+            // closeDocument(xComp);
 
             return cJSON_CreateString("success");
         }
@@ -1242,7 +1310,7 @@ namespace filemanager
         return resultBuffer.makeStringAndClear();
     }
 
-    // 获取工作表总行数（简单实现：假设每行有内容）
+    // 获取工作表总行数（持续读取行直到遇到第一个空白行）
     int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName)
     {
         try
@@ -1259,24 +1327,35 @@ namespace filemanager
                 return -1;
             }
             uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
-            // 修复：遍历所有行，统计有效（非空）行数
-            int maxRows = json_config_get_int("maxRows");
+
             int maxCols = json_config_get_int("maxCols");
+            int maxRows = json_config_get_int("maxRows");
+            logger_log_info("maxRows: %d", maxRows);
+            logger_log_info("maxCols: %d", maxCols);
             int validRowCount = 0;
-            //for (int row = 0; row < maxRows; ++row) {
-            //    bool rowHasData = false;
-            //    for (int col = 0; col < maxCols; ++col) {
-            //        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-            //        double cellValue = cell->getValue();
-            //        rtl::OUString cellFormula = cell->getFormula();
-            //        if (cellValue != 0.0 || cellFormula.getLength() > 0) {
-            //            rowHasData = true;
-            //            break;
-            //        }
-            //    }
-            //    if (rowHasData) ++validRowCount;
-            //}
-            //closeDocument(xComp);
+            int col = 1; // 列索引
+            int row = 0; // 行索引
+            while (true)
+            {
+                if (++row > maxRows)
+                {
+                    logger_log_error("Reached max row limit: %d", maxRows);
+                    break;
+                }
+                uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, validRowCount);
+                double cellValue = cell->getValue();
+                rtl::OUString cellFormula = cell->getFormula();
+                if (cellValue != 0.0 || cellFormula.getLength() > 0)
+                {
+                    ++validRowCount; // 统计有效行数
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            closeDocument(xComp);
             return validRowCount;
         }
         catch (...)
@@ -1310,13 +1389,44 @@ namespace filemanager
                 for (int col = 0; col < 100; ++col)
                 {
                     uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                    rtl::OUString cellValue = cell->getFormula();
-                    std::string key = "C" + std::to_string(col);
-                    cJSON_AddStringToObject(rowObj, key.c_str(), rtl::OUStringToOString(cellValue, RTL_TEXTENCODING_UTF8).getStr());
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+                    // 判断是否为空单元格
+                    if (cellValue == 0.0 && cellFormula.getLength() == 0)
+                    {
+                        continue; // 跳过空单元格
+                    }
+                    // 生成单元格位置，如A1、B2
+                    std::string colName = filemanager::columnIndexToName(col);
+                    std::string cellPos = colName + std::to_string(row + 1);
+                    std::string content;
+                    // 优先返回单元格显示内容（XText->getString），如果为空再返回数值或公式
+                    rtl::OUString cellString;
+                    try {
+                        uno::Reference<com::sun::star::text::XText> xText(cell, uno::UNO_QUERY);
+                        if (xText.is()) {
+                            cellString = xText->getString();
+                        }
+                    } catch (...) {
+                        cellString = rtl::OUString();
+                    }
+                    if (cellString.getLength() > 0)
+                    {
+                        content = rtl::OUStringToOString(cellString, RTL_TEXTENCODING_UTF8).getStr();
+                    }
+                    else if (cellValue != 0.0)
+                    {
+                        content = std::to_string(cellValue);
+                    }
+                    else if (cellFormula.getLength() > 0)
+                    {
+                        content = rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr();
+                    }
+                    cJSON_AddStringToObject(rowObj, content.c_str(), cellPos.c_str());
                 }
                 cJSON_AddItemToArray(result, rowObj);
             }
-            //closeDocument(xComp);
+            // closeDocument(xComp);
         }
         catch (...)
         {

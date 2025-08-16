@@ -1,5 +1,7 @@
+
 // 这是一个临时修复程序，用于解决路由显示问题
 // 运行此脚本可在控制台中查看当前路由信息
+import { useRoute } from 'vue-router';
 
 (function() {
   // 等待Vue应用初始化
@@ -15,7 +17,9 @@
 
         // 获取当前路由信息
         const router = window.$app.$router;
-        const currentRoute = router?.currentRoute?.value;
+        // 推荐用useRoute()
+        const route = useRoute();
+        const currentRoute = route.value;
 
         console.log('当前路由信息:', {
           path: currentRoute?.path,
@@ -27,16 +31,12 @@
 
         // 检查App.vue组件的currentRoute实现
         const appComponent = window.$app?.$root;
-        console.log('App组件currentRoute实现:', {
-          currentRouteType: typeof appComponent?.currentRoute,
-          isRef: appComponent?.currentRoute?.__v_isRef,
-          isComputed: appComponent?.currentRoute?.__v_isReadonly
-        });
+        // 推荐直接用useRoute()或setup内computed(() => route.value)
 
         // 建议修复方法
         console.log('问题诊断:');
-        console.log('1. 如果currentRoute是ref而非computed属性，需要在模板中使用currentRoute.value.path');
-        console.log('2. 如果currentRoute是computed属性，在模板中应使用currentRoute.path');
+        // 1. 如果currentRoute是ref而非computed属性，需要在模板中使用currentRoute.value.path
+        // 2. 如果currentRoute是computed属性，在模板中应使用currentRoute.path
         console.log('===== 修复建议 =====');
         console.log('在App.vue中，将:');
         console.log('const currentRoute = ref(null)');

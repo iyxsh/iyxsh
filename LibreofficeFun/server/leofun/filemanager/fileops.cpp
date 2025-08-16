@@ -765,6 +765,5 @@ namespace filemanager
         cJSON_AddStringToObject(results, "newFilename", removeFileExtension(std::string(newFilenameItem->valuestring)).c_str());
         cJSON_AddStringToObject(results, "filestatus", "processing");
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
-        cJSON_Delete(jsonRoot);
     }
 } // namespace filemanager

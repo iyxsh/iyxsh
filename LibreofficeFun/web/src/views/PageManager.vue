@@ -42,10 +42,10 @@
     <el-container class="main-container">
       <Toolbar :clearAllPages="clearAllPages" :rotatePage="rotateCurrentPage" :showRotateButton="pages.length > 0"
         :pages="pages" :currentPage="currentPageIdx" :cardStyleOn="cardStyleOn"
-        :editable="editPageIdx === currentPageIdx" :newPageName="newPageName" @toggle-edit-mode="toggleEditMode"
-        @export-data="exportData" @import-data="importData" @save-all="saveAll" @on-add-page="onAddPage"
-        @remove-page="handleRemovePage" @rename-page="handleRenamePage" @toggle-edit-page="toggleEditPage"
-        @change-page="handleToolbarChangePage" />
+        :editable="editPageIdx === currentPageIdx" :newPageName="newPageName" :fileName="route.query.fileName"
+        @toggle-edit-mode="toggleEditMode" @export-data="exportData" @import-data="importData" @save-all="saveAll"
+        @on-add-page="onAddPage" @remove-page="handleRemovePage" @rename-page="handleRenamePage"
+        @toggle-edit-page="toggleEditPage" @change-page="handleToolbarChangePage" />
       <el-main>
         <!-- 表单页面 -->
         <template v-if="currentPageType === 'form'">
@@ -144,7 +144,9 @@ import { getLocale, setLocale, t as i18nTrans } from '../utils/i18n'
 import { onBeforeMount, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useEventBus } from '../utils/eventBus'
+import ApiService, { callApi } from '../services/ApiService'
 import errorLogService from '@/services/errorLogService'
+import { fieldToColumnMapping, generateFieldToColumnMapping, generateColumnToFieldMapping } from '@/utils/formUtils';
 
 // 创建响应式对象
 const { pages, addPage, updatePage, removePage, rotatePageOrientation, reloadCache } = usePages()
@@ -222,39 +224,6 @@ const initializePages = () => {
   }
 };
 
-// 添加 getApiService 方法
-const getApiService = () => {
-  try {
-    const instance = getCurrentInstance();
-    if (!instance) {
-      console.warn('[PageManager] Vue实例不可用');
-      return null;
-    }
-
-    const apiService = instance.appContext?.config?.globalProperties?.$apiService;
-    if (!apiService) {
-      console.warn('[PageManager] API服务实例不可用');
-      return null;
-    }
-
-    // 检查API服务是否有必要的方法
-    if (typeof apiService.getSheetData !== 'function') {
-      console.warn('[PageManager] API服务缺少getSheetData方法');
-      return null;
-    }
-
-    // 检查是否有分页读取方法（可选）
-    if (typeof apiService.getSheetDataWithPagination !== 'function') {
-      console.warn('[PageManager] API服务缺少getSheetDataWithPagination方法，将使用标准方法');
-    }
-
-    return apiService;
-  } catch (error) {
-    console.error('[PageManager] 获取API服务时出错:', error);
-    return null;
-  }
-};
-
 // 初始化缓存存储
 const cacheStore = new Map();
 
@@ -264,38 +233,31 @@ const cacheStore = new Map();
 async function fetchAndCacheSheets(fileName) {
   try {
     console.log('[PageManager] 调用 getSheetList 获取工作表列表:', fileName);
-
-    // 检查 API 服务是否可用
-    const apiService = getApiService();
-    if (!apiService || typeof apiService.getSheetList !== 'function') {
-      console.warn('[PageManager] API服务不可用');
-      ElMessage.warning('API服务不可用');
-      return;
-    }
-
-    // 获取工作表列表
-    const response = await apiService.getSheetList({ filename: fileName });
+    // 统一 API 操作
+    const response = await callApi(ApiService.sheetlist, { filename: fileName });
     if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
       console.error('[PageManager] 获取工作表列表失败:', response);
       ElMessage.error('获取工作表列表失败: ' + (response.errorMessage || '未知错误'));
       return;
     }
-
     const sheetList = response.sheets;
     if (!Array.isArray(sheetList) || sheetList.length === 0) {
       console.warn('[PageManager] 当前文件没有工作表:', fileName);
       ElMessage.warning('当前文件没有工作表');
       return;
     }
-
     // 拉取所有工作表数据并组装页面数据
     const pageData = [];
     for (const sheetName of sheetList) {
-      const sheetDataResponse = await apiService.getSheetData({
+      const sheetDataResponse = await callApi(ApiService.getSheetData, {
         filename: fileName,
-        sheetname: sheetName
+        sheetname: sheetName,
+        "pageSize": 10,
+        "pageIndex": 0,
+        "batchSize": 0,
+        "enableStreaming": false,
+        "enableCompression": false
       });
-
       if (sheetDataResponse.errorCode !== 1000 || sheetDataResponse.errorMessage !== "Success") {
         console.error('[PageManager] 获取工作表数据失败:', sheetDataResponse);
         ElMessage.error('获取工作表数据失败: ' + (sheetDataResponse.errorMessage || '未知错误'));
@@ -303,25 +265,29 @@ async function fetchAndCacheSheets(fileName) {
       }
 
       const sheetData = Array.isArray(sheetDataResponse.data)
-        ? sheetDataResponse.data.map(item => ({
-            id: item.id,
-            title: item.title,
-            value: item.value,
-            remark: item.remark,
-            media: item.media,
-            showTitle: item.showTitle,
-            showValue: item.showValue,
-            showRemark: item.showRemark,
-            showMedia: item.showMedia,
-            titleFontSize: item.titleFontSize,
-            valueFontSize: item.valueFontSize,
-            remarkFontSize: item.remarkFontSize,
-            titleColor: item.titleColor,
-            valueColor: item.valueColor,
-            remarkColor: item.remarkColor
-          }))
+        ? sheetDataResponse.data.map(item => {
+            // 使用 generateColumnToFieldMapping 进行逆映射
+            const columnToFieldMapping = generateColumnToFieldMapping(item);
+            console.log('[PageManager] 逆映射列到字段:', columnToFieldMapping);
+            return {
+              id: columnToFieldMapping.A || '', // 假设ID字段是A列
+              title: columnToFieldMapping.B || '', // 假设标题字段是B列
+              value: columnToFieldMapping.C || '', // 假设值字段是C列
+              remark: columnToFieldMapping.D || '', // 假设备注字段是D列
+              media: columnToFieldMapping.E || '', // 假设媒体字段是 E 列
+              showTitle: columnToFieldMapping.F === 'true', // 假设显示标题字段是 F 列
+              showValue: columnToFieldMapping.G === 'true', // 假设显示值字段是 G 列
+              showRemark: columnToFieldMapping.H === 'true', // 假设显示备注字段是 H 列
+              showMedia: columnToFieldMapping.I === 'true', // 假设显示媒体字段是 I 列
+              titleFontSize: columnToFieldMapping.J || 0, // 假设标题字体大小字段是 J 列
+              valueFontSize: columnToFieldMapping.K || 0, // 假设值字体大小字段是 K 列
+              remarkFontSize: columnToFieldMapping.L || 0, // 假设备注字体大小字段是 L 列
+              titleColor: columnToFieldMapping.M || '#000000', // 假设标题颜色字段是 M 列
+              valueColor: columnToFieldMapping.N || '#000000', // 假设值颜色字段是 N 列
+              remarkColor: columnToFieldMapping.O || '#000000' // 假设设备注颜色字段是 O 列
+            };
+          })
         : [];
-
       pageData.push({
         id: Date.now() + Math.random(),
         name: sheetName,
@@ -329,11 +295,10 @@ async function fetchAndCacheSheets(fileName) {
         pageSize: {} // 可根据实际需求补充
       });
     }
-console.log('pageData', pageData);
+    console.log('pageData', pageData);
     // 更新缓存
     cacheStore.set(fileName, { pages: pageData, currentPageIdx: 0 });
     console.log('[PageManager] 工作表数据已更新到缓存:', fileName);
-
     // 加载缓存数据
     loadPagesFromCache(cacheStore.get(fileName));
   } catch (error) {

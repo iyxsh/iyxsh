@@ -531,8 +531,8 @@ namespace filemanager
         // 更新文件状态为处理中
         updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
 
-        // 模拟处理时间
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        //删除文件信息记状态记录
+        int res = filemanager::fileclose(task.taskData);        
 
         // 更新文件状态为已关闭
         updateFileStatus(task.filename, FILE_STATUS_CLOSED);
@@ -979,4 +979,12 @@ namespace filemanager
 
         logger_log_info("Finished processing sheet data task");
     }
+
+    // 移除文件信息
+    void FileQueueManager::removeFileInfo(const std::string &filename) {
+        std::lock_guard<std::mutex> lock(statusMutex);
+        fileStatusMap.erase(filename);
+        logger_log_info("Removed file info for: %s", filename.c_str());
+    }
+
 } // namespace filemanager

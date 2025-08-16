@@ -11,18 +11,14 @@
     <div v-if="showDebugInfo" class="debug-info">
       <h3>应用状态</h3>
       <ul>
-        <li>当前路由: {{ currentRoute?.path }}</li>
-        <li>路由名称: {{ currentRoute?.name }}</li>
+        <li>当前路由: {{ currentRoute.path }}</li>
+        <li>路由名称: {{ currentRoute.name }}</li>
         <li>已加载: {{ isLoaded }}</li>
         <li>错误状态: {{ hasError }}</li>
         <li>加载进度: {{ loadingProgress }}%</li>
         <li>语言: {{ locale }}</li>
       </ul>
     </div>
-
-    <!-- ApiServiceManager 组件 -->
-    <ApiServiceManager ref="apiServiceManager" />
-
     <!-- 加载状态 -->
     <AppLoading 
       v-if="!isLoaded" 
@@ -58,14 +54,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { t, setLocale, getLocale } from './utils/i18n';
 import AppLoading from './components/AppLoading.vue';
 import AppError from './components/AppError.vue';
-import ApiServiceManager from './components/ApiServiceManager.vue';
 import errorLogService from './services/errorLogService';
 export default {
   name: 'App',
   components: {
     AppLoading,
     AppError,
-    ApiServiceManager
   },
   setup() {
     // 状态管理
@@ -76,14 +70,13 @@ export default {
     const isRouterAlive = ref(true);
     const loadingProgress = ref(0);
     const showDebugInfo = ref(false);
-    const apiServiceManager = ref(null);
 
     // 路由相关
     const route = useRoute();
     const router = useRouter();
 
-    // 使用computed计算属性获取当前路由，确保响应式更新
-    const currentRoute = computed(() => route);
+    // 直接使用 useRoute() 返回的 route 对象即可
+    const currentRoute = route;
 
     // 增强的加载状态管理
     const startLoading = () => {
@@ -319,22 +312,6 @@ export default {
       }
     });
 
-    // 监听 ApiServiceManager 实例变化并注册到全局属性
-    watch(apiServiceManager, (newVal) => {
-      if (newVal) {
-        // 将 ApiServiceManager 实例注册到全局属性
-        const appInstance = getCurrentInstance();
-        if (appInstance) {
-          appInstance.appContext.config.globalProperties.$apiService = newVal;
-        }
-        
-        // 同时注册到 window 对象，以便在其他地方访问
-        if (typeof window !== 'undefined') {
-          window.$apiService = newVal;
-        }
-      }
-    });
-
     // 设置语言
     const setLocaleWrapper = (lang) => {
       locale.value = lang;
@@ -402,7 +379,6 @@ export default {
       // 方法
       toggleDebugInfo,
       reloadApp,
-      apiServiceManager,
       onComponentLoad,
       handleComponentError,
       setLocale: setLocaleWrapper

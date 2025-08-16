@@ -24,6 +24,7 @@
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
+#include <com/sun/star/text/XText.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
 #include <string>
@@ -50,7 +51,8 @@ namespace filemanager
     /// @brief 读取单元格内容为JSON
     cJSON *readCellToJson(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sheet,
                           const rtl::OUString &cellAddress);
-
+    /// @brief 直接保存打开的文档，不要路径
+    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface);
     /// @brief 保存文档到指定路径
     void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &doc,
                       const rtl::OUString &filePath);

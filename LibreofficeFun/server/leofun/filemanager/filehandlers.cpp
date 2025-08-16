@@ -103,6 +103,42 @@ namespace filemanager
         return 0;
     }
 
+    
+    int fileclose(cJSON *taskData) {
+        cJSON *filenameItem = cJSON_GetObjectItem(taskData, "filename");
+        if (!filenameItem || !cJSON_IsString(filenameItem)) {
+            logger_log_error("Invalid or missing filename in close file task data");
+            return -1;
+        }
+
+        std::string filename = filenameItem->valuestring;
+        FileInfo fileInfo = FileQueueManager::getInstance().getFileInfo(filename);
+
+        if (!fileInfo.xComponent.is()) {
+            logger_log_info("File %s is not opened, no need to close", filename.c_str());
+            return -1;
+        }
+
+        try {
+            // 关闭文档
+            closeDocument(fileInfo.xComponent);
+
+            // 删除文件信息和状态信息
+            FileQueueManager::getInstance().removeFileInfo(filename);
+            logger_log_info("Removed file info and status for: %s", filename.c_str());
+        } catch (const uno::Exception &e) {
+            logger_log_error("UNO exception while closing file %s: %s",
+                             filename.c_str(),
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        } catch (const std::exception &e) {
+            logger_log_error("STD exception while closing file %s: %s", filename.c_str(), e.what());
+        } catch (...) {
+            logger_log_error("Unknown exception while closing file %s", filename.c_str());
+        }
+        return 0;
+    }
+
+
     int fileupdate(cJSON *root)
     {
         // 实现更新文件的函数
@@ -476,7 +512,7 @@ namespace filemanager
             sheets->insertNewByName(sheetName, 0);
 
             // 保存文档
-            saveDocument(xDoc, filePath);
+            saveDocumentDirect(xDoc);
 
             // 关闭文档
             // closeDocument(xComp);
@@ -557,7 +593,7 @@ namespace filemanager
             rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
             rtl::OUString absoluteFilePath;
             getAbsolutePath(filenameOstr, absoluteFilePath);
-            saveDocument(xDoc, absoluteFilePath);
+            saveDocumentDirect(xDoc);
 
             // 关闭文档
             // closeDocument(xComp);
@@ -655,7 +691,7 @@ namespace filemanager
                             sheetnameItem->valuestring, newsheetnameItem->valuestring, filenameItem->valuestring);
 
             // 保存文档
-            saveDocument(xDoc, filePath);
+            saveDocumentDirect(xDoc);
             // closeDocument(xComp);
             return 0;
         }
@@ -729,6 +765,8 @@ namespace filemanager
                                  filenameItem->valuestring, sheetnameItem->valuestring);
                 return -1;
             }
+
+            logger_log_info("Sheet content: %s", cJSON_Print(sheetContent));
 
             // 构造返回结果
             cJSON_AddNumberToObject(results, "totalRecords", totalRecords);

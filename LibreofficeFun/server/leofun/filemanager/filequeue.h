@@ -100,6 +100,7 @@ namespace filemanager {
         
         // 设置模板加载状态
         void setTemplateLoading(bool loading);
+        void removeFileInfo(const std::string &filename);
 
     private:
         FileQueueManager();

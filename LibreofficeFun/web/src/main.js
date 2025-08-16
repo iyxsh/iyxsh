@@ -22,6 +22,9 @@ app.config.globalProperties.$errorLogService = errorLogService
 // 添加 Element Plus 插件
 app.use(ElementPlus);
 
+// 使用 Vue Router
+app.use(router);
+
 // 添加全局错误边界
 app.config.errorHandler = (err, vm, info) => {
   // 增强错误信息输出，直接打印堆栈
@@ -103,21 +106,10 @@ try {
       '未处理的Promise拒绝',
       'error'
     );
-    // 阻止默认处理
-    event.preventDefault();
   });
 } catch (error) {
   console.error('[main] 初始化错误日志服务失败:', error);
 }
-
-// 先设置全局属性
-app.config.globalProperties.$t = t;
-app.config.globalProperties.$setLocale = setLocale;
-app.config.globalProperties.$getLocale = getLocale;
-
-// 使用Pinia和路由
-app.use(pinia);
-app.use(router);
 
 // 挂载应用
 let appInstance
@@ -129,18 +121,27 @@ try {
     window.$app = appInstance
   }
   
-  // 在应用挂载后，将ApiServiceManager实例注册到全局属性
+  // 在应用挂载后，可扩展其他全局初始化逻辑
   appInstance.$nextTick(() => {
-    if (window.$apiService) {
-      app.config.globalProperties.$apiService = window.$apiService
-    }
+    // ...existing code...
   })
+
+  // 注册 Service Worker，实现 PWA 支持
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => {
+          console.log('Service Worker 注册成功:', reg);
+        })
+        .catch(err => {
+          console.error('Service Worker 注册失败:', err);
+        });
+    });
+  }
 } catch (error) {
   errorLogService.addErrorLog(error, '应用程序挂载失败', 'error');
   console.error('[main] 应用程序挂载失败:', error);
 }
-
-
 
 // 导出app实例以便其他模块可以使用
 export { appInstance }

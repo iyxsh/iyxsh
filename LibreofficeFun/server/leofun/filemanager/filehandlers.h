@@ -16,6 +16,7 @@ namespace filemanager
     int worksheetRemove(cJSON *taskData);
     int worksheetRename(cJSON *taskData);
     int querysheetdata(cJSON *root,cJSON *results);
+    int fileclose(cJSON *taskData);
 } // namespace filemanager
 
 #endif // FILEHANDLERS_H

@@ -143,8 +143,8 @@ import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip, ElInput } from 
 import { useEventBus } from '../utils/eventBus'
 import { DocumentAdd, Delete, Upload, Download, Position, Rank, Plus, Minus, Refresh, Lock, Unlock } from '@element-plus/icons-vue'
 import { Share as Save } from '@element-plus/icons-vue'
-import { CollectionTag as TakeawayBox } from '@element-plus/icons-vue'
 import errorLogService from '../services/errorLogService'
+import apiService,{ callApi } from '../services/ApiService'
 
 // 添加组件加载调试信息
 console.log('Toolbar component initializing');
@@ -162,7 +162,8 @@ const props = defineProps({
   rotatePage: Function,
   showRotateButton: Boolean,
   onRemovePage: Function, // 添加删除页面的回调函数
-  newPageName: String // 添加新页面名称prop
+  newPageName: String, // 添加新页面名称prop
+  fileName: String // 新增 fileName prop，父组件传递
 })
 
 // 创建计算属性或本地状态以避免直接修改props
@@ -261,15 +262,10 @@ const addPage = async () => {
     
     // 调用 API 服务添加工作表
     try {
-      // 使用全局属性方式访问API服务
-      const apiService = window.$apiService
-      if (apiService && typeof apiService.addWorksheet === 'function') {
+      const fileName = props.fileName || '未命名文件';
+      if (fileName) {
         // 获取当前文件名和新建页面名称
         const newPageNameValue = props.newPageName || `Sheet${(props.pages ? props.pages.length : 0) + 1}`
-        const fileName = window.location.search.includes('fileName=') ? 
-          decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
-          '未命名文件'
-        
         // 传递正确的参数格式
         const worksheetData = {
           filename: fileName,
@@ -277,7 +273,7 @@ const addPage = async () => {
         }
         
         // 调用API服务的addWorksheet方法
-        const response = await apiService.addWorksheet(worksheetData)
+        const response = await callApi(apiService.addWorksheet, worksheetData)
         if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
           console.error('[Toolbar] 添加工作表失败:', response);
           ElMessage.error('添加工作表失败: ' + (response.errorMessage || '未知错误'));
@@ -286,7 +282,7 @@ const addPage = async () => {
 
         console.log('[Toolbar] 成功调用 addWorksheet API')
       } else {
-        console.warn('[Toolbar] ApiService不可用或缺少addWorksheet方法')
+        console.warn('[Toolbar] fileName不可用或值错误，请检查')
       }
     } catch (apiError) {
       console.error('[Toolbar] 调用 addWorksheet API 失败:', apiError)
@@ -385,39 +381,17 @@ const removeCurrentPage = async () => {
       }
     );
 
-    // 调用API服务删除工作表
+    // 统一 API 调用方式
     try {
-      const apiService = window.$apiService;
-      if (apiService && typeof apiService.removeWorksheet === 'function') {
-        // 获取文件名
-        const fileName = window.location.search.includes('fileName=') ? 
-          decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
-          '未命名文件';
-        
-        // 调用API服务的removeWorksheet方法
-        const response = await apiService.removeWorksheet({
-          filename: fileName,
-          sheetname: pageName
-        });
-        if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
-          console.error('[Toolbar] 删除工作表失败:', response);
-          ElMessage.error('删除工作表失败: ' + (response.errorMessage || '未知错误'));
-          return;
-        }
-
-        console.log('[Toolbar] 成功调用 removeWorksheet API');
-      } else {
-        console.warn('[Toolbar] ApiService不可用或缺少removeWorksheet方法');
-      }
+      await callApi(ApiService.removeWorksheet, { filename: pageName });
+      emit('remove-page', currentPageIndex);
+      ElMessage.success(i18nTrans('toolbar.removeWorksheetSuccess'));
     } catch (apiError) {
-      console.error('[Toolbar] 调用 removeWorksheet API 失败:', apiError);
-      ElMessage.error('删除工作表失败: ' + (apiError.message || '未知错误'));
-      return; // 阻止继续执行
+      errorLogService.addErrorLog(apiError, '删除工作表失败', 'error');
+      ElMessage.error(i18nTrans('toolbar.removeWorksheetFailed', { msg: apiError.message || i18nTrans('common.unknownError') }));
     }
-
-    // 发出删除页面事件
-    emit('remove-page', currentPageIndex);
-  } catch (error) {
+  }
+  catch (error) {
     handleError(error, '删除页面失败');
   }
 }
@@ -705,30 +679,30 @@ const savePageName = async (index) => {
       // 调用API服务重命名工作表
       try {
         const apiService = window.$apiService
-        if (apiService && typeof apiService.renameWorksheet === 'function') {
-          // 获取文件名
-          const fileName = window.location.search.includes('fileName=') ? 
-            decodeURIComponent(window.location.search.split('fileName=')[1].split('&')[0] || window.location.search.split('fileName=')[1]) : 
-            '未命名文件'
-          
-          // 调用API服务的renameWorksheet方法
-          const response = await apiService.renameWorksheet({
-            filename: fileName,
+        // 统一API调用方式
+        try {
+          const fileName = props.fileName || '未命名文件'
+          const response = await callApi(ApiService.renameWorksheet, {
+          filename: fileName,
             sheetname: oldName,
             newsheetname: trimmedName
           });
           if(response.errorCode !== 1000 || response.errorMessage !== "Success") {
-            console.error('[Toolbar] 重命名工作表失败:', response);
-            ElMessage.error('重命名工作表失败: ' + (response.errorMessage || '未知错误'));
+            errorLogService.addErrorLog(response, '重命名工作表失败', 'error');
+            ElMessage.error(i18nTrans('toolbar.renameWorksheetFailed', { msg: response.errorMessage || i18nTrans('common.unknownError') }));
             return;
           }
-          console.log('[Toolbar] 成功调用 renameWorksheet API')
-        } else {
-          console.warn('[Toolbar] ApiService不可用或缺少renameWorksheet方法')
+          ElMessage.success(i18nTrans('toolbar.renameWorksheetSuccess'));
+        } catch (apiError) {
+          errorLogService.addErrorLog(apiError, '重命名工作表异常', 'error');
+          ElMessage.error(i18nTrans('toolbar.renameWorksheetFailed', { msg: apiError.message || i18nTrans('common.unknownError') }));
         }
-      } catch (apiError) {
         console.error('[Toolbar] 调用 renameWorksheet API 失败:', apiError)
         ElMessage.error('重命名工作表失败: ' + (apiError.message || '未知错误'))
+      }
+      catch (error) {
+        handleError(error, '调用重命名工作表API失败')
+        return
       }
       
       // 通知父组件执行重命名操作

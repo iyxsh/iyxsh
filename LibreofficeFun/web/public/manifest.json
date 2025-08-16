@@ -1,0 +1,21 @@
+{
+  "name": "LibreofficeFun",
+  "short_name": "LibreofficeFun",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#42b883",
+  "description": "LibreofficeFun PWA 应用，支持离线访问和后台同步。",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

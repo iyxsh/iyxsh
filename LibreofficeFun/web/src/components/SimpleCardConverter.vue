@@ -28,9 +28,8 @@ import { useEventBus } from '@/utils/eventBus';
 import { ElMessage } from 'element-plus';
 import CardsDisplayArea from './CardsDisplayArea.vue'; // 导入CardsDisplayArea组件
 import FloatingToolbar from './FloatingToolbar.vue'; // 导入FloatingToolbar组件
+import ApiService, { callApi } from '../services/ApiService';
 // 修复导入语句，明确指定.ts扩展名
-// 导入API服务管理组件
-import ApiServiceManager from './ApiServiceManager.vue';
 
 // 创建事件总线实例
 const { on, off, emit: eventBusEmit } = useEventBus();
@@ -77,8 +76,6 @@ const cardRowStyles = defineModel('cardRowStyles', { required: true, type: Objec
 const cardStyles = defineModel('cardStyles', { required: true, type: Object, default: () => ({}) });
 const globalTextStyles = defineModel('globalTextStyles', { required: true, type: Object, default: () => ({}) });
 
-// 创建API服务管理器引用
-const apiServiceManager = ref(null);
 
 // 定义组件需要触发的事件
 const componentEmit = defineEmits([
@@ -104,20 +101,12 @@ onMounted(() => {
 // 从后端加载卡片数据
 const loadCardDataFromServer = async () => {
   try {
-    // 检查apiServiceManager是否已初始化
-    if (!apiServiceManager.value) {
-      console.warn('API服务管理器未初始化');
-      return;
-    }
-    
-    // 加载卡片组数据
-    const cardGroupsData = await apiServiceManager.value.getCardGroups();
+    const cardGroupsData = await callApi(ApiService.CardGroups);
     if (cardGroupsData && cardGroupsData.length > 0) {
       cardGroups.value = cardGroupsData;
     }
 
-    // 加载样式配置
-    const styleConfig = await apiServiceManager.value.getStyleConfig();
+    const styleConfig = await callApi(ApiService.StyleConfig);
     if (styleConfig) {
       if (styleConfig.cardGroupStyles) {
         cardGroupStyles.value = styleConfig.cardGroupStyles;
@@ -143,24 +132,15 @@ const loadCardDataFromServer = async () => {
 // 保存卡片数据到后端
 const saveCardDataToServer = async () => {
   try {
-    // 检查apiServiceManager是否已初始化
-    if (!apiServiceManager.value) {
-      console.warn('API服务管理器未初始化');
-      ElMessage.warning('API服务不可用');
-      return;
-    }
-    
-    // 保存卡片组数据
-    await apiServiceManager.value.saveCardGroups(cardGroups.value);
+    await callApi(ApiService.saveCardGroups, cardGroups.value);
 
-    // 保存样式配置
     const styleConfig = {
       cardGroupStyles: cardGroupStyles.value,
       cardRowStyles: cardRowStyles.value,
       cardStyles: cardStyles.value,
       globalTextStyles: globalTextStyles.value
     };
-    await apiServiceManager.value.saveStyleConfig(styleConfig);
+    await callApi(ApiService.saveStyleConfig, styleConfig);
 
     ElMessage.success('数据保存成功');
   } catch (error) {

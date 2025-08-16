@@ -73,7 +73,6 @@ import { ref, nextTick, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Plus, Grid, ArrowLeft, ArrowRight, Document } from '@element-plus/icons-vue'
 import { getCurrentInstance } from 'vue'
 import { ElMessage } from 'element-plus'
-import errorLogService from '../services/errorLogService'
 
 export default {
   name: 'FloatingBar',
@@ -176,11 +175,6 @@ export default {
         animationFrameId = null
       }
     };
-
-    // 获取ApiServiceManager实例
-    const getApiService = () => {
-      return instance?.appContext.config.globalProperties.$apiService
-    }
 
     // 显示需要解锁页面的提示信息
     const showUnlockMessage = () => {

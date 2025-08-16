@@ -212,4 +212,4 @@ export const advancedCardApi = {
   }
 };
 
-export default advancedApiClient;
+export default advancedCardApi;

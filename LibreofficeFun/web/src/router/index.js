@@ -71,8 +71,8 @@ router.afterEach((to, from) => {
   console.log(`Routed from ${from.path} to ${to.path}`);
   // 添加路由完成后的调试信息
   console.log('Route transition completed', {
-    currentRoute: router.currentRoute.value.path,
-    routeName: router.currentRoute.value.name
+    currentRoute: to.path,
+    routeName: to.name
   });
 });
 
