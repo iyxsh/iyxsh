@@ -11,6 +11,10 @@
 #define BUFFER_SIZE 4096
 #define MAX_PAGE_SIZE 100     // 最大单页数据量
 #define DEFAULT_PAGE_SIZE 20  // 默认每页条数
+// 限制请求体大小（如 64KB）
+constexpr size_t MAX_REQUEST_SIZE = 65536;
+// 限制响应体大小（如 128KB）
+constexpr size_t MAX_RESPONSE_SIZE = 131072;
 typedef struct RequestBody {
     char method[16];
     char path[256];
@@ -23,14 +27,14 @@ typedef struct ResponseBody {
     int status;
     char errmsg[512]; // 错误信息
     char content_type[20];
-    char body[BUFFER_SIZE];
+    char body[MAX_RESPONSE_SIZE];
     unsigned int total_count;  // 总数据量
     unsigned int page_size;    // 每页条数
     unsigned int current_page; // 当前页码
 }ResponseBody;
 void RequestBodyInit(RequestBody *request);
 void ResponseBodyInit(struct ResponseBody* response);
-void deal_style_request(RequestBody requestbody,ResponseBody *responsebody);
+void deal_default_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_newfile_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_updatefile_request(RequestBody requestbody,ResponseBody *responsebody);
 void deal_editfile_request(RequestBody requestbody,ResponseBody *responsebody);

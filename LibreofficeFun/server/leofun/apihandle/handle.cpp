@@ -1,6 +1,6 @@
 #include "handle.h"
 #include "../filemanager/fileops.h"
-#include "../filemanager/filequeue.h"  // 添加文件队列管理器头文件
+#include "../filemanager/template_index_cache.h"  // 添加文件队列管理器头文件
 #include "../cJSON/cJSON.h"
 #include <stdbool.h>
 #include "../error/error_codes.h"
@@ -12,7 +12,7 @@ typedef void (*file_operation_func)(cJSON *results, const char *body);
 
 // 添加检查模板加载状态的函数
 static bool checkTemplateLoading(ResponseBody *responsebody) {
-    if (filemanager::FileQueueManager::getInstance().isTemplateLoading()) {
+    if (filemanager::TemplateIndexCacheManager::getInstance().isLoading()) {
         responsebody->status = STATUS_SERVICE_UNAVAILABLE;
         strcpy(responsebody->content_type, "application/json");
         cJSON *error_obj = cJSON_CreateObject();
@@ -92,6 +92,14 @@ static bool handle_empty_body(RequestBody requestbody, ResponseBody *responsebod
 static void send_response(ResponseBody *responsebody, cJSON *results, int status)
 {
     char *json_str = cJSON_Print(results);
+    if (json_str && strlen(json_str) >= MAX_RESPONSE_SIZE) {
+        responsebody->status = STATUS_BAD_REQUEST;
+        strcpy(responsebody->content_type, "application/json");
+        strcpy(responsebody->body, "{\"error\":\"Response too large, please use paging or split your request.\"}");
+        cJSON_Delete(results);
+        free(json_str);
+        return;
+    }
     responsebody->status = status;
     strcpy(responsebody->content_type, "application/json");
     strcpy(responsebody->body, json_str);
@@ -102,16 +110,16 @@ static void send_response(ResponseBody *responsebody, cJSON *results, int status
 /**
  * 处理获取网格圆圈默认设置的请求
  */
-void deal_style_request(RequestBody requestbody, ResponseBody *responsebody) 
+void deal_default_request(RequestBody requestbody, ResponseBody *responsebody) 
 {
-    if (!validate_request(requestbody, responsebody, "POST", "/api/get-gridcircle-default")) {
+    if (!validate_request(requestbody, responsebody, "GET", "/api/default")) {
         return;
     }
     
     cJSON *results = cJSON_CreateArray();
     responsebody->current_page = requestbody.current_page;
     responsebody->page_size = requestbody.page_size;
-    //gridcirclesearch(results,requestbody.body_start,1,responsebody->current_page,&responsebody->page_size,&responsebody->total_count);
+    filemanager::defaultGet(results,requestbody.body_start);
     send_response(responsebody, results, STATUS_SUCCESS);
 }
 

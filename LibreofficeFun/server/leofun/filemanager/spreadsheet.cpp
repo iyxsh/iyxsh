@@ -9,7 +9,9 @@
 #include <iostream>
 #include <cstdlib>
 #include <ctime>
+#include <map>
 #if __cplusplus >= 201703L
+#include <map>
 #include <filesystem>
 #endif
 #include <sys/stat.h>
@@ -19,6 +21,7 @@
 #include <chrono>
 #include <algorithm>
 #include <mutex>
+#include <utility> // std::pair
 
 // 定义缓存大小限制
 #define MAX_TEMPLATE_CACHE_SIZE 100
@@ -195,30 +198,11 @@ namespace filemanager
                 return;
             }
 
-            // 规范化路径
-            std::string nativePath = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
-            logger_log_info("saveDocument: Saving to native path: %s", nativePath.c_str());
+            rtl::OUString absolutePath;
+            getAbsolutePath(filePath, absolutePath);
 
-            // 替换路径分隔符为 /
-            std::replace(nativePath.begin(), nativePath.end(), '\\', '/');
-
-            // 处理相对路径，转换为绝对路径
-            std::string absolutePath = convertToAbsolutePath(nativePath);
-            logger_log_info("saveDocument: Absolute path: %s", absolutePath.c_str());
-
-            // 创建父目录
-            size_t lastSlash = absolutePath.find_last_of('/');
-            if (lastSlash != std::string::npos)
-            {
-                std::string dir = absolutePath.substr(0, lastSlash);
-                logger_log_info("saveDocument: Creating directories for: %s", dir.c_str());
-                make_dirs(dir);
-            }
-
-            // 构造文件 URL
-            std::string urlPath = "file://" + absolutePath;
             // 转换 UTF8 编码，防止保存文件出现异常
-            rtl::OUString url = convertStringToOUString(urlPath.c_str());
+            rtl::OUString url = convertStringToOUString("file://") + absolutePath;
             logger_log_info("saveDocument: Full URL: %s", rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
 
             // 设置保存属性，确保包含 Overwrite 和 FilterName 属性
@@ -301,13 +285,6 @@ namespace filemanager
         uno::Reference<lang::XComponent> xComp; // 在函数作用域内声明，确保在任何情况下都能正确关闭
         try
         {
-            std::string filePathStr = std::string(rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-            std::cerr << "readSpreadsheetFile: Attempting to read file: " << filePathStr << std::endl;
-
-            // 处理相对路径，转换为绝对路径
-            std::string absolutePath = convertToAbsolutePath(filePathStr);
-            std::cerr << "readSpreadsheetFile: Absolute path: " << absolutePath << std::endl;
-
             // 获取ComponentLoader
             uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
             if (!xLoader.is())
@@ -315,7 +292,10 @@ namespace filemanager
                 return nullptr;
             }
 
-            rtl::OUString url = convertStringToOUString("file://") + convertStringToOUString(absolutePath.c_str());
+            rtl::OUString absolutePath;
+            getAbsolutePath(filePath, absolutePath);
+
+            rtl::OUString url = convertStringToOUString("file://") + absolutePath;
             std::string urlStr = std::string(rtl::OUStringToOString(url, RTL_TEXTENCODING_UTF8).getStr());
             std::cerr << "readSpreadsheetFile: Loading from URL: " << urlStr << std::endl;
 
@@ -441,10 +421,9 @@ namespace filemanager
 
     /// @brief 创建新电子表格文件
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
-                                    const rtl::OUString &sheetName,
-                                    const cJSON *contentData)
+                                    const rtl::OUString &sheetName)
     {
-        uno::Reference<lang::XComponent> xComp; // 在函数作用域内声明，确保在任何情况下都能正确关闭
+        uno::Reference<lang::XComponent> xComp;
         try
         {
             // 获取ComponentLoader
@@ -517,139 +496,9 @@ namespace filemanager
                 return nullptr;
             }
 
-            // 写入内容
-            if (sheet.is() && contentData && cJSON_IsObject(contentData))
-            {
-                printf("Writing content to sheet...\n");
-
-                // 获取contentData中的所有键值对
-                int contentSize = cJSON_GetArraySize(const_cast<cJSON *>(contentData));
-                printf("Content has %d items\n", contentSize);
-
-                // 遍历对象中的每个键值对
-                cJSON *item = contentData->child;
-                while (item)
-                {
-                    // 键是字符，值是位置（如"A1"）
-                    const char *character = item->string;     // 字符作为键
-                    const char *position = item->valuestring; // 位置作为值
-
-                    if (character && position)
-                    {
-                        // 解析位置字符串，如"A1" -> 列=0 (A), 行=0 (1-based, 实际是0)
-                        sal_Int32 col = 0, row = 0;
-                        parseCellAddress(convertStringToOUString(position), col, row);
-
-                        // 将字符写入指定单元格
-                        rtl::OUString charOUString = convertStringToOUString(character);
-                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                        if (cell.is())
-                        {
-                            cell->setFormula(charOUString);
-                        }
-                        else
-                        {
-                            std::cerr << "createNewSpreadsheetFile: Cannot get cell at " << col << "," << row << std::endl;
-                        }
-                    }
-
-                    item = item->next;
-                }
-                printf("Finished writing content to sheet\n");
-            }
-            else if (sheet.is() && contentData && cJSON_IsArray(contentData))
-            {
-                // 保持原有的数组处理逻辑，以确保向后兼容
-                printf("Writing content to sheet (array format)...\n");
-                // 注意：cJSON_GetArraySize需要非const指针，所以我们需要一个非const副本
-                cJSON *nonConstContent = const_cast<cJSON *>(contentData);
-                int contentSize = cJSON_GetArraySize(nonConstContent);
-                printf("Content has %d rows\n", contentSize);
-
-                int row = 0;
-                cJSON *rowItem = nullptr;
-                cJSON_ArrayForEach(rowItem, nonConstContent)
-                {
-                    if (row >= 100)
-                        break; // 限制行数
-
-                    int col = 0;
-                    cJSON *cellItem = nullptr;
-                    cJSON_ArrayForEach(cellItem, rowItem)
-                    {
-                        if (col >= 20)
-                            break; // 限制列数
-
-                        // 获取单元格引用
-                        uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                        if (cell.is() && cellItem)
-                        {
-                            if (cJSON_IsString(cellItem))
-                            {
-                                // 字符串类型
-                                rtl::OUString cellValue = convertStringToOUString(cellItem->valuestring);
-                                cell->setFormula(cellValue);
-                            }
-                            else if (cJSON_IsNumber(cellItem))
-                            {
-                                // 数值类型
-                                cell->setValue(cellItem->valuedouble);
-                            }
-                            else if (cJSON_IsObject(cellItem))
-                            {
-                                // 对象类型，可能包含类型信息
-                                cJSON *type = cJSON_GetObjectItem(cellItem, "type");
-                                cJSON *value = cJSON_GetObjectItem(cellItem, "value");
-
-                                if (type && value && cJSON_IsString(type))
-                                {
-                                    const char *typeStr = type->valuestring;
-                                    if (strcmp(typeStr, "string") == 0 && cJSON_IsString(value))
-                                    {
-                                        rtl::OUString cellValue = convertStringToOUString(value->valuestring);
-                                        cell->setFormula(cellValue);
-                                    }
-                                    else if (strcmp(typeStr, "number") == 0 && cJSON_IsNumber(value))
-                                    {
-                                        cell->setValue(value->valuedouble);
-                                    }
-                                    else if (strcmp(typeStr, "formula") == 0 && cJSON_IsString(value))
-                                    {
-                                        rtl::OUString formula = convertStringToOUString(value->valuestring);
-                                        cell->setFormula(formula);
-                                    }
-                                }
-                            }
-                        }
-                        ++col;
-                    }
-                    ++row;
-                }
-                printf("Finished writing content to sheet\n");
-            }
-            else if (!sheet.is())
-            {
-                printf("Sheet is not valid\n");
-            }
-            else if (!contentData)
-            {
-                printf("No content data to write\n");
-            }
-            else
-            {
-                printf("Content data format is not supported\n");
-                // 注意：cJSON_Print需要非const指针，所以我们需要一个非const副本
-                cJSON *nonConstContent = const_cast<cJSON *>(contentData);
-                char *contentStr = cJSON_Print(nonConstContent);
-                printf("Content data: %s\n", contentStr);
-                free(contentStr); // 修复：释放 cJSON_Print 返回的内存
-            }
-
-            // 保存文档前输出文件路径信息
-            std::string filePathStr = rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr();
-            std::cerr << "createNewSpreadsheetFile: Saving document to: " << filePathStr << std::endl;
-            saveDocumentDirect(xDoc);
-            // closeDocument(xComp);
+            // 新建文档空的，第一次保存并关闭文档
+            saveDocument(xDoc, filePath);
+            //closeDocument(xComp);
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
@@ -769,32 +618,17 @@ namespace filemanager
                 closeDocument(xComp);
                 return cJSON_CreateString("Cannot get cell");
             }
-            rtl::OUString defaultFilePath, wordsSheetName;
-            getDefaultData(defaultFilePath, wordsSheetName);
-            cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
-            logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
-            // 根据单元格类型设置值
-            // if (cellType.equalsAsciiL(RTL_CONSTASCII_STRINGPARAM("formula")))
             // 直接默认设置为公式
-            if (sheetName == wordsSheetName)
+            if (sheetName == "wordsSheet")
             {
                 // 直接默认覆盖值
                 cell->setFormula(newValue);
             }
             else
             {
-                if (cachedSheetData)
-                {
-                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                    logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                    cell->setFormula(tmp);
-                }
-                else
-                {
-                    std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                    closeDocument(xComp); // 确保在出错时关闭文档
-                    return nullptr;
-                }
+                std::string tmp = findStringInSpreadsheet(newValue, sheet);
+                logger_log_info("updateSpreadsheetContent: %s", tmp.c_str());
+                cell->setFormula(convertStringToOUString(tmp.c_str()));
             }
 
             // 保存文档
@@ -904,10 +738,8 @@ namespace filemanager
             {
                 // 原来的数组格式处理
                 cJSON *item = nullptr;
-                rtl::OUString defaultFilePath, wordsSheetName;
-                getDefaultData(defaultFilePath, wordsSheetName);
-                cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
-                logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
+                rtl::OUString defaultFilePath, defaultFileName, wordsSheetName;
+                getDefaultData(defaultFilePath, defaultFileName, wordsSheetName);
                 cJSON_ArrayForEach(item, const_cast<cJSON *>(updatecells))
                 {
                     if (cJSON_IsObject(item))
@@ -941,18 +773,9 @@ namespace filemanager
                             }
                             else
                             {
-                                if (cachedSheetData)
-                                {
-                                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                                    logger_log_info("updateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                                    cell->setFormula(tmp);
-                                }
-                                else
-                                {
-                                    std::cerr << "updateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                                    closeDocument(xComp); // 确保在出错时关闭文档
-                                    return nullptr;
-                                }
+                                std::string tmp = findStringInSpreadsheet(newValue, sheet);
+                                logger_log_info("updateSpreadsheetContent: %s", tmp.c_str());
+                                cell->setFormula(convertStringToOUString(tmp.c_str()));
                             }
                         }
                     }
@@ -961,10 +784,8 @@ namespace filemanager
             else if (updatecells && cJSON_IsObject(const_cast<cJSON *>(updatecells)))
             {
                 // 新的对象格式处理：{"cellAddress": "value", ...}
-                rtl::OUString defaultFilePath, wordsSheetName;
-                getDefaultData(defaultFilePath, wordsSheetName);
-                cJSON *cachedSheetData = getCachedSheetData(defaultFilePath, wordsSheetName);
-                logger_log_info("cachedSheetData: %s", cachedSheetData ? "true" : "false");
+                rtl::OUString defaultFilePath, defaultFileName, wordsSheetName;
+                getDefaultData(defaultFilePath, defaultFileName, wordsSheetName);
 
                 // 从配置文件读取最大列数和行数限制
                 int maxCols = json_config_get_int("maxCols");
@@ -1012,18 +833,9 @@ namespace filemanager
                             }
                             else
                             {
-                                if (cachedSheetData)
-                                {
-                                    rtl::OUString tmp = findCharPositions(newValue, cachedSheetData);
-                                    logger_log_info("batchUpdateSpreadsheetContent: %s", rtl::OUStringToOString(tmp, RTL_TEXTENCODING_UTF8).getStr());
-                                    cell->setFormula(tmp);
-                                }
-                                else
-                                {
-                                    std::cerr << "batchUpdateSpreadsheetContent error: cachedSheetData is null" << std::endl;
-                                    closeDocument(xComp);
-                                    return nullptr;
-                                }
+                                std::string tmp = findStringInSpreadsheet(newValue, sheet);
+                                logger_log_info("batchUpdateSpreadsheetContent: %s", tmp.c_str());
+                                cell->setFormula(convertStringToOUString(tmp.c_str()));
                             }
                         }
                         else
@@ -1044,8 +856,9 @@ namespace filemanager
             // 保存文档
             saveDocumentDirect(xDoc);
             // closeDocument(xComp);
-
-            return cJSON_CreateString("success");
+            cJSON *jobj = cJSON_CreateObject();
+            cJSON_AddStringToObject(jobj, "result", "success");
+            return jobj;
         }
         catch (const uno::Exception &e)
         {
@@ -1147,60 +960,59 @@ namespace filemanager
                 for (sal_Int32 row = 0; row < maxRows; ++row)
                 {
                     uno::Reference<table::XCell> cell;
-
                     try
                     {
-                        // 尝试获取单元格
                         cell = sheet->getCellByPosition(col, row);
                     }
                     catch (const uno::Exception &)
                     {
-                        // 如果获取单元格失败，认为此列结束
+                        logger_log_error("Exception getting cell at col %d, row %d", col, row);
                         break;
                     }
-
                     if (!cell.is())
                     {
-                        // 单元格无效，此列结束
+                        logger_log_error("Cell at col %d, row %d is null", col, row);
                         break;
                     }
-
-                    // 获取单元格的值和公式
                     double cellValue = cell->getValue();
                     rtl::OUString cellFormula = cell->getFormula();
-
-                    // 检查单元格是否为空
+                    // 判断是否为空单元格
                     if (cellValue == 0.0 && cellFormula.getLength() == 0)
                     {
-                        // 遇到空单元格，此列结束
-                        break;
+                        continue; // 跳过空单元格
                     }
-
-                    // 标记此列有数据
-                    foundDataInColumn = true;
-
-                    // 获取单元格内容
-                    rtl::OUString cellContent;
-                    if (cellFormula.getLength() > 0)
+                    // 优先返回单元格显示内容（XText->getString），如果为空再返回数值或公式
+                    rtl::OUString cellString;
+                    try
                     {
-                        // 如果有公式，使用公式文本
-                        cellContent = cellFormula;
+                        uno::Reference<com::sun::star::text::XText> xText(cell, uno::UNO_QUERY);
+                        if (xText.is())
+                        {
+                            cellString = xText->getString();
+                        }
                     }
-                    else
+                    catch (...)
                     {
-                        // 否则使用数值或文本值
-                        cellContent = rtl::OUString::number(cellValue);
+                        cellString = rtl::OUString();
                     }
-
-                    // 将内容转换为字符串用于比较
-                    std::string contentStr = rtl::OUStringToOString(cellContent, RTL_TEXTENCODING_UTF8).getStr();
-
+                    std::string content;
+                    if (cellString.getLength() > 0)
+                    {
+                        content = rtl::OUStringToOString(cellString, RTL_TEXTENCODING_UTF8).getStr();
+                    }
+                    else if (cellValue != 0.0)
+                    {
+                        content = std::to_string(cellValue);
+                    }
+                    else if (cellFormula.getLength() > 0)
+                    {
+                        content = rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr();
+                    }
                     // 检查内容是否已经添加过（避免重复）
-                    if (cJSON_GetObjectItem(addedContents, contentStr.c_str()) != nullptr)
+                    if (cJSON_GetObjectItem(addedContents, content.c_str()) != nullptr)
                     {
                         continue; // 内容已存在，跳过
                     }
-
                     // 计算列名 (A, B, ..., Z, AA, AB, ...)
                     std::string columnName;
                     int column = col;
@@ -1209,18 +1021,14 @@ namespace filemanager
                         columnName = static_cast<char>('A' + (column % 26)) + columnName;
                         column = (column / 26) - 1;
                     } while (column >= 0);
-
                     // 计算行号 (1-based)
                     int rowNumber = row + 1;
-
                     // 创建位置字符串，如 "A1", "B2" 等
                     std::string position = columnName + std::to_string(rowNumber);
-
                     // 添加内容到结果对象（内容作为key，位置作为value）
-                    cJSON_AddStringToObject(contentMap, contentStr.c_str(), position.c_str());
-
+                    cJSON_AddStringToObject(contentMap, content.c_str(), position.c_str());
                     // 标记内容已添加
-                    cJSON_AddStringToObject(addedContents, contentStr.c_str(), "added");
+                    cJSON_AddStringToObject(addedContents, content.c_str(), "added");
                 }
 
                 // 如果此列没有数据，则认为是空列，停止处理后续列
@@ -1402,12 +1210,16 @@ namespace filemanager
                     std::string content;
                     // 优先返回单元格显示内容（XText->getString），如果为空再返回数值或公式
                     rtl::OUString cellString;
-                    try {
+                    try
+                    {
                         uno::Reference<com::sun::star::text::XText> xText(cell, uno::UNO_QUERY);
-                        if (xText.is()) {
+                        if (xText.is())
+                        {
                             cellString = xText->getString();
                         }
-                    } catch (...) {
+                    }
+                    catch (...)
+                    {
                         cellString = rtl::OUString();
                     }
                     if (cellString.getLength() > 0)
@@ -1431,6 +1243,453 @@ namespace filemanager
         catch (...)
         {
             // 忽略异常，返回已收集内容
+        }
+        return result;
+    }
+
+    // 清空工作表内容
+    void clearSheet(const uno::Reference<sheet::XSpreadsheet> &sheet)
+    {
+        if (!sheet.is())
+            return;
+        int maxCols = json_config_get_int("maxCols");
+        int maxRows = json_config_get_int("maxRows");
+        for (int row = 0; row < maxRows; ++row)
+        {
+            for (int col = 0; col < maxCols; ++col)
+            {
+                uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                if (cell.is())
+                {
+                    cell->setFormula(rtl::OUString()); // 清空公式和内容
+                }
+            }
+        }
+    }
+
+    // 复制工作表内容
+    void copySheetContent(const uno::Reference<sheet::XSpreadsheet> &srcSheet, const uno::Reference<sheet::XSpreadsheet> &dstSheet)
+    {
+        if (!srcSheet.is() || !dstSheet.is())
+            return;
+        int maxCols = json_config_get_int("maxCols");
+        int maxRows = json_config_get_int("maxRows");
+        for (int row = 0; row < maxRows; ++row)
+        {
+            for (int col = 0; col < maxCols; ++col)
+            {
+                uno::Reference<table::XCell> srcCell = srcSheet->getCellByPosition(col, row);
+                uno::Reference<table::XCell> dstCell = dstSheet->getCellByPosition(col, row);
+                if (srcCell.is() && dstCell.is())
+                {
+                    rtl::OUString formula = srcCell->getFormula();
+                    double value = srcCell->getValue();
+                    // 跳过空单元格（公式和数值都为空）
+                    if (formula.getLength() == 0 && value == 0.0)
+                        continue;
+                    // 复制公式和数值
+                    if (formula.getLength() > 0)
+                    {
+                        dstCell->setFormula(formula);
+                    }
+                    else
+                    {
+                        dstCell->setValue(value);
+                    }
+                }
+            }
+        }
+    }
+
+    int copySheetToAnotherFile(const uno::Reference<sheet::XSpreadsheetDocument> &sourceDoc,
+                               const rtl::OUString &sourceSheetName,
+                               const uno::Reference<sheet::XSpreadsheetDocument> &targetDoc)
+    {
+        try
+        {
+            // 获取源文档和目标文档的Sheets集合
+            auto sourceSheets = sourceDoc->getSheets();
+            auto targetSheets = targetDoc->getSheets();
+
+            // 检查目标文档中是否存在同名工作表
+            if (!targetSheets->hasByName(sourceSheetName))
+            {
+                // 如果不存在，则创建工作表
+                targetSheets->insertByName(sourceSheetName, sourceSheets->getByName(sourceSheetName));
+            }
+            else
+            {
+                // 如果存在，清空目标工作表内容并覆盖
+                uno::Any anyTargetSheet = targetSheets->getByName(sourceSheetName);
+                uno::Reference<sheet::XSpreadsheet> targetSheet;
+                anyTargetSheet >>= targetSheet;
+                uno::Any anySourceSheet = sourceSheets->getByName(sourceSheetName);
+                uno::Reference<sheet::XSpreadsheet> sourceSheet;
+                anySourceSheet >>= sourceSheet;
+                clearSheet(targetSheet);
+                copySheetContent(sourceSheet, targetSheet);
+            }
+        }
+        catch (const css::uno::Exception &e)
+        {
+            // 异常处理
+            logger_log_error("Error copying sheet: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return -1;
+        }
+        return 0;
+    }
+
+    // 实现用于查找字符串位置的函数
+    std::string findStringInSpreadsheet(const rtl::OUString &targetString, css::uno::Reference<css::sheet::XSpreadsheet> sheet)
+    {
+        try
+        {
+            int maxRows = json_config_get_int("maxRows");
+            int maxCols = json_config_get_int("maxCols");
+            // 遍历单元格以查找目标字符串
+            for (int row = 0; row < maxRows; ++row)
+            {
+                for (int col = 0; col < maxCols; ++col)
+                {
+                    css::uno::Reference<css::table::XCell> cell = sheet->getCellByPosition(col, row);
+                    if (cell.is())
+                    {
+                        rtl::OUString cellValue = cell->getFormula();
+                        if (cellValue == targetString)
+                        {
+                            // 转换为A1形式
+                            std::string colName = filemanager::columnIndexToName(col);
+                            std::string cellPos = colName + std::to_string(row + 1);
+                            return cellPos;
+                        }
+                    }
+                }
+            }
+            // 未找到返回空字符串
+            return std::string("");
+        }
+        catch (const css::uno::Exception &e)
+        {
+            std::string errorMessage = rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr();
+            logger_log_error("Error in findStringInSpreadsheet: %s", errorMessage.c_str());
+            return std::string("");
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception occurred in findStringInSpreadsheet");
+            return std::string("");
+        }
+    }
+
+    // 判断字符属于哪种语言类型（简易实现，可扩展）
+    std::string getLanguageType(char32_t ch)
+    {
+        // 汉字
+        if ((ch >= 0x4E00 && ch <= 0x9FFF) || (ch >= 0x3400 && ch <= 0x4DBF) || (ch >= 0x20000 && ch <= 0x2A6DF))
+            return "Chinese";
+        // 日文假名
+        if ((ch >= 0x3040 && ch <= 0x309F) || (ch >= 0x30A0 && ch <= 0x30FF))
+            return "Japanese";
+        // 韩文
+        if ((ch >= 0xAC00 && ch <= 0xD7AF) || (ch >= 0x1100 && ch <= 0x11FF))
+            return "Korean";
+        // 俄文
+        if (ch >= 0x0400 && ch <= 0x04FF)
+            return "Russian";
+        // 希腊文
+        if (ch >= 0x0370 && ch <= 0x03FF)
+            return "Greek";
+        // 拉丁文扩展
+        if ((ch >= 0x0100 && ch <= 0x017F) || (ch >= 0x0180 && ch <= 0x024F))
+            return "Latin";
+        // 英文
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z'))
+            return "English";
+        // 数字
+        if (ch >= '0' && ch <= '9')
+            return "Number";
+        // 标点符号
+        if ((ch >= 0x2000 && ch <= 0x206F) || (ch >= 0x3000 && ch <= 0x303F) || (ch >= 0x0020 && ch <= 0x007F && ispunct(ch)))
+            return "Punctuation";
+        // 表情符号
+        if ((ch >= 0x1F600 && ch <= 0x1F64F) || (ch >= 0x1F300 && ch <= 0x1F5FF) || (ch >= 0x1F680 && ch <= 0x1F6FF) || (ch >= 0x2600 && ch <= 0x26FF))
+            return "Emoji";
+        // ASCII
+        if (ch <= 0x7F)
+            return "ASCII";
+        // 其他
+        return "Other";
+    }
+
+    // 将UTF-8字符串拆分为Unicode字符（返回char32_t列表）
+    std::vector<char32_t> splitToUnicode(const std::string &text)
+    {
+        std::vector<char32_t> result;
+        size_t i = 0;
+        while (i < text.size())
+        {
+            unsigned char c = text[i];
+            char32_t code = 0;
+            if (c < 0x80)
+            {
+                code = c;
+                i += 1;
+            }
+            else if ((c & 0xE0) == 0xC0)
+            {
+                code = ((c & 0x1F) << 6) | (text[i + 1] & 0x3F);
+                i += 2;
+            }
+            else if ((c & 0xF0) == 0xE0)
+            {
+                code = ((c & 0x0F) << 12) | ((text[i + 1] & 0x3F) << 6) | (text[i + 2] & 0x3F);
+                i += 3;
+            }
+            else if ((c & 0xF8) == 0xF0)
+            {
+                code = ((c & 0x07) << 18) | ((text[i + 1] & 0x3F) << 12) | ((text[i + 2] & 0x3F) << 6) | (text[i + 3] & 0x3F);
+                i += 4;
+            }
+            else
+            {
+                // 非法字符，跳过
+                i += 1;
+                continue;
+            }
+            result.push_back(code);
+        }
+        return result;
+    }
+
+    // 主处理函数：拆分文本，分类，查找位置，返回每个字符的详细信息
+    std::vector<TextCharInfo> splitAndClassifyText(const std::string &text, css::uno::Reference<css::sheet::XSpreadsheet> sheet)
+    {
+        std::vector<TextCharInfo> result;
+        std::vector<char32_t> chars = splitToUnicode(text);
+        for (char32_t ch : chars)
+        {
+            std::string utf8char;
+            if (ch <= 0x7F)
+            {
+                utf8char += static_cast<char>(ch);
+            }
+            else if (ch <= 0x7FF)
+            {
+                utf8char += static_cast<char>(0xC0 | ((ch >> 6) & 0x1F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            else if (ch <= 0xFFFF)
+            {
+                utf8char += static_cast<char>(0xE0 | ((ch >> 12) & 0x0F));
+                utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            else
+            {
+                utf8char += static_cast<char>(0xF0 | ((ch >> 18) & 0x07));
+                utf8char += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+                utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            rtl::OUString unoChar = rtl::OStringToOUString(utf8char.c_str(), RTL_TEXTENCODING_UTF8);
+            std::string pos = findStringInSpreadsheet(unoChar, sheet);
+            std::string langType = getLanguageType(ch);
+            // splitAndClassifyText 没有 bodyname 来源，暂设为空
+            result.push_back(TextCharInfo{utf8char, pos, langType, ""});
+        }
+        return result;
+    }
+
+    // 从工作表读取所有单元格内容，按语言分组返回
+    std::vector<LanguageGroup> readSheetAndGroupByLanguage(css::uno::Reference<css::sheet::XSpreadsheet> sheet)
+    {
+        // 优化为三层分组：LanguageGroup → CharacterBody → CharacterInfo
+        // 循环顺序为先列后行，bodyname 取列号（A、B、C...）
+        std::unordered_map<std::string, std::unordered_map<std::string, std::vector<CharacterInfo>>> tempMap;
+        int maxCols = json_config_get_int("maxCols");
+        int maxRows = json_config_get_int("maxRows");
+        for (int col = 0; col < maxCols; ++col) {
+            bool colHasData = false;
+            std::string bodyname = columnIndexToName(col); // 列名作为 bodyname
+            for (int row = 0; row < maxRows; ++row) {
+                css::uno::Reference<css::table::XCell> cell = sheet->getCellByPosition(col, row);
+                if (!cell.is()) continue;
+                double cellValue = cell->getValue();
+                rtl::OUString cellFormula = cell->getFormula();
+                if (cellValue == 0.0 && cellFormula.getLength() == 0) {
+                    if (colHasData) break;
+                    else continue;
+                }
+                colHasData = true;
+                rtl::OUString cellString;
+                try {
+                    css::uno::Reference<com::sun::star::text::XText> xText(cell, css::uno::UNO_QUERY);
+                    if (xText.is()) cellString = xText->getString();
+                } catch (...) { cellString = rtl::OUString(); }
+                std::string content;
+                if (cellString.getLength() > 0) {
+                    content = rtl::OUStringToOString(cellString, RTL_TEXTENCODING_UTF8).getStr();
+                } else {
+                    if (cellValue != 0.0) content = std::to_string(cellValue);
+                    else if (cellFormula.getLength() > 0) content = rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr();
+                }
+                if (content.empty()) continue;
+                std::string cellPos = bodyname + std::to_string(row + 1);
+                std::vector<char32_t> chars = splitToUnicode(content);
+                for (char32_t ch : chars) {
+                    std::string utf8char;
+                    if (ch <= 0x7F) utf8char += static_cast<char>(ch);
+                    else if (ch <= 0x7FF) {
+                        utf8char += static_cast<char>(0xC0 | ((ch >> 6) & 0x1F));
+                        utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+                    } else if (ch <= 0xFFFF) {
+                        utf8char += static_cast<char>(0xE0 | ((ch >> 12) & 0x0F));
+                        utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                        utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+                    } else {
+                        utf8char += static_cast<char>(0xF0 | ((ch >> 18) & 0x07));
+                        utf8char += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+                        utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                        utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+                    }
+                    std::string langType = getLanguageType(ch);
+                    tempMap[langType][bodyname].push_back(CharacterInfo{utf8char, cellPos});
+                }
+            }
+            if (!colHasData) break;
+        }
+        std::vector<LanguageGroup> result;
+        for (const auto& langPair : tempMap) {
+            LanguageGroup group;
+            group.languageType = langPair.first;
+            for (const auto& bodyPair : langPair.second) {
+                CharacterBody body;
+                body.bodyname = bodyPair.first;
+                body.characters = bodyPair.second;
+                group.bodies.push_back(body);
+            }
+            result.push_back(group);
+        }
+        return result;
+    }
+
+    // 批量写入 CharacterInfo 到指定文件和工作表
+    bool writeCharacterInfosToSheet(const rtl::OUString &filePath,
+                                    const rtl::OUString &sheetName,
+                                    const std::vector<TextCharInfo> &infos)
+    {
+        uno::Reference<lang::XComponent> xComp;
+        uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+        if (!xDoc.is())
+        {
+            logger_log_error("writeCharacterInfosToSheet: Failed to load document");
+            return false;
+        }
+        uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+        if (!sheet.is())
+        {
+            logger_log_error("writeCharacterInfosToSheet: Failed to get sheet");
+            closeDocument(xComp);
+            return false;
+        }
+        for (const auto &info : infos)
+        {
+            try
+            {
+                // pos 形如 "A1"，需解析为行列
+                std::string posStr = info.pos;
+                int col = 0, row = 0;
+                if (posStr.length() >= 2)
+                {
+                    // 解析列名（如 "A"）和行号（如 "1"）
+                    size_t i = 0;
+                    while (i < posStr.length() && isalpha(posStr[i]))
+                        ++i;
+                    std::string colStr = posStr.substr(0, i);
+                    std::string rowStr = posStr.substr(i);
+                    // 列名转索引
+                    col = 0;
+                    for (char c : colStr)
+                    {
+                        col = col * 26 + (toupper(c) - 'A' + 1);
+                    }
+                    col -= 1;                    // 0-based
+                    row = std::stoi(rowStr) - 1; // 0-based
+                }
+                uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                cell->setFormula(convertStringToOUString(info.character.c_str()));
+            }
+            catch (...)
+            {
+                logger_log_error("writeCharacterInfosToSheet: Failed to write %s to %s", info.character.c_str(), info.pos.c_str());
+            }
+        }
+        saveDocumentDirect(xDoc);
+        //closeDocument(xComp);
+        return true;
+    }
+
+    // 使用 CharacterIndex::queryAll 查询字符所有位置，返回 pos 列表
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, const CharacterIndex& index)
+    {
+        std::vector<TextCharInfo> result;
+        std::vector<char32_t> chars = splitToUnicode(text);
+        for (char32_t ch : chars)
+        {
+            std::string utf8char;
+            if (ch <= 0x7F)
+            {
+                utf8char += static_cast<char>(ch);
+            }
+            else if (ch <= 0x7FF)
+            {
+                utf8char += static_cast<char>(0xC0 | ((ch >> 6) & 0x1F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            else if (ch <= 0xFFFF)
+            {
+                utf8char += static_cast<char>(0xE0 | ((ch >> 12) & 0x0F));
+                utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            else
+            {
+                utf8char += static_cast<char>(0xF0 | ((ch >> 18) & 0x07));
+                utf8char += static_cast<char>(0x80 | ((ch >> 12) & 0x3F));
+                utf8char += static_cast<char>(0x80 | ((ch >> 6) & 0x3F));
+                utf8char += static_cast<char>(0x80 | (ch & 0x3F));
+            }
+            std::string langType = getLanguageType(ch);
+            std::vector<TextCharInfo> infos = index.queryAll(utf8char);
+            if (!infos.empty()) {
+                for (const auto& info : infos) {
+                    result.push_back(info);
+                }
+            } else {
+                // 统计 index 中所有 bodyname 个数（所有语言类型）
+                std::unordered_set<std::string> allBodynames;
+                for (const auto& langPair : index.data) {
+                    for (const auto& bodyPair : langPair.second) {
+                        allBodynames.insert(bodyPair.first);
+                    }
+                }
+                size_t bodyCount = allBodynames.size();
+                // 转换为列号
+                std::string bodyname = filemanager::columnIndexToName(static_cast<int>(bodyCount++));
+                // 找不到的统一存在未定义语言下
+                std::string langType = "undefined";
+                // 统计该 bodyname 下已有字符数（在 undefined 下）
+                size_t charCount = 0;
+                auto langIt = index.data.find(langType);
+                if (langIt != index.data.end()) {
+                    auto bodyIt = langIt->second.find(bodyname);
+                    if (bodyIt != langIt->second.end()) {
+                        charCount = bodyIt->second.size();
+                    }
+                }
+                std::string pos = bodyname + std::to_string(charCount + 1);
+                result.push_back(TextCharInfo{utf8char, pos, langType, bodyname});
+            }
         }
         return result;
     }

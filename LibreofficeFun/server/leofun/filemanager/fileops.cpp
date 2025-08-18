@@ -22,12 +22,14 @@ namespace filemanager
     {
         // 读取datapath目录下所有文件并加入队列
         const char *datapath = json_config_get_string("datapath");
-        if (datapath)
+        const char *workpathname = json_config_get_string("workpathname");
+        std::string filepath = std::string(datapath) + "/" + std::string(workpathname);
+        if (filepath.length() > 0)
         {
-            DIR *dir = opendir(datapath);
+            DIR *dir = opendir(filepath.c_str());
             if (dir)
             {
-                logger_log_info("Scanning directory: %s", datapath);
+                logger_log_info("Scanning directory: %s", filepath.c_str());
                 struct dirent *entry;
                 while ((entry = readdir(dir)) != NULL)
                 {
@@ -42,23 +44,19 @@ namespace filemanager
                     // 代码中任务和保存时使用的名称不包含路径和后缀（和接口保持一致，所有路径和后缀都在代码逻辑中处理）
                     if (filename.length() > 4 && filename.substr(filename.length() - 4) == ".ods")
                     {
-                        std::string filepath = std::string(datapath) + "/" + filename;
+                        std::string filepath = std::string(datapath) + "/" + std::string(workpathname) + "/" + filename;
 
                         // 获取文件状态
                         struct stat fileStat;
                         if (stat(filepath.c_str(), &fileStat) == 0)
                         {
-                            // 添加文件到队列管理器，使用文件的真实修改时间
-                            filemanager::FileInfo info;
-                            info.filename = removeFileExtension(filename);
-                            info.status = filemanager::FILE_STATUS_READY;
-                            info.lastModified = fileStat.st_mtime; // 使用文件的真实修改时间
-                            info.errorMessage = "";
-                            rtl::OUString AbsolutefilePath;
-                            getAbsolutePath(convertStringToOUString(filepath.c_str()), AbsolutefilePath);
-                            // 如果文件已经存在，则加载到 LibreOffice 并添加到队列
-                            loadSpreadsheetDocument(AbsolutefilePath, info.xComponent);
-                            filemanager::FileQueueManager::getInstance().addFileStatus(info);
+                            // 创建文件任务
+                            filemanager::FileTask task;
+                            task.type = filemanager::TASK_UPDATE_TEMPLATE;
+                            task.filename = removeFileExtension(filename);
+                            task.createTime = std::time(nullptr);
+                            filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_PROCESSING);
+                            filemanager::FileQueueManager::getInstance().addFileTask(task);
                             logger_log_info("Added existing file to queue: %s with mtime: %ld", filename.c_str(), (long)fileStat.st_mtime);
                         }
                         else
@@ -82,6 +80,72 @@ namespace filemanager
             logger_log_warn("%s", errorMessage.c_str());
             return;
         }
+    }
+
+    void defaultGet(cJSON *results, const char *body)
+    {
+        logger_log_info("defaultGet start .................");
+        rtl::OUString AbsolutefilePath;
+        rtl::OUString defaultFileName;
+        rtl::OUString sheetName;
+        getDefaultData(AbsolutefilePath,defaultFileName, sheetName);
+        std::vector<TextCharInfo> idx = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(AbsolutefilePath+defaultFileName, sheetName);
+        // 但如果有body且不为空，需要验证其为有效JSON
+        if (body && strlen(body) > 0)
+        {
+            cJSON *root = cJSON_Parse(body);
+            if (!root)
+            {
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
+                return;
+            }
+
+            // 检查请求体是否包含text字段
+            cJSON *textItem = cJSON_GetObjectItem(root, "text");
+            if (!textItem || textItem->type != cJSON_String)
+            {
+                ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
+                cJSON_Delete(root);
+                return;
+            }
+            std::string textStr(textItem->valuestring);
+            // 这里 idx 只是 CharacterInfo 列表，需获取 CharacterIndex
+            // 但 splitAndClassifyTextFromIndex 需要 CharacterIndex，实际应从缓存获取 index
+            std::shared_ptr<CharacterIndex> indexPtr = filemanager::TemplateIndexCacheManager::getInstance().getTemplateIndex(AbsolutefilePath, sheetName);
+            std::vector<TextCharInfo> infos;
+            if (indexPtr)
+            {
+                infos = splitAndClassifyTextFromIndex(textStr, *indexPtr);
+            }
+            cJSON *infosArray = cJSON_CreateArray();
+            for (const auto &info : infos)
+            {
+                cJSON *infoObj = cJSON_CreateObject();
+                cJSON_AddStringToObject(infoObj, "character", info.character.c_str());
+                cJSON_AddStringToObject(infoObj, "pos", info.pos.c_str());
+                cJSON_AddStringToObject(infoObj, "languageType", info.languageType.c_str());
+                cJSON_AddStringToObject(infoObj, "bodyname", info.bodyname.c_str());
+                cJSON_AddItemToArray(infosArray, infoObj);
+            }
+            cJSON_AddItemToObject(results, "infos", infosArray);
+            cJSON_Delete(root);
+        }
+        else
+        {
+            cJSON *infosArray = cJSON_CreateArray();
+            for (const auto &info : idx)
+            {
+                cJSON *infoObj = cJSON_CreateObject();
+                cJSON_AddStringToObject(infoObj, "character", info.character.c_str());
+                cJSON_AddStringToObject(infoObj, "pos", info.pos.c_str());
+                // idx 没有 languageType 字段，补充空字符串
+                cJSON_AddStringToObject(infoObj, "languageType", "");
+                cJSON_AddItemToArray(infosArray, infoObj);
+            }
+            cJSON_AddItemToObject(results, "infos", infosArray);
+        }
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+        logger_log_info("defaultGet end   .................");
     }
 
     void filelist(cJSON *results, const char *body)
@@ -243,6 +307,7 @@ namespace filemanager
     {
         // newfileCreate不需要请求体，所以即使body为空也继续处理
         // 但如果有body且不为空，需要验证其为有效JSON（如果需要解析）
+        std::string fileName;
         if (body && strlen(body) > 0)
         {
             cJSON *jsonRoot = cJSON_Parse(body);
@@ -251,22 +316,10 @@ namespace filemanager
                 ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
                 return;
             }
-
-            // 创建文件任务
-            filemanager::FileTask task;
-            task.type = filemanager::TASK_CREATE_FILE;
-            task.createTime = std::time(nullptr);
-
             cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
             if (filenameItem && cJSON_IsString(filenameItem))
             {
-                task.filename = std::string(filenameItem->valuestring);
-                filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
-                filemanager::FileQueueManager::getInstance().addFileTask(task);
-                // 构造返回结果
-                cJSON_AddStringToObject(results, "filename", removeFileExtension(std::string(filenameItem->valuestring)).c_str());
-                cJSON_AddStringToObject(results, "filestatus", "processing");
-                ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+                fileName = std::string(filenameItem->valuestring);
             }
             else
             {
@@ -286,22 +339,106 @@ namespace filemanager
                     ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
             logger_log_info("filename: %s", filename);
 
-            // 确保文件名有.ods后缀
-            std::string filenameWithExt = std::string(filename);
-
-            // 创建文件任务
-            filemanager::FileTask task;
-            task.type = filemanager::TASK_CREATE_FILE;
-            task.filename = filenameWithExt;
-            task.createTime = std::time(nullptr);
-            filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
-            filemanager::FileQueueManager::getInstance().addFileTask(task);
-
-            // 构造返回结果
-            cJSON_AddStringToObject(results, "filename", filename);
-            cJSON_AddStringToObject(results, "filestatus", "processing");
-            ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+            fileName = std::string(filename);
         }
+        // 实现创建文件的函数
+        logger_log_info("Creating file: %s", fileName.c_str());
+        uno::Reference<lang::XComponent> xComp;
+        try
+        {
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(fileName).c_str());
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
+            rtl::OUString defaultname;
+            rtl::OUString defaultFileName;
+            rtl::OUString sheetName;
+            getDefaultData(defaultname, defaultFileName,sheetName);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(fileName);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                cJSON *newCreate = createNewSpreadsheetFile(filePath, sheetName); // 创建新的电子表格文件
+                if (newCreate == nullptr)
+                {
+                    logger_log_error("Failed to create new spreadsheet file: %s", fileName.c_str());
+                    ErrorCodeManager::setErrorMessage(results, RESPONSE_FAILED_TO_PROCESS);
+                    return;
+                }
+            }
+            else
+            {
+                // 如果文件已经加载，直接获取文档引用
+            }
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Exception in createfile for %s: %s", fileName.c_str(), e.what());
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_FAILED_TO_PROCESS);
+            return;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in createfile for %s", fileName.c_str());
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_FAILED_TO_PROCESS);
+            return;
+        }
+        // 创建文件任务
+        filemanager::FileTask task;
+        task.type = filemanager::TASK_CREATE_FILE;
+        task.filename = fileName;
+        task.createTime = std::time(nullptr);
+        filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
+        filemanager::FileQueueManager::getInstance().addFileTask(task);
+
+        // 构造返回结果
+        cJSON_AddStringToObject(results, "filename", fileName.c_str());
+        cJSON_AddStringToObject(results, "filestatus", "created");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+    }
+
+    int backupdefaultfile()
+    {
+        // 生成唯一文件名
+        time_t now = time(0);
+        tm *ltm = localtime(&now);
+
+        char filename[100];
+        sprintf(filename, "default_%04d%02d%02d_%02d%02d%02d",
+                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
+                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+        logger_log_info("filename: %s", filename);
+
+        // 自己组织备份规则，比如时间戳，版本管理
+        rtl::OUString absfilePath;
+        getAbsolutePath(convertStringToOUString(filename), absfilePath);
+        // 创建文件
+        rtl::OUString filePath;
+        rtl::OUString defaultFileName;
+        rtl::OUString sheetName;
+        getDefaultData(filePath, defaultFileName, sheetName);
+        // 从缓存索引获取数据
+        std::vector<TextCharInfo> infos = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
+        // 首先创建个空文档 默认工作表名
+        cJSON *newCreate = createNewSpreadsheetFile(absfilePath, sheetName);
+        if (newCreate == nullptr)
+        {
+            logger_log_error("Failed to create new spreadsheet file: %s", filename);
+            return -1;
+        }
+        if (!writeCharacterInfosToSheet(absfilePath, sheetName, infos))
+        {
+            logger_log_error("Failed to write character infos to sheet");
+            return -1;
+        }
+        return 0;
+    }
+    void newfile(cJSON *results, const char *body)
+    {
+        // newfile不需要请求体，所以即使body为空也继续处理
+        cJSON_AddStringToObject(results, "filestatus", "processing");
+        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
 
     void updatefile(cJSON *results, const char *body)
@@ -615,8 +752,8 @@ namespace filemanager
         rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(filename).c_str());
         rtl::OUString filePath;
         getAbsolutePath(filePathStr, filePath);
-        rtl::OUString defaultfilePath, wordsSheetName;
-        getDefaultData(defaultfilePath, wordsSheetName);
+        rtl::OUString defaultfilePath, defaultFileName, wordsSheetName;
+        getDefaultData(defaultfilePath, defaultFileName, wordsSheetName);
         try
         {
             uno::Reference<lang::XComponent> xComp;
@@ -698,7 +835,7 @@ namespace filemanager
             return;
         }
 
-        int status = filemanager::querysheetdata(jsonRoot,results);
+        int status = filemanager::querysheetdata(jsonRoot, results);
         if (status != 0)
         {
             ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_INVALID_CONTENT);

@@ -53,7 +53,7 @@
 // =====================================================
 // = 1. 导入依赖
 // =====================================================
-import { fieldToColumnMapping, generateFieldToColumnMapping } from '@/utils/formUtils';
+import { fieldToColumnMapping, formToExcelMapping, excelToFormMapping } from '@/utils/formUtils';
 
 // 修复重复的默认导出并调整导入顺序
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
@@ -67,12 +67,6 @@ import { savePositions } from '../services/formPositionService'
 import ApiService, { callApi } from '../services/ApiService';
 // 字段映射状态
 const fieldToColumn = ref(fieldToColumnMapping);
-
-// 动态更新字段映射
-const updateFieldMapping = (formDesign) => {
-  console.log('[FormGrid] 根据表单设计更新字段映射:', formDesign);
-  fieldToColumn.value = generateFieldToColumnMapping(formDesign);
-};
 
 // 初始化逻辑
 onMounted(() => {
@@ -436,7 +430,7 @@ const saveAddForm = async (formData) => {
         currentForms.forEach((form, index) => {
           const row = index + 1;
           console.log('FormGrid] 添加表单第', row, '行数据', form);
-          fieldToColumn = generateFieldToColumnMapping(form, row);
+          fieldToColumn = formToExcelMapping(form,fieldToColumnMapping, row);
           console.log('[FormGrid] 动态生成字段映射:', fieldToColumn);
           updatecells = { ...updatecells, ...fieldToColumn };
         });
@@ -772,7 +766,7 @@ const handleFormSave = async (updatedForm) => {
           currentForms.forEach((form, index) => {
             const row = index + 1;
             console.log('FormGrid] 添加表单第', row, '行数据', form);
-            fieldToColumn = generateFieldToColumnMapping(form, row);
+            fieldToColumn = formToExcelMapping(form,fieldToColumnMapping, row);
             console.log('[FormGrid] 动态生成字段映射:', fieldToColumn);
             updatecells = { ...updatecells, ...fieldToColumn };
           });

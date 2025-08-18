@@ -1,4 +1,4 @@
- #include <sys/socket.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -10,16 +10,17 @@
 #include "./config/json_config.h"
 #include "./filemanager/filequeue.h"
 #include "./filemanager/lofficeconn.h"
-#include "./filemanager/cache.h"
+#include "./filemanager/template_index_cache.h"
 #include "./filemanager/fileops.h"
 #include "./error/error_codes.h"
+#include "./filemanager/utils.h"
 
 // 新增外部声明
 extern void deal_filestatus_request(RequestBody requestbody, ResponseBody *responsebody);
 extern void deal_opendata_request(RequestBody requestbody, ResponseBody *responsebody);
 #include <iostream>
 /* ======= dbmanager.c  ======= */
-//extern GridCircle *gridcircldata; // json文件默认配置读取
+// extern GridCircle *gridcircldata; // json文件默认配置读取
 extern char *defaultdbname;
 
 // HTTPS配置
@@ -112,7 +113,26 @@ SSL_CTX *create_ssl_context()
 /********************** HTTP处理函数 ***********************/
 void send_response(SSL *ssl, ResponseBody responsebody)
 {
-    char header[512];
+    if (strlen(responsebody.body) > MAX_RESPONSE_SIZE)
+    {
+        char header[512];
+        int len = snprintf(header, sizeof(header),
+                           "HTTP/1.1 %d %s\r\n"
+                           "Access-Control-Allow-Origin: *\r\n"
+                           "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                           "Access-Control-Allow-Headers: Content-Type, Authorization, X-Current-Page, X-Page-Size\r\n"
+                           "Access-Control-Max-Age: 86400\r\n"
+                           "Content-Type: %s; charset=utf-8\r\n"
+                           "Content-Length: %zu\r\n\r\n",
+                           STATUS_BAD_REQUEST,
+                           "Response too large",
+                           "text/plain",
+                           strlen("{\"error\":\"Response too large, please use paging or split your request.\"}"));
+        SSL_write(ssl, header, len);
+        SSL_write(ssl, "{\"error\":\"Response too large, please use paging or split your request.\"}", strlen("{\"error\":\"Response too large, please use paging or split your request.\"}"));
+        return;
+    }
+    char header[MAX_RESPONSE_SIZE];
     int len = snprintf(header, sizeof(header),
                        "HTTP/1.1 %d %s\r\n"
                        "Access-Control-Allow-Origin: *\r\n"
@@ -155,12 +175,11 @@ void handle_options_request(SSL *ssl, RequestBody requestbody)
     send_response(ssl, responsebody);
 }
 
-// GET /api/get-gridcircle-default 接口处理函数
-void handle_style_request(SSL *ssl, RequestBody requestbody)
+void handle_default_request(SSL *ssl, RequestBody requestbody)
 {
     ResponseBody responsebody;
     ResponseBodyInit(&responsebody);
-    deal_style_request(requestbody, &responsebody);
+    deal_default_request(requestbody, &responsebody);
     send_response(ssl, responsebody);
 }
 
@@ -281,14 +300,14 @@ void handle_renamefile_request(SSL *ssl, RequestBody requestbody)
 
 // 接口路由
 struct Route routes[] = {
+    {"GET", "/api/default", handle_default_request},
     {"GET", "/api/filelist", handle_filelist_request},
-    {"POST", "/api/get-gridcircle-default", handle_style_request},
     {"POST", "/api/newfile", handle_newfile_request},
     {"POST", "/api/updatefile", handle_updatefile_request},
     {"POST", "/api/editfile", handle_editfile_request},
     {"POST", "/api/filedata", handle_filedata_request},
-    {"GET", "/api/opendata", handle_opendata_request},  // 新增GET接口
-    {"POST", "/api/filestatus", handle_filestatus_request},  // 新增POST接口
+    {"GET", "/api/opendata", handle_opendata_request},      // 新增GET接口
+    {"POST", "/api/filestatus", handle_filestatus_request}, // 新增POST接口
     {"POST", "/api/deletefile", handle_deletefile_request},
     {"POST", "/api/addworksheet", handle_addworksheet_request},
     {"POST", "/api/removeworksheet", handle_removeworksheet_request},
@@ -297,8 +316,8 @@ struct Route routes[] = {
     {"POST", "/api/sheetdata", handle_sheetdata_request},
     {"POST", "/api/renamefile", handle_renamefile_request},
     // 添加通用OPTIONS处理路由
+    {"OPTIONS", "/api/default", handle_options_request},
     {"OPTIONS", "/api/filelist", handle_options_request},
-    {"OPTIONS", "/api/get-gridcircle-default", handle_options_request},
     {"OPTIONS", "/api/newfile", handle_options_request},
     {"OPTIONS", "/api/updatefile", handle_options_request},
     {"OPTIONS", "/api/editfile", handle_options_request},
@@ -316,7 +335,7 @@ struct Route routes[] = {
 
 void handle_request(SSL *ssl, int client_socket)
 {
-    char buffer[BUFFER_SIZE];//读取接收到的内容
+    char buffer[BUFFER_SIZE]; // 读取接收到的内容
     int total_read = 0;
     int bytes_read = 0;
 
@@ -366,7 +385,18 @@ void handle_request(SSL *ssl, int client_socket)
             break;
     }
 
-    // Add connection state check
+    // 判断请求体大小
+    if (total_read > MAX_REQUEST_SIZE)
+    {
+        ResponseBody responsebody;
+        ResponseBodyInit(&responsebody);
+        responsebody.status = STATUS_BAD_REQUEST;
+        sprintf(responsebody.errmsg, "%s", ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+        sprintf(responsebody.content_type, "text/plain");
+        sprintf(responsebody.body, "{\"error\":\"Request body too large, please use paging or split your request.\"}");
+        send_response(ssl, responsebody);
+        return;
+    }
     if (total_read == 0)
     {
         if (SSL_get_shutdown(ssl) & SSL_RECEIVED_SHUTDOWN)
@@ -384,15 +414,15 @@ void handle_request(SSL *ssl, int client_socket)
     printf("Received full request (%d bytes):\n%.*s\n", total_read, total_read, buffer);
 
     // 解析请求行时添加错误检查
-    RequestBody requestbody;//取buffer中指定内容
+    RequestBody requestbody; // 取buffer中指定内容
     RequestBodyInit(&requestbody);
     if (sscanf(buffer, "%15s %255s %15s", requestbody.method, requestbody.path, requestbody.protocol) != 3)
     {
         ResponseBody responsebody;
         ResponseBodyInit(&responsebody);
         responsebody.status = STATUS_BAD_REQUEST;
-        memset(responsebody.errmsg,0,sizeof(responsebody.errmsg));
-        sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+        memset(responsebody.errmsg, 0, sizeof(responsebody.errmsg));
+        sprintf(responsebody.errmsg, "%s", ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
         memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
         sprintf(responsebody.content_type, "text/plain");
         memset(responsebody.body, 0, sizeof(responsebody.body));
@@ -403,10 +433,12 @@ void handle_request(SSL *ssl, int client_socket)
 
     // 修复后的头解析逻辑
     char *header_start = strstr(buffer, "\r\n") + 2; // 跳过请求行
-    while (header_start && header_start < buffer + total_read) {
+    while (header_start && header_start < buffer + total_read)
+    {
         char *line_end = strstr(header_start, "\r\n");
-        if (!line_end) break;
-        
+        if (!line_end)
+            break;
+
         // 提取单行头
         char header_line[256];
         strncpy(header_line, header_start, line_end - header_start);
@@ -414,22 +446,28 @@ void handle_request(SSL *ssl, int client_socket)
 
         // 解析键值对
         char *colon = strchr(header_line, ':');
-        if (colon) {
+        if (colon)
+        {
             *colon = '\0';
             char *value = colon + 1;
-            while (*value == ' ') value++; // 跳过空格
-            //忽略大小写比较
-            if (strcasecmp(header_line, "X-Current-Page") == 0) {
+            while (*value == ' ')
+                value++; // 跳过空格
+            // 忽略大小写比较
+            if (strcasecmp(header_line, "X-Current-Page") == 0)
+            {
                 requestbody.current_page = atoi(value);
-            } else if (strcasecmp(header_line, "X-Page-Size") == 0) {
+            }
+            else if (strcasecmp(header_line, "X-Page-Size") == 0)
+            {
                 requestbody.page_size = atoi(value);
             }
         }
 
         header_start = line_end + 2; // 移动到下一行头
-        if (strncmp(header_start, "\r\n", 2) == 0) break; // 遇到空行停止
+        if (strncmp(header_start, "\r\n", 2) == 0)
+            break; // 遇到空行停止
     }
-printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_size);
+    printf("currentPage:%d pageSize:%d\n", requestbody.current_page, requestbody.page_size);
     // 新增：正确解析请求正文
     requestbody.body_start = strstr(buffer, "\r\n\r\n");
     if (requestbody.body_start)
@@ -448,7 +486,7 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
                 ResponseBody responsebody;
                 ResponseBodyInit(&responsebody);
                 responsebody.status = STATUS_BAD_REQUEST;
-                sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+                sprintf(responsebody.errmsg, "%s", ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
                 memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
                 sprintf(responsebody.content_type, "text/plain");
                 memset(responsebody.body, 0, sizeof(responsebody.body));
@@ -462,7 +500,7 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
     {
         // 如果没有找到正文分隔符，将body_start设置为空字符串
         static const char empty_string[] = "";
-        requestbody.body_start = const_cast<char*>(empty_string);
+        requestbody.body_start = const_cast<char *>(empty_string);
     }
     printf("method:%s,path:%s,protocol:%s,body_start:%s\n", requestbody.method, requestbody.path, requestbody.protocol, requestbody.body_start);
     // 查找匹配路由
@@ -479,7 +517,7 @@ printf("currentPage:%d pageSize:%d\n",requestbody.current_page,requestbody.page_
     ResponseBody responsebody;
     ResponseBodyInit(&responsebody);
     responsebody.status = STATUS_BAD_REQUEST;
-    sprintf(responsebody.errmsg,"%s",ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
+    sprintf(responsebody.errmsg, "%s", ErrorCodeManager::getErrorMessage(STATUS_BAD_REQUEST).c_str());
     memset(responsebody.content_type, 0, sizeof(responsebody.content_type));
     sprintf(responsebody.content_type, "text/plain");
     memset(responsebody.body, 0, sizeof(responsebody.body));
@@ -546,17 +584,13 @@ void cleanup_resources(int sig)
 
     // 释放配置资源
     json_config_free();
-    
+
     // 添加更多资源清理
     // 停止文件队列管理器的任务处理器
     filemanager::FileQueueManager::getInstance().stopTaskProcessor();
-    
+
     // 释放 LibreOffice 连接
     filemanager::LibreOfficeConnectionManager::release();
-    
-    // 清理缓存
-    filemanager::clearTemplateCache();
-    filemanager::clearSheetDataCache();
 
     exit(EXIT_FAILURE);
 }
@@ -571,13 +605,14 @@ int main()
 
     // 初始化日志
     logger_init("../log/server.log");
-    
+
     // 初始化配置
-    if (json_config_init(NULL) != 0) {
+    if (json_config_init(NULL) != 0)
+    {
         fprintf(stderr, "Failed to initialize configuration\n");
         return 1;
     }
-    
+
     // 初始化 LibreOffice 连接
     std::cout << "Attempting to initialize LibreOffice connection..." << std::endl;
     if (!filemanager::LibreOfficeConnectionManager::initialize())
@@ -593,11 +628,12 @@ int main()
         logger_log_warn("To start LibreOffice in headless mode, run:");
         logger_log_warn("soffice --headless --accept=\"socket,host=127.0.0.1,port=2002;urp;\" --nofirststartwizard");
         logger_log_warn("========================================");
-        
+
         // 继续运行服务，但会有一些功能受限
         logger_log_warn("Service will continue to run, but LibreOffice-related features will not work until connection is established.");
     }
-    else {
+    else
+    {
         logger_log_info("LibreOffice connection initialized successfully.");
     }
 
@@ -606,14 +642,20 @@ int main()
     logger_log_info("File queue manager started");
 
     // 初始化文件管理器模板缓存
-    filemanager::initializeTemplateCache();
+    rtl::OUString filePath;
+    rtl::OUString defaultFileName;
+    rtl::OUString sheetName;
+    filemanager::getDefaultData(filePath, defaultFileName, sheetName);
+    std::shared_ptr<filemanager::CharacterIndex> idx = filemanager::TemplateIndexCacheManager::getInstance().getTemplateIndex(filePath+defaultFileName, sheetName);
+    filemanager::TemplateIndexCacheManager::getInstance().monitorTemplateFile(filemanager::convertOUStringToString(filePath+defaultFileName), filemanager::convertOUStringToString(sheetName));
 
     // 扫描并初始化datapath目录下的文件
     filemanager::initializeDataPathFiles();
 
     // 启动服务
     int port = json_config_get_int("port");
-    if (port == 0) {
+    if (port == 0)
+    {
         logger_log_warn("警告: 无法从配置文件中读取端口配置，使用默认端口8443");
         port = 8443; // 默认端口
     }
@@ -630,11 +672,11 @@ int main()
         cleanup_resources(0);
         return 1;
     }
-    
+
     // 设置套接字选项
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    
+
     struct sockaddr_in addr = {
         .sin_family = AF_INET,
         .sin_port = htons(port),
@@ -671,7 +713,7 @@ int main()
             perror("accept failed");
             continue;
         }
-        
+
         SSL *ssl = SSL_new(global_ctx);
         if (!ssl)
         {
@@ -679,7 +721,7 @@ int main()
             close(client_fd);
             continue;
         }
-        
+
         SSL_set_fd(ssl, client_fd);
 
         if (SSL_accept(ssl) <= 0)
@@ -711,22 +753,19 @@ int main()
     return 0;
 }
 
-extern "C" void cleanup(int sig) {
+extern "C" void cleanup(int sig)
+{
     logger_log_info("Cleaning up resources due to signal: %d", sig);
-    
+
     // 停止文件队列管理器的任务处理器
     filemanager::FileQueueManager::getInstance().stopTaskProcessor();
-    
+
     // 释放 LibreOffice 连接
     filemanager::LibreOfficeConnectionManager::release();
-    
+
     // 清理配置
     json_config_free();
-    
-    // 清理缓存
-    filemanager::clearTemplateCache();
-    filemanager::clearSheetDataCache();
-    
+
     logger_log_info("Cleanup completed");
     exit(0);
 }

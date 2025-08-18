@@ -2,70 +2,60 @@
 
 // 默认字段映射
 export const fieldToColumnMapping = {
-  id: 'A',
-  title: 'B',
-  value: 'C',
-  remark: 'D',
-  media: 'E',
-  mediaType: 'F',
-  showTitle: 'G',
-  showValue: 'H',
-  showRemark: 'I',
-  showMedia: 'J',
-  position: 'K',
+  "id": "A",
+  "title": "B",
+  "value": "C",
+  "remark": "D",
+  "media": "E",
+  "mediaType": "F",
+  "showTitle": "G",
+  "showValue": "H",
+  "showRemark": "I",
+  "showMedia": "J",
+  "position": "K",
 };
 
-// 动态生成字段映射
-export const generateFieldToColumnMapping = (formDesign, rowNumber = 1) => {
-  const mapping = {};
-  let columnIndex = 0;
+// 表单转为 Excel 格式的映射函数
+export const formToExcelMapping = (inputObject, columnToFieldMapping, columnNumber) => {
+  const newMapping = {};
 
-  // 检查 formDesign 是否为对象，如果是则转换为数组
-  const fields = Array.isArray(formDesign) ? formDesign : [formDesign];
-
-  fields.forEach((field) => {
-    // 检查 value 是否为空值
-    if (!field.value && field.value !== 0) {
-      console.warn(`[generateFieldToColumnMapping] 忽略空值字段:`, field);
-      return; // 跳过空值字段
+  for (const [field, value] of Object.entries(inputObject)) {
+    // 过滤掉 value 为 '' 的字段
+    if (value === '') continue;
+    if (columnToFieldMapping[field]) {
+      const columnValue = `${columnToFieldMapping[field]}${columnNumber}`;
+      // 如果字段的值是对象，则将其整体作为 key
+      if (typeof value === 'object' && value !== null) {
+        newMapping[JSON.stringify(value)] = columnValue;
+      } else {
+        newMapping[value] = columnValue;
+      }
     }
-
-    // 生成列名（如 A1, B2, C3）
-    const columnLetter = String.fromCharCode(65 + columnIndex); // A, B, C...
-    const columnName = `${columnLetter}${rowNumber}`;
-
-    // 添加 id 映射
-    if (field.id !== undefined) {
-      mapping[field.id] = columnName;
-    }
-
-    // 添加 title 映射
-    if (field.title) {
-      mapping[field.title] = columnName;
-    }
-
-    // 添加 value 映射
-    if (field.value) {
-      mapping[field.value] = columnName;
-    }
-
-    // 更新列索引
-    columnIndex++;
-  });
-
-  return mapping;
+  }
+  return newMapping;
 };
 
-// 新增逆映射函数：从单元格地址映射回字段名
-export function generateColumnToFieldMapping(fieldToColumnMapping) {
+// 重新实现 excelToFormMapping 函数
+export const excelToFormMapping = (fieldToColumnMapping, excelMapping) => {
+  // 初始化 columnToFieldMapping
   const columnToFieldMapping = {};
 
-  // 遍历字段到列的映射，生成逆映射关系
+  // 遍历 fieldToColumnMapping，将 value 作为 key，key 作为 value
   for (const [field, column] of Object.entries(fieldToColumnMapping)) {
-    // 提取列标识（如 'A' 从 'A2', 'A3' 等）
-    const baseColumn = column.replace(/\d+/g, ''); // 移除数字部分
-    columnToFieldMapping[baseColumn] = field;
+    columnToFieldMapping[column] = field;
   }
 
-  return columnToFieldMapping;
-}
+  const resultMapping = {};
+
+  // 遍历 excelMapping，生成新的映射，并去除列标识后面的数字
+  for (const [key, value] of Object.entries(excelMapping)) {
+    const baseColumn = value.replace(/\d+/g, ''); // 去除数字部分
+    if (columnToFieldMapping[baseColumn]) {
+      resultMapping[columnToFieldMapping[baseColumn]] = key;
+    } else {
+      console.warn(`[excelToFormMapping] 未找到列映射: ${value}`);
+    }
+  }
+
+  return resultMapping;
+};

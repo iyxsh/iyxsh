@@ -12,6 +12,12 @@ post {
 
 body:json {
   {
-    "filename":"花费多少啊"
+    "filename":"搞大幅度"
   }
+}
+
+docs {
+  # 新建文件支持有body和没有body
+  有body 必须指定文件名： filename 按照此文件名生成
+  没有body，后台生成文件名并返回
 }

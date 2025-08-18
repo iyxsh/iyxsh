@@ -45,7 +45,7 @@ set(SOURCES
     ./leofun/filemanager/lofficeconn.cpp
     ./leofun/filemanager/spreadsheet.cpp
     ./leofun/filemanager/utils.cpp
-    ./leofun/filemanager/cache.cpp
+    ./leofun/filemanager/template_index_cache.cpp
     ./leofun/apihandle/handle.cpp
     ./leofun/cJSON/cJSON.c
     ./leofun/logger/logger.cpp
@@ -61,7 +61,7 @@ set(HEADERS
     ./leofun/filemanager/lofficeconn.h
     ./leofun/filemanager/spreadsheet.h
     ./leofun/filemanager/utils.h
-    ./leofun/filemanager/cache.h
+    ./leofun/filemanager/template_index_cache.h
     ./leofun/apihandle/handle.h
     ./leofun/cJSON/cJSON.h
     ./leofun/logger/logger.h

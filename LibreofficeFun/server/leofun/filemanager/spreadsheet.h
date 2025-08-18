@@ -16,6 +16,7 @@
 #include <com/sun/star/table/XCellRange.hpp>
 #include <com/sun/star/table/XCell.hpp>
 #include <com/sun/star/table/XColumnRowRange.hpp>
+#include <com/sun/star/table/CellRangeAddress.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
@@ -39,7 +40,7 @@
 // 配置文件
 #include "../config/json_config.h"
 #include "utils.h"
-#include "cache.h"
+#include "template_index_cache.h"
 
 using namespace com::sun::star;
 
@@ -65,8 +66,7 @@ namespace filemanager
 
     /// @brief 创建新电子表格文件
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
-                                    const rtl::OUString &sheetName,
-                                    const cJSON *contentData = nullptr);
+                                    const rtl::OUString &sheetName);
 
     /// @brief 更新电子表格内容
     cJSON *updateSpreadsheetContent(const rtl::OUString &filePath,
@@ -97,6 +97,21 @@ namespace filemanager
     int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName);
     // 分页读取工作表内容
     cJSON *readSheetDataRange(const rtl::OUString &filePath, const rtl::OUString &sheetName, int startIndex, int endIndex);
+    void clearSheet(const uno::Reference<sheet::XSpreadsheet> &sheet);
+    void copySheetContent(const uno::Reference<sheet::XSpreadsheet> &srcSheet, const uno::Reference<sheet::XSpreadsheet> &dstSheet);
+    int copySheetToAnotherFile(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sourceDoc,
+                               const rtl::OUString &sourceSheetName,
+                               const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &targetDoc);
+
+    // 声明用于查找字符串位置的函数
+    std::string findStringInSpreadsheet(const rtl::OUString &targetString, css::uno::Reference<css::sheet::XSpreadsheet> sheet);
+    std::vector<LanguageGroup> readSheetAndGroupByLanguage(css::uno::Reference<css::sheet::XSpreadsheet> sheet);
+
+    // 批量写入 CharacterInfo 到指定文件和工作表
+    bool writeCharacterInfosToSheet(const rtl::OUString &filePath,
+                                    const rtl::OUString &sheetName,
+                                    const std::vector<TextCharInfo> &infos);
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, const CharacterIndex& index);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H

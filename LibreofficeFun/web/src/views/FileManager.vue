@@ -273,7 +273,7 @@ export default {
           fileList.value = response.files.map((item, index) => ({
             id: index,
             name: item.filename ? removeFileExtension(item.filename) : `文件${index + 1}`,
-            status: item.status || '未知',
+            status: item.filestatus || '未知',
             modified: parseDate(item.lastModified) || new Date(),
             type: 'ods',
             size: item.size || 0

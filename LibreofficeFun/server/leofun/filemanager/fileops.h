@@ -6,12 +6,13 @@
 
 namespace filemanager 
 {
+    void defaultGet(cJSON *results, const char *body);
     void newfileCreate(cJSON *results, const char *body);
     void updatefile(cJSON *results, const char *body);
     void editfile(cJSON *results, const char *body);
     void filestatus(cJSON *results, const char *body);
     void filelist(cJSON *results, const char *body);
-    
+    int backupdefaultfile();
     // 新增的接口函数声明
     void deletefile(cJSON *results, const char *body);
     void addworksheet(cJSON *results, const char *body);
