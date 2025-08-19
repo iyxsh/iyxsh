@@ -14,7 +14,7 @@ namespace filemanager
     {
         return loading.load();
     }
-    std::vector<TextCharInfo> TemplateIndexCacheManager::getCharacterInfos(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    std::shared_ptr<CharacterIndex> TemplateIndexCacheManager::getCharacterInfos(const rtl::OUString &filePath, const rtl::OUString &sheetName)
     {
         std::string cacheKey = buildCacheKey(filePath, sheetName);
         std::lock_guard<std::mutex> lock(cacheMutex);
@@ -22,9 +22,9 @@ namespace filemanager
         if (it != indexCache.end() && it->second->index)
         {
             // 直接调用 CharacterIndex::getAll 获取所有索引内容
-            return it->second->index->getAll();
+            return it->second->index;
         }
-        return {};
+        return nullptr;
     }
     TemplateIndexCacheManager &TemplateIndexCacheManager::getInstance()
     {
@@ -86,7 +86,14 @@ namespace filemanager
                 return it->second->index;
             }
         }
-        reloadTemplateIndex(filePath, sheetName);
+        struct stat fileStat;
+        if (stat(convertOUStringToString(filePath).c_str(), &fileStat) == 0) {
+            setLastModified(fileStat.st_mtime);
+            reloadTemplateIndex(filePath, sheetName);
+        } else {
+            logger_log_error("stat failed for file %s", convertOUStringToString(filePath).c_str());
+            return nullptr;
+        }
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto it = indexCache.find(cacheKey);
         if (it != indexCache.end())
@@ -104,6 +111,7 @@ namespace filemanager
         uno::Reference<lang::XComponent> xComp;
         try
         {
+            logger_log_info("Reloading template index for %s %s .....................", convertOUStringToString(filePath).c_str(), convertOUStringToString(sheetName).c_str());
             uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
             if (!xDoc.is())
             {
@@ -143,26 +151,44 @@ namespace filemanager
         loading.store(false);
     }
 
+    time_t TemplateIndexCacheManager::getLastModified() const
+    {
+        return lastModified;
+    }
+
+    void TemplateIndexCacheManager::setLastModified(time_t lastModified)
+    {
+        TemplateIndexCacheManager::lastModified = lastModified;
+    }
+
     void TemplateIndexCacheManager::monitorTemplateFile(const std::string &filePath, const std::string &sheetName)
     {
         std::thread([this, filePath, sheetName]()
                     {
-        time_t lastModified = 0;
+        lastModified = getLastModified();
         while (true) {
             try {
                 std::this_thread::sleep_for(std::chrono::seconds(30));
                 struct stat fileStat;
                 if (stat(filePath.c_str(), &fileStat) == 0) {
                     if (fileStat.st_mtime > lastModified) {
-                        lastModified = fileStat.st_mtime;
+                        //启动时没有缓存，不进行备份，只有重载才进行备份
+                        if(lastModified != 0)
+                        {
+                            //重载前进行缓存备份到文件
+                            int res = backupdefaultfile();
+                            if(res != 0)
+                            {
+                                logger_log_error("backupdefaultfile failed!!!!!!!!!!!!!!!!!!!!!!!!!");
+                            }
+                        }
+                        else
+                        {
+                            logger_log_info("First run not backup!!!!!");
+                        }
+                        setLastModified(fileStat.st_mtime);
                         rtl::OUString filePathOU = convertStringToOUString(filePath.c_str());
                         rtl::OUString sheetNameOU = convertStringToOUString(sheetName.c_str());
-                        //重载前进行缓存备份到文件
-                        int res = backupdefaultfile();
-                        if(res != 0)
-                        {
-                            logger_log_error("backupdefaultfile failed!!!!!!!!!!!!!!!!!!!!!!!!!");
-                        }
                         //重载默认模板文件
                         reloadTemplateIndex(filePathOU, sheetNameOU);
                         //重新更换当前所有文件的状态和模板数据

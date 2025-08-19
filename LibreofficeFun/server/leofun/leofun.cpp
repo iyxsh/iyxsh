@@ -646,11 +646,8 @@ int main()
     rtl::OUString defaultFileName;
     rtl::OUString sheetName;
     filemanager::getDefaultData(filePath, defaultFileName, sheetName);
-    std::shared_ptr<filemanager::CharacterIndex> idx = filemanager::TemplateIndexCacheManager::getInstance().getTemplateIndex(filePath+defaultFileName, sheetName);
+    filemanager::TemplateIndexCacheManager::getInstance().getTemplateIndex(filePath+defaultFileName, sheetName);
     filemanager::TemplateIndexCacheManager::getInstance().monitorTemplateFile(filemanager::convertOUStringToString(filePath+defaultFileName), filemanager::convertOUStringToString(sheetName));
-
-    // 扫描并初始化datapath目录下的文件
-    filemanager::initializeDataPathFiles();
 
     // 启动服务
     int port = json_config_get_int("port");

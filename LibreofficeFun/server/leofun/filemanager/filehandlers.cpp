@@ -31,7 +31,13 @@ namespace filemanager
         rtl::OUString sheetName;
         getDefaultData(filePath, defaultFileName, sheetName);
         // 从缓存索引获取数据
-        std::vector<TextCharInfo> infos = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
+        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
+        if (!idxPtr)
+        {
+            logger_log_error("Failed to get character infos from cache: idxPtr is null");
+            return -1;
+        }
+        std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
         if (!writeCharacterInfosToSheet(absfilePath, sheetName, infos))
         {
             logger_log_error("Failed to write character infos to sheet");
@@ -759,8 +765,13 @@ namespace filemanager
         getDefaultData(defaultFilePath, defaultFileName, defaultSheetName);
 
         // 读取默认工作表的缓存数据
-        std::vector<TextCharInfo> defaultInfos = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(defaultFilePath + defaultFileName, defaultSheetName);
-
+        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(defaultFilePath + defaultFileName, defaultSheetName);
+        if (!idxPtr)
+        {
+            logger_log_error("Failed to get character infos from cache: idxPtr is null");
+            return -1;
+        }
+        std::vector<TextCharInfo> defaultInfos = idxPtr->getAll(); // 获取所有数据
         // 创建新的临时工作表
         rtl::OUString tempSheetName = defaultSheetName + "_temp";
 

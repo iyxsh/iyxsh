@@ -46,9 +46,6 @@ using namespace com::sun::star;
 
 namespace filemanager
 {
-    // 列索引与Excel列名转换
-    std::string columnIndexToName(int columnIndex);
-
     /// @brief 读取单元格内容为JSON
     cJSON *readCellToJson(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sheet,
                           const rtl::OUString &cellAddress);
@@ -111,7 +108,7 @@ namespace filemanager
     bool writeCharacterInfosToSheet(const rtl::OUString &filePath,
                                     const rtl::OUString &sheetName,
                                     const std::vector<TextCharInfo> &infos);
-    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, const CharacterIndex& index);
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H

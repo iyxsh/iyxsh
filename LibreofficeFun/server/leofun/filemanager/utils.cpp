@@ -10,44 +10,49 @@
 namespace filemanager
 {
     // 移除文件名后缀
-    std::string removeFileExtension(const std::string& filename) {
+    std::string removeFileExtension(const std::string &filename)
+    {
         // 查找最后一个点的位置
         size_t lastDot = filename.find_last_of('.');
-        
+
         // 如果没有找到点，或者点在第一个位置，或者点在最后一个位置，则返回原文件名
-        if (lastDot == std::string::npos || lastDot == 0 || lastDot == filename.length() - 1) {
+        if (lastDot == std::string::npos || lastDot == 0 || lastDot == filename.length() - 1)
+        {
             return filename;
         }
-        
+
         // 返回不包含后缀的文件名
         return filename.substr(0, lastDot);
     }
-    
+
     // 确保文件名有.ods后缀
-    std::string ensureOdsExtension(const std::string& filename) {
+    std::string ensureOdsExtension(const std::string &filename)
+    {
         // 如果文件名已经以.ods结尾，则直接返回
-        if (filename.length() >= 4 && 
-            (filename.substr(filename.length() - 4) == ".ods" || 
-             filename.substr(filename.length() - 4) == ".ODS")) {
+        if (filename.length() >= 4 &&
+            (filename.substr(filename.length() - 4) == ".ods" ||
+             filename.substr(filename.length() - 4) == ".ODS"))
+        {
             return filename;
         }
-        
+
         // 如果文件名以.ods结尾，则替换为.ods
-        if (filename.length() >= 4 && 
-            (filename.substr(filename.length() - 4) == ".ods" || 
-             filename.substr(filename.length() - 4) == ".ODS")) {
+        if (filename.length() >= 4 &&
+            (filename.substr(filename.length() - 4) == ".ods" ||
+             filename.substr(filename.length() - 4) == ".ODS"))
+        {
             return filename.substr(0, filename.length() - 4) + ".ods";
         }
-        
+
         // 其他情况添加.ods后缀
         return filename + ".ods";
     }
-    
+
     // 实现工具函数
     std::string convertToAbsolutePath(const std::string &path)
     {
         std::string absolutePath = path;
-        //std::cerr << "convertToAbsolutePath: input path: " << path << std::endl;
+        // std::cerr << "convertToAbsolutePath: input path: " << path << std::endl;
 
         // 检查是否为相对路径（以../开头）
         if (path.length() >= 2 && path.substr(0, 2) == "..")
@@ -56,7 +61,7 @@ namespace filemanager
             if (getcwd(cwd, sizeof(cwd)) != nullptr)
             {
                 std::string cwdStr(cwd);
-                //std::cerr << "convertToAbsolutePath: current working directory: " << cwdStr << std::endl;
+                // std::cerr << "convertToAbsolutePath: current working directory: " << cwdStr << std::endl;
 
                 // 查找最后一个斜杠以获取父目录
                 size_t lastSlash = cwdStr.find_last_of('/');
@@ -64,7 +69,7 @@ namespace filemanager
                 {
                     std::string parentDir = cwdStr.substr(0, lastSlash);
                     absolutePath = parentDir + path.substr(2); // 去掉前面的".."
-                    //std::cerr << "convertToAbsolutePath: converted to absolute path: " << absolutePath << std::endl;
+                    // std::cerr << "convertToAbsolutePath: converted to absolute path: " << absolutePath << std::endl;
                 }
                 else
                 {
@@ -234,10 +239,12 @@ namespace filemanager
         std::string fileNameStr = rtl::OUStringToOString(fileName, RTL_TEXTENCODING_UTF8).getStr();
         bool isAbsolute = false;
         // Windows 绝对路径判断（如 C:/ 或 C:\ 或以 / 开头）
-        if (fileNameStr.length() > 2 && (iswalpha(fileNameStr[0]) && fileNameStr[1] == ':' && (fileNameStr[2] == '/' || fileNameStr[2] == '\\')) || fileNameStr[0] == '/') {
+        if (fileNameStr.length() > 2 && (iswalpha(fileNameStr[0]) && fileNameStr[1] == ':' && (fileNameStr[2] == '/' || fileNameStr[2] == '\\')) || fileNameStr[0] == '/')
+        {
             isAbsolute = true;
         }
-        if (isAbsolute) {
+        if (isAbsolute)
+        {
             absoluteFilePath = fileName;
             logger_log_info("absoluteFilePath (already absolute): %s", fileNameStr.c_str());
             return;
@@ -251,9 +258,9 @@ namespace filemanager
         std::string absoluteFilePathStr = convertToAbsolutePath(FilePathStr);
         rtl::OString absoluteFilePathOStr = rtl::OString(absoluteFilePathStr.c_str());
         absoluteFilePath = rtl::OStringToOUString(absoluteFilePathOStr, RTL_TEXTENCODING_UTF8);
-        //logger_log_info("absoluteFilePath: %s", rtl::OUStringToOString(absoluteFilePath, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log_info("absoluteFilePath: %s", rtl::OUStringToOString(absoluteFilePath, RTL_TEXTENCODING_UTF8).getStr());
     }
-    void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &defaultFilename,rtl::OUString &wordsSheetName)
+    void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &defaultFilename, rtl::OUString &wordsSheetName)
     {
         // 从配置文件中获取数据路径和默认文件名
         const char *datapath = json_config_get_string("datapath");
@@ -270,7 +277,7 @@ namespace filemanager
         const char *defaultSheetName = wordsSheetNameConfig ? wordsSheetNameConfig : "WordsSheet";
 
         // 构建默认文件的完整路径
-        std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultpathname);
+        std::string defaultFilePathStr = std::string(datapath) + "/" + std::string(defaultpathname) + "/";
 
         // 处理相对路径，转换为绝对路径
         std::string absoluteDefaultFilePathStr = convertToAbsolutePath(defaultFilePathStr);
@@ -279,8 +286,8 @@ namespace filemanager
         defaultFilePath = rtl::OStringToOUString(absoluteDefaultFilePathOStr, RTL_TEXTENCODING_UTF8);
         defaultFilename = convertStringToOUString(ensureOdsExtension(std::string(defaultname)).c_str());
         wordsSheetName = convertStringToOUString(defaultSheetName);
-        //logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
-        //logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log_info("defaultFilePath: %s", rtl::OUStringToOString(defaultFilePath, RTL_TEXTENCODING_UTF8).getStr());
+        // logger_log_info("wordsSheetName: %s", rtl::OUStringToOString(wordsSheetName, RTL_TEXTENCODING_UTF8).getStr());
     }
     std::string getAbsoluteString(const std::string &fileName)
     {
@@ -290,7 +297,19 @@ namespace filemanager
             datapath = "../data"; // 默认数据路径
                                   // 构建默认文件的完整路径
         std::string FilePathStr = std::string(datapath) + "/" + ensureOdsExtension(fileName);
-        //logger_log_info("getAbsoluteString: input fileName: %s", FilePathStr.c_str());
+        // logger_log_info("getAbsoluteString: input fileName: %s", FilePathStr.c_str());
         return convertToAbsolutePath(FilePathStr);
+    }
+    // Function to convert a number to Excel column letter notation
+    std::string numberToExcelColumn(int num)
+    {
+        std::string columnName;
+        while (num > 0)
+        {
+            int remainder = (num - 1) % 26;
+            columnName = char('A' + remainder) + columnName;
+            num = (num - 1) / 26;
+        }
+        return columnName;
     }
 }

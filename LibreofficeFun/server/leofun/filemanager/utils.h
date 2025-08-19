@@ -27,6 +27,7 @@ namespace filemanager
     void getDefaultData(rtl::OUString &defaultFilePath, rtl::OUString &defaultFilename, rtl::OUString &wordsSheetName);
     // 获取文件的绝对路径字符串
     std::string getAbsoluteString(const std::string &fileName);
+    std::string numberToExcelColumn(int num);
 } // namespace filemanager
 
 #endif // UTILS_H

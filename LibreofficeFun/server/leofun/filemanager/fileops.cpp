@@ -66,11 +66,11 @@ namespace filemanager
                     }
                 }
                 closedir(dir);
-                logger_log_info("Finished scanning directory: %s", datapath);
+                logger_log_info("Finished scanning directory: %s", filepath.c_str());
             }
             else
             {
-                logger_log_warn("Failed to open datapath directory: %s", datapath);
+                logger_log_warn("Failed to open datapath directory: %s", filepath.c_str());
             }
         }
         else
@@ -88,8 +88,14 @@ namespace filemanager
         rtl::OUString AbsolutefilePath;
         rtl::OUString defaultFileName;
         rtl::OUString sheetName;
-        getDefaultData(AbsolutefilePath,defaultFileName, sheetName);
-        std::vector<TextCharInfo> idx = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(AbsolutefilePath+defaultFileName, sheetName);
+        getDefaultData(AbsolutefilePath, defaultFileName, sheetName);
+        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(AbsolutefilePath + defaultFileName, sheetName);
+        if (!idxPtr)
+        {
+            logger_log_error("Failed to get character infos from cache: idxPtr is null");
+            return ;
+        }
+        std::vector<TextCharInfo> infos;
         // 但如果有body且不为空，需要验证其为有效JSON
         if (body && strlen(body) > 0)
         {
@@ -111,39 +117,27 @@ namespace filemanager
             std::string textStr(textItem->valuestring);
             // 这里 idx 只是 CharacterInfo 列表，需获取 CharacterIndex
             // 但 splitAndClassifyTextFromIndex 需要 CharacterIndex，实际应从缓存获取 index
-            std::shared_ptr<CharacterIndex> indexPtr = filemanager::TemplateIndexCacheManager::getInstance().getTemplateIndex(AbsolutefilePath, sheetName);
-            std::vector<TextCharInfo> infos;
-            if (indexPtr)
+            if (idxPtr)
             {
-                infos = splitAndClassifyTextFromIndex(textStr, *indexPtr);
+                infos = splitAndClassifyTextFromIndex(textStr, idxPtr); // 获取指定文本的字符信息
             }
-            cJSON *infosArray = cJSON_CreateArray();
-            for (const auto &info : infos)
-            {
-                cJSON *infoObj = cJSON_CreateObject();
-                cJSON_AddStringToObject(infoObj, "character", info.character.c_str());
-                cJSON_AddStringToObject(infoObj, "pos", info.pos.c_str());
-                cJSON_AddStringToObject(infoObj, "languageType", info.languageType.c_str());
-                cJSON_AddStringToObject(infoObj, "bodyname", info.bodyname.c_str());
-                cJSON_AddItemToArray(infosArray, infoObj);
-            }
-            cJSON_AddItemToObject(results, "infos", infosArray);
             cJSON_Delete(root);
         }
         else
         {
-            cJSON *infosArray = cJSON_CreateArray();
-            for (const auto &info : idx)
-            {
-                cJSON *infoObj = cJSON_CreateObject();
-                cJSON_AddStringToObject(infoObj, "character", info.character.c_str());
-                cJSON_AddStringToObject(infoObj, "pos", info.pos.c_str());
-                // idx 没有 languageType 字段，补充空字符串
-                cJSON_AddStringToObject(infoObj, "languageType", "");
-                cJSON_AddItemToArray(infosArray, infoObj);
-            }
-            cJSON_AddItemToObject(results, "infos", infosArray);
+            infos = idxPtr->getAll(); // 获取所有数据
         }
+        cJSON *infosArray = cJSON_CreateArray();
+        for (const auto &info : infos)
+        {
+            cJSON *infoObj = cJSON_CreateObject();
+            cJSON_AddStringToObject(infoObj, "character", info.character.c_str());
+            cJSON_AddStringToObject(infoObj, "pos", info.pos.c_str());
+            cJSON_AddStringToObject(infoObj, "languageType", info.languageType.c_str());
+            cJSON_AddStringToObject(infoObj, "bodyname", info.bodyname.c_str());
+            cJSON_AddItemToArray(infosArray, infoObj);
+        }
+        cJSON_AddItemToObject(results, "infos", infosArray);
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         logger_log_info("defaultGet end   .................");
     }
@@ -353,7 +347,7 @@ namespace filemanager
             rtl::OUString defaultname;
             rtl::OUString defaultFileName;
             rtl::OUString sheetName;
-            getDefaultData(defaultname, defaultFileName,sheetName);
+            getDefaultData(defaultname, defaultFileName, sheetName);
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(fileName);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
@@ -410,27 +404,35 @@ namespace filemanager
                 ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
         logger_log_info("filename: %s", filename);
 
-        // 自己组织备份规则，比如时间戳，版本管理
-        rtl::OUString absfilePath;
-        getAbsolutePath(convertStringToOUString(filename), absfilePath);
         // 创建文件
         rtl::OUString filePath;
         rtl::OUString defaultFileName;
         rtl::OUString sheetName;
         getDefaultData(filePath, defaultFileName, sheetName);
+        // 备份在 default目录下
+        rtl::OUString absoluteFilePath = filePath + convertStringToOUString(ensureOdsExtension(std::string(filename)).c_str());
         // 从缓存索引获取数据
-        std::vector<TextCharInfo> infos = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
-        // 首先创建个空文档 默认工作表名
-        cJSON *newCreate = createNewSpreadsheetFile(absfilePath, sheetName);
-        if (newCreate == nullptr)
+        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
+        // 启动时没有缓存，此处为空
+        if (idxPtr)
         {
-            logger_log_error("Failed to create new spreadsheet file: %s", filename);
-            return -1;
+            std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
+            // 首先创建个空文档 默认工作表名
+            cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
+            if (newCreate == nullptr)
+            {
+                logger_log_error("Failed to create new spreadsheet file: %s", filename);
+                return -1;
+            }
+            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
+            {
+                logger_log_error("Failed to write character infos to sheet");
+                return -1;
+            }
         }
-        if (!writeCharacterInfosToSheet(absfilePath, sheetName, infos))
+        else
         {
-            logger_log_error("Failed to write character infos to sheet");
-            return -1;
+            logger_log_error("Failed to get character infos from cache: idxPtr is null");
         }
         return 0;
     }

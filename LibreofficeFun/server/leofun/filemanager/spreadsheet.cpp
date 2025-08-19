@@ -1504,7 +1504,7 @@ namespace filemanager
     std::vector<LanguageGroup> readSheetAndGroupByLanguage(css::uno::Reference<css::sheet::XSpreadsheet> sheet)
     {
         // 优化为三层分组：LanguageGroup → CharacterBody → CharacterInfo
-        // 循环顺序为先列后行，bodyname 取列号（A、B、C...）
+        // 循环顺序为先列后行，bodyname 取列号（A、B、C...）任意拍
         std::unordered_map<std::string, std::unordered_map<std::string, std::vector<CharacterInfo>>> tempMap;
         int maxCols = json_config_get_int("maxCols");
         int maxRows = json_config_get_int("maxRows");
@@ -1534,7 +1534,6 @@ namespace filemanager
                     else if (cellFormula.getLength() > 0) content = rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr();
                 }
                 if (content.empty()) continue;
-                std::string cellPos = bodyname + std::to_string(row + 1);
                 std::vector<char32_t> chars = splitToUnicode(content);
                 for (char32_t ch : chars) {
                     std::string utf8char;
@@ -1553,6 +1552,17 @@ namespace filemanager
                         utf8char += static_cast<char>(0x80 | (ch & 0x3F));
                     }
                     std::string langType = getLanguageType(ch);
+                    int langTypeCount = tempMap.size(); // tempMap 的个数
+                    int characterCount = tempMap[langType].size();
+                    if(tempMap[langType].empty())
+                    {
+                        bodyname = numberToExcelColumn(langTypeCount + 1); // 重新设置 bodyname
+                    }
+                    else
+                    {
+                        bodyname = tempMap[langType].begin()->first; // 保留原来的 bodyname
+                    }
+                    std::string cellPos = bodyname + std::to_string(characterCount +1);
                     tempMap[langType][bodyname].push_back(CharacterInfo{utf8char, cellPos});
                 }
             }
@@ -1629,8 +1639,8 @@ namespace filemanager
         return true;
     }
 
-    // 使用 CharacterIndex::queryAll 查询字符所有位置，返回 pos 列表
-    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, const CharacterIndex& index)
+    // 使用 CharacterIndex::queryAll 查询字符所有位置（特定一般一个），返回 pos 列表，没有的新添加（后保存到模板文件）
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index)
     {
         std::vector<TextCharInfo> result;
         std::vector<char32_t> chars = splitToUnicode(text);
@@ -1660,35 +1670,18 @@ namespace filemanager
                 utf8char += static_cast<char>(0x80 | (ch & 0x3F));
             }
             std::string langType = getLanguageType(ch);
-            std::vector<TextCharInfo> infos = index.queryAll(utf8char);
+            std::vector<TextCharInfo> infos = index->queryAll(utf8char);
             if (!infos.empty()) {
                 for (const auto& info : infos) {
                     result.push_back(info);
                 }
             } else {
-                // 统计 index 中所有 bodyname 个数（所有语言类型）
-                std::unordered_set<std::string> allBodynames;
-                for (const auto& langPair : index.data) {
-                    for (const auto& bodyPair : langPair.second) {
-                        allBodynames.insert(bodyPair.first);
-                    }
-                }
-                size_t bodyCount = allBodynames.size();
-                // 转换为列号
-                std::string bodyname = filemanager::columnIndexToName(static_cast<int>(bodyCount++));
-                // 找不到的统一存在未定义语言下
-                std::string langType = "undefined";
-                // 统计该 bodyname 下已有字符数（在 undefined 下）
-                size_t charCount = 0;
-                auto langIt = index.data.find(langType);
-                if (langIt != index.data.end()) {
-                    auto bodyIt = langIt->second.find(bodyname);
-                    if (bodyIt != langIt->second.end()) {
-                        charCount = bodyIt->second.size();
-                    }
-                }
-                std::string pos = bodyname + std::to_string(charCount + 1);
-                result.push_back(TextCharInfo{utf8char, pos, langType, bodyname});
+                int langTypeCount = index->data.size(); // 添加到对应语言下
+                int characterCount = index->data[langType].size();
+                std::string bodyname = numberToExcelColumn(langTypeCount + 1);
+                std::string cellPos = bodyname + std::to_string(characterCount + 1);
+                index->data[langType][bodyname][utf8char].push_back(CharacterInfo{utf8char, cellPos});
+                result.push_back(TextCharInfo{utf8char, cellPos, langType, bodyname});
             }
         }
         return result;

@@ -15,13 +15,13 @@ namespace filemanager {
     // 语言分组结构体
     struct CharacterInfo
     {
-        std::string character;
-        std::string pos;
+        std::string character;    // 字符本身
+        std::string pos;          // 所在工作表的位置
     };
 
     struct CharacterBody {
-        std::string bodyname;
-        std::vector<CharacterInfo> characters;
+        std::string bodyname;    // bodyname
+        std::vector<CharacterInfo> characters; //   字符列表
     };
 
     struct LanguageGroup {
@@ -147,8 +147,10 @@ public:
     std::shared_ptr<CharacterIndex> getTemplateIndex(const rtl::OUString& filePath, const rtl::OUString& sheetName);
     void reloadTemplateIndex(const rtl::OUString& filePath, const rtl::OUString& sheetName);
     void monitorTemplateFile(const std::string& filePath, const std::string& sheetName);
-    std::vector<TextCharInfo> getCharacterInfos(const rtl::OUString& filePath, const rtl::OUString& sheetName);
+    std::shared_ptr<CharacterIndex> getCharacterInfos(const rtl::OUString& filePath, const rtl::OUString& sheetName);
     bool isLoading() const;
+    time_t getLastModified() const;
+    void setLastModified(time_t t);
     private:
         TemplateIndexCacheManager() = default;
         ~TemplateIndexCacheManager() = default;
@@ -160,6 +162,7 @@ public:
         std::unordered_map<std::string, std::unique_ptr<TemplateIndexEntry>> indexCache;
         mutable std::mutex cacheMutex;
         std::atomic<bool> loading{false};
+        time_t lastModified; // 最后一次修改时间
     };
 }
 
