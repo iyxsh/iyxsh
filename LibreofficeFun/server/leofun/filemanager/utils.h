@@ -28,6 +28,7 @@ namespace filemanager
     // 获取文件的绝对路径字符串
     std::string getAbsoluteString(const std::string &fileName);
     std::string numberToExcelColumn(int num);
+    void ExcelColumnToNumber(const std::string &posStr,int *col,int *row);
 } // namespace filemanager
 
 #endif // UTILS_H

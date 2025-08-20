@@ -312,4 +312,31 @@ namespace filemanager
         }
         return columnName;
     }
+
+    void ExcelColumnToNumber(const std::string &posStr,int *col, int *row)
+    {
+        if (posStr.length() >= 2)
+        {
+            // 解析列名（如 "A"）和行号（如 "1"）
+            size_t i = 0;
+            while (i < posStr.length() && isalpha(posStr[i]))
+                ++i;
+            std::string colStr = posStr.substr(0, i);
+            std::string rowStr = posStr.substr(i);
+            // 列名转索引
+            *col = 0;
+            for (char c : colStr)
+            {
+                *col = *col * 26 + (toupper(c) - 'A' + 1);
+            }
+            *col -= 1;                    // 0-based
+            *row = std::stoi(rowStr) - 1; // 0-based
+        }
+        else
+        {
+            *col = -1;
+            *row = -1;
+            return;
+        }
+    }
 }

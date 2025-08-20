@@ -93,7 +93,7 @@ namespace filemanager
         if (!idxPtr)
         {
             logger_log_error("Failed to get character infos from cache: idxPtr is null");
-            return ;
+            return;
         }
         std::vector<TextCharInfo> infos;
         // 但如果有body且不为空，需要验证其为有效JSON
@@ -391,7 +391,7 @@ namespace filemanager
         cJSON_AddStringToObject(results, "filestatus", "created");
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
-
+    //切换模板备份文件
     int backupdefaultfile()
     {
         // 生成唯一文件名
@@ -400,6 +400,51 @@ namespace filemanager
 
         char filename[100];
         sprintf(filename, "default_%04d%02d%02d_%02d%02d%02d",
+                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
+                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+        logger_log_info("filename: %s", filename);
+
+        // 创建文件
+        rtl::OUString filePath;
+        rtl::OUString defaultFileName;
+        rtl::OUString sheetName;
+        getDefaultData(filePath, defaultFileName, sheetName);
+        // 备份在 default目录下
+        rtl::OUString absoluteFilePath = filePath + convertStringToOUString(ensureOdsExtension(std::string(filename)).c_str());
+        // 从缓存索引获取数据
+        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
+        // 启动时没有缓存，此处为空
+        if (idxPtr)
+        {
+            std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
+            // 首先创建个空文档 默认工作表名
+            cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
+            if (newCreate == nullptr)
+            {
+                logger_log_error("Failed to create new spreadsheet file: %s", filename);
+                return -1;
+            }
+            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
+            {
+                logger_log_error("Failed to write character infos to sheet");
+                return -1;
+            }
+        }
+        else
+        {
+            logger_log_error("Failed to get character infos from cache: idxPtr is null");
+        }
+        return 0;
+    }
+    //缓存新加保存机制，与备份功能相反
+    int setnewTodefaultfile()
+    {
+        // 生成唯一文件名
+        time_t now = time(0);
+        tm *ltm = localtime(&now);
+
+        char filename[100];
+        sprintf(filename, "newdefault_%04d%02d%02d_%02d%02d%02d",
                 1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
                 ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
         logger_log_info("filename: %s", filename);
@@ -743,30 +788,43 @@ namespace filemanager
 
     void sheetlist(cJSON *results, const char *body)
     {
-        cJSON *filenameJson = cJSON_GetObjectItem(cJSON_Parse(body), "filename");
-        if (!filenameJson || !cJSON_IsString(filenameJson))
+        cJSON *filenameItem = cJSON_GetObjectItem(cJSON_Parse(body), "filename");
+        if (!filenameItem || !cJSON_IsString(filenameItem))
         {
             ErrorCodeManager::setErrorMessage(results, RESPONSE_INVALID_PARAMS);
             return;
         }
 
-        std::string filename = filenameJson->valuestring;
-        rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(filename).c_str());
-        rtl::OUString filePath;
-        getAbsolutePath(filePathStr, filePath);
-        rtl::OUString defaultfilePath, defaultFileName, wordsSheetName;
-        getDefaultData(defaultfilePath, defaultFileName, wordsSheetName);
         try
         {
-            uno::Reference<lang::XComponent> xComp;
-            uno::Reference<sheet::XSpreadsheetDocument> xSpreadsheetDocument = loadSpreadsheetDocument(filePath, xComp);
-            if (!xSpreadsheetDocument.is())
+            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
             {
-                ErrorCodeManager::setErrorMessage(results, RESPONSE_FILE_NOT_FOUND);
+                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    return;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+
+            if (!xDoc.is())
+            {
                 return;
             }
 
-            uno::Reference<sheet::XSpreadsheets> xSheetsRaw = xSpreadsheetDocument->getSheets();
+            uno::Reference<sheet::XSpreadsheets> xSheetsRaw = xDoc->getSheets();
             uno::Reference<container::XNameAccess> xSheets(xSheetsRaw, uno::UNO_QUERY);
             if (!xSheets.is())
             {
@@ -776,6 +834,8 @@ namespace filemanager
 
             uno::Sequence<rtl::OUString> sheetNames = xSheets->getElementNames();
             cJSON *sheetArray = cJSON_CreateArray();
+            rtl::OUString defaultfilePath, defaultFileName, wordsSheetName;
+            getDefaultData(defaultfilePath, defaultFileName, wordsSheetName);
             for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i)
             {
                 // 过滤wordsSheetName

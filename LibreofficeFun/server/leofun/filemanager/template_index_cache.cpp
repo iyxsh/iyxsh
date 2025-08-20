@@ -7,6 +7,7 @@
 #include <ctime>
 #include "spreadsheet.h"
 #include "fileops.h"
+#include "filequeue.h"
 
 namespace filemanager
 {
@@ -90,6 +91,8 @@ namespace filemanager
         if (stat(convertOUStringToString(filePath).c_str(), &fileStat) == 0) {
             setLastModified(fileStat.st_mtime);
             reloadTemplateIndex(filePath, sheetName);
+            //重新更换当前所有文件的状态和模板数据
+            filemanager::initializeDataPathFiles();
         } else {
             logger_log_error("stat failed for file %s", convertOUStringToString(filePath).c_str());
             return nullptr;
@@ -112,13 +115,31 @@ namespace filemanager
         try
         {
             logger_log_info("Reloading template index for %s %s .....................", convertOUStringToString(filePath).c_str(), convertOUStringToString(sheetName).c_str());
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
+                    return;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+
             if (!xDoc.is())
             {
                 closeDocument(xComp);
                 loading.store(false);
                 return;
             }
+
             uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
             if (!sheet.is())
             {

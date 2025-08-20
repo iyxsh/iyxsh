@@ -473,9 +473,6 @@ namespace filemanager
             // 更新文件状态为处理中
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
 
-            // 从状态映射表中移除文件
-            filemanager::FileQueueManager::getInstance().eraseFileStatus(task.filename);
-
             // 获取文件的绝对路径
             rtl::OUString fileNameOUString = convertStringToOUString(task.filename.c_str());
             rtl::OUString absoluteFilePath;
@@ -514,6 +511,8 @@ namespace filemanager
                                  filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
                                  errno);
             }
+            // 从状态映射表中移除文件
+            filemanager::FileQueueManager::getInstance().eraseFileStatus(task.filename);
         }
         catch (const std::system_error &e)
         {
@@ -545,21 +544,29 @@ namespace filemanager
     void FileTaskProcessor::processUpdateTemplateTask(const FileTask &task)
     {
         logger_log_info("Processing update template task");
-
+        // 更新文件状态为处理中
+        filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
         try
         {
             //直接重新初始化文件
-            fileTempleteChange(task.filename);
+            int res = fileTempleteChange(task.filename);
+            if(res != 0)
+            {
+                logger_log_error("Failed to update template: %s", task.filename.c_str());
+                filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Failed to update template: ") + task.filename);
+            }
         }
         catch (const std::exception &e)
         {
             logger_log_error("Exception while updating template: %s", e.what());
+            filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + e.what());
         }
         catch (...)
         {
             logger_log_error("Unknown exception while updating template");
+            filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + "Unknown exception");
         }
-
+        filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_READY);
         logger_log_info("Finished processing update template task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }

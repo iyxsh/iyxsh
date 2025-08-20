@@ -515,11 +515,26 @@ namespace filemanager
             // 获取绝对路径
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            uno::Reference<lang::XComponent> xComp;
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    return -1;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+
             if (!xDoc.is())
             {
-                logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                 return -1;
             }
 
@@ -534,7 +549,7 @@ namespace filemanager
                 logger_log_info("Worksheet %s does not exist in file: %s",
                                 sheetnameItem->valuestring, filenameItem->valuestring);
                 closeDocument(xComp);
-                return -1; // 工作表不存在
+                return 0; // 工作表不存在,只给报错信息，不返回错误
             }
 
             // 删除工作表
@@ -596,12 +611,26 @@ namespace filemanager
             // 获取绝对路径
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            uno::Reference<lang::XComponent> xComp;
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(filePath, xComp);
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    return -1;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
 
             if (!xDoc.is())
             {
-                logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                 return -1;
             }
 
@@ -749,11 +778,28 @@ namespace filemanager
     // 处理单文件更换模板
     int fileTempleteChange(const std::string &filename)
     {
-        // 加载文档
-        rtl::OUString absfilePath;
-        getAbsolutePath(convertStringToOUString(filename.c_str()), absfilePath);
-        uno::Reference<lang::XComponent> xComp;
-        uno::Reference<sheet::XSpreadsheetDocument> xDoc = loadSpreadsheetDocument(absfilePath, xComp);
+        rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(filename).c_str());
+        // 获取绝对路径
+        rtl::OUString filePath;
+        getAbsolutePath(filePathStr, filePath);
+        // 首先判断是否文件已经加载
+        FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(filename);
+        uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+        if (!fileInfo.xComponent.is())
+        {
+            xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
+            if (!fileInfo.xComponent.is())
+            {
+                logger_log_error("Failed to load document: %s", filename.c_str());
+                return -1;
+            }
+        }
+        else
+        {
+            xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+        }
+        uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+
         if (!xDoc.is())
         {
             return -1;
@@ -785,23 +831,36 @@ namespace filemanager
                 logger_log_info("Worksheet %s already exists in file: %s",
                                 convertOUStringToString(tempSheetName).c_str(), filename.c_str());
                 // 删除工作表
-                sheets->removeByName(tempSheetName);
-                saveDocumentDirect(xDoc);
+                // 创建删除工作表任务并添加到队列
+                filemanager::FileTask SheetTask;
+                SheetTask.type = filemanager::TASK_REMOVE_WORKSHEET;
+                SheetTask.filename = filename;
+                SheetTask.data = std::string("");
+                SheetTask.createTime = std::time(nullptr);
+                cJSON *taskData = cJSON_CreateObject();
+                cJSON_AddStringToObject(taskData, "filename", filename.c_str());
+                cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(tempSheetName).c_str());
+                SheetTask.taskData = taskData;
+                filemanager::FileQueueManager::getInstance().addFileTask(SheetTask);
             }
 
-            // 1 添加新工作表
-            sheets->insertNewByName(tempSheetName, 0);
-
-            // 保存文档
-            saveDocumentDirect(xDoc);
+            filemanager::FileTask SheetTask;
+            SheetTask.type = filemanager::TASK_ADD_WORKSHEET;
+            SheetTask.filename = filename;
+            SheetTask.data = std::string("");
+            SheetTask.createTime = std::time(nullptr);
+            cJSON *taskData = cJSON_CreateObject();
+            cJSON_AddStringToObject(taskData, "filename", filename.c_str());
+            cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(tempSheetName).c_str());
+            SheetTask.taskData = taskData;
+            filemanager::FileQueueManager::getInstance().addFileTask(SheetTask);
         }
         // 2 将默认工作表的数据写入新创建的工作表
-        if (!writeCharacterInfosToSheet(absfilePath, tempSheetName, defaultInfos))
+        if (!writeCharacterInfosToSheet(filePath, tempSheetName, defaultInfos))
         {
             logger_log_error("Failed to write character infos to new temporary sheet");
             return -1;
         }
-        saveDocumentDirect(xDoc);
         // 3 读取其它非默认工作表单元格的内容并重新写入新缓存
         uno::Sequence<rtl::OUString> sheetNames = sheets->getElementNames();
         cJSON *sheetArray = cJSON_CreateArray();
@@ -812,9 +871,9 @@ namespace filemanager
             {
                 continue;
             }
-            int totalRecords = getTotalRecordCount(absfilePath, sheetNames[i]);                 // 获取总记录数
-            cJSON *sheetData = readSheetDataRange(absfilePath, sheetNames[i], 0, totalRecords); // 读取所有数据
-            cJSON *resjson = batchUpdateSpreadsheetContent(absfilePath, sheetNames[i], sheetData);
+            int totalRecords = getTotalRecordCount(filePath, sheetNames[i]);                 // 获取总记录数
+            cJSON *sheetData = readSheetDataRange(filePath, sheetNames[i], 0, totalRecords); // 读取所有数据
+            cJSON *resjson = batchUpdateSpreadsheetContent(filePath, sheetNames[i], sheetData);
             if (cJSON_GetObjectItem(resjson, "result") != nullptr &&
                 std::string(cJSON_GetObjectItem(resjson, "result")->valuestring) != "success")
             {
@@ -822,28 +881,46 @@ namespace filemanager
                 return -1;
             }
         }
-        saveDocumentDirect(xDoc);
         // 4 重命名默认工作表为备份
         rtl::OUString backupSheetName = defaultSheetName + "_backup";
-        sal_Int32 insertIndex = sheetNames.getLength();
-        sheets->copyByName(defaultSheetName, backupSheetName, insertIndex);
-        sheets->removeByName(defaultSheetName);
 
-        logger_log_info("Successfully renamed worksheet %s to %s in file: %s",
-                        convertOUStringToString(defaultSheetName).c_str(), convertOUStringToString(backupSheetName).c_str(), filename.c_str());
-        saveDocumentDirect(xDoc);
+        filemanager::FileTask SheetTask1;
+        SheetTask1.type = filemanager::TASK_RENAME_WORKSHEET;
+        SheetTask1.filename = filename;
+        SheetTask1.data = std::string("");
+        SheetTask1.createTime = std::time(nullptr);
+        cJSON* taskData = cJSON_CreateObject();
+        cJSON_AddStringToObject(taskData, "filename", filename.c_str());
+        cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(defaultSheetName).c_str());
+        cJSON_AddStringToObject(taskData, "newsheetname", convertOUStringToString(backupSheetName).c_str());
+        SheetTask1.taskData = taskData;
+        filemanager::FileQueueManager::getInstance().addFileTask(SheetTask1);
+
         // 5 重命名新加的临时工作表为默认工作表
-        sheets->copyByName(tempSheetName, defaultSheetName, insertIndex);
-        sheets->removeByName(tempSheetName);
-
-        logger_log_info("Successfully renamed worksheet %s to %s in file: %s",
-                        convertOUStringToString(tempSheetName).c_str(), convertOUStringToString(defaultSheetName).c_str(), filename.c_str());
-        saveDocumentDirect(xDoc);
+        filemanager::FileTask SheetTask2;
+        SheetTask2.type = filemanager::TASK_RENAME_WORKSHEET;
+        SheetTask2.filename = filename;
+        SheetTask2.data = std::string("");
+        SheetTask2.createTime = std::time(nullptr);
+        cJSON* taskData2 = cJSON_CreateObject();
+        cJSON_AddStringToObject(taskData2, "filename", filename.c_str());
+        cJSON_AddStringToObject(taskData2, "sheetname", convertOUStringToString(tempSheetName).c_str());
+        cJSON_AddStringToObject(taskData2, "newsheetname", convertOUStringToString(defaultSheetName).c_str());
+        SheetTask2.taskData = taskData2;
+        filemanager::FileQueueManager::getInstance().addFileTask(SheetTask2);
 
         // 6 可选删除旧的备份工作表
-        //  删除工作表
-        // sheets->removeByName(backupSheetName);
-        // saveDocumentDirect(xDoc);
+        // 创建删除工作表任务并添加到队列
+        // filemanager::FileTask SheetTask3;
+        // SheetTask3.type = filemanager::TASK_REMOVE_WORKSHEET;
+        // SheetTask3.filename = filename;
+        // SheetTask3.data = std::string("");
+        // SheetTask3.createTime = std::time(nullptr);
+        // cJSON* taskData3 = cJSON_CreateObject();
+        // cJSON_AddStringToObject(taskData3, "filename", filename.c_str());
+        // cJSON_AddStringToObject(taskData3, "sheetname", convertOUStringToString(backupSheetName).c_str());
+        // SheetTask3.taskData = taskData3;
+        // filemanager::FileQueueManager::getInstance().addFileTask(SheetTask3);
         return 0;
     }
 } // namespace filemanager

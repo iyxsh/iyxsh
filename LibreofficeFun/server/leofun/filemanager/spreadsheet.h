@@ -109,6 +109,7 @@ namespace filemanager
                                     const rtl::OUString &sheetName,
                                     const std::vector<TextCharInfo> &infos);
     std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index);
+    rtl::OUString infosToFormatString(const std::vector<TextCharInfo> &infos);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H
