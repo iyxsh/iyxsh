@@ -40,7 +40,7 @@ endif()
 set(SOURCES
     ./leofun/leofun.cpp
     ./leofun/filemanager/filequeue.cpp
-    ./leofun/filemanager/fileops.cpp
+    ./leofun/filemanager/apiops.cpp
     ./leofun/filemanager/filehandlers.cpp
     ./leofun/filemanager/lofficeconn.cpp
     ./leofun/filemanager/spreadsheet.cpp
@@ -56,7 +56,7 @@ set(SOURCES
 # 头文件
 set(HEADERS
     ./leofun/filemanager/filequeue.h
-    ./leofun/filemanager/fileops.h
+    ./leofun/filemanager/apiops.h
     ./leofun/filemanager/filehandlers.h
     ./leofun/filemanager/lofficeconn.h
     ./leofun/filemanager/spreadsheet.h

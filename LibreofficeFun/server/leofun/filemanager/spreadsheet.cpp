@@ -1,7 +1,7 @@
 #include "spreadsheet.h"
 #include "lofficeconn.h"
 #include "filequeue.h"
-#include "fileops.h"
+#include "template_index_cache.h"
 #include "utils.h"
 #include "../cJSON/cJSON.h"
 #include "../logger/logger.h"
@@ -2517,16 +2517,16 @@ namespace filemanager
                 // 如果没有找到，则添加到对应语言下
                 int langTypeCount = index->data.size(); // 添加到对应语言下
                 std::string bodyname;
-                if(index->data[langType].empty())
+                if (index->data[langType].empty())
                 {
                     bodyname = numberToExcelColumn(langTypeCount + 1); // 添加到对应语言下
                 }
                 else
                 {
-                    bodyname = index->data[langType].begin()->first;// 保留原来的 bodyname
+                    bodyname = index->data[langType].begin()->first; // 保留原来的 bodyname
                 }
                 int characterCount = index->data[langType].begin()->second.size();
-                 
+
                 std::string cellPos = bodyname + std::to_string(characterCount + 1);
                 index->data[langType][bodyname][utf8char].push_back(CharacterInfo{utf8char, cellPos});
                 result.push_back(TextCharInfo{utf8char, cellPos, langType, bodyname});
@@ -2534,8 +2534,8 @@ namespace filemanager
         }
         if (newAdded)
         {
-            int res = setnewTodefaultfile();
-            if(res)
+            int res = filemanager::TemplateIndexCacheManager::getInstance().setnewTodefaultfile();
+            if (res)
             {
                 logger_log_error("setnewTodefaultfile: Failed to");
                 return result;
@@ -2572,5 +2572,76 @@ namespace filemanager
             resultBuffer.append(convertStringToOUString(info.pos.c_str()));
         }
         return resultBuffer.makeStringAndClear();
+    }
+
+    bool FileExists(const rtl::OUString &filePath)
+    {
+        // return osl::FileBase::E_None == osl::File::isExistent(filePath);
+        //osl::FileStatus status(osl_FileStatus_Mask_Type);
+        //if (osl::FileBase::E_None == osl::File::getStatus(filePath, status))
+        //{
+        //    return status.isValid();
+        //}
+    }
+
+    void DeleteFileWithUNO(const rtl::OUString &filePath)
+    {
+        try
+        {
+            // 获取组件上下文
+            uno::Reference<uno::XComponentContext> xContext = LibreOfficeConnectionManager::getContext();
+
+            // 获取服务管理器
+            uno::Reference<lang::XMultiComponentFactory> xServiceManager = xContext->getServiceManager();
+
+            // 获取 XSimpleFileAccess
+            uno::Reference<ucb::XSimpleFileAccess> fileAccess(xServiceManager->createInstanceWithContext(
+                                                                  "com.sun.star.ucb.SimpleFileAccess", xContext),
+                                                              uno::UNO_QUERY);
+
+            // 检查文件是否存在
+            if (fileAccess->exists(filePath))
+            {
+                // 删除文件
+                fileAccess->kill(filePath);
+                logger_log_info("File deleted successfully: %s", convertOUStringToString(filePath).c_str());
+            }
+            else
+            {
+                logger_log_error("File does not exist: %s", convertOUStringToString(filePath).c_str());
+            }
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+    }
+
+    void SafeDeleteFile(const rtl::OUString &filePath)
+    {
+        try
+        {
+            // 检查文件存在性
+            if (!FileExists(filePath))
+            {
+                logger_log_error("File does not exist: %s", convertOUStringToString(filePath).c_str());
+                return;
+            }
+
+            // 调用 UNO API 删除文件
+            DeleteFileWithUNO(filePath);
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Standard exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), std::string(e.what()).c_str());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception occurred while deleting file: %s", convertOUStringToString(filePath).c_str());
+        }
     }
 }

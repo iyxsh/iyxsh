@@ -153,3 +153,12 @@ make reinstall # 重装安装新版本
 头文件：/usr/local/include/libreoffice/
 库文件：/usr/local/lib/libreoffice/
 工具和文档：/usr/local/share/libreoffice/sdk/
+
+
+## 设计原则
+🤖 库设计遵循 Unix 哲学：
+* 每个工具应只做一件简单而有用的事
+* 每个工具应有很小的接口和明确的输入输出
+
+设置配置文件config.json 配置项目中使用的相关项
+deafault.ods 模板文件 支持模版文件预加载，重新加载、加载时接口不允许调用返回加载中

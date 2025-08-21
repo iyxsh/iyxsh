@@ -26,8 +26,10 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/ucb/XSimpleFileAccess.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <rtl/ustring.hxx>
+#include <osl/file.hxx>
 #include <string>
 #include <memory>
 #include <vector>

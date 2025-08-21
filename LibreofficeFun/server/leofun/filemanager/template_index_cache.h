@@ -11,20 +11,23 @@
 #include <vector>
 #include <rtl/ustring.hxx>
 
-namespace filemanager {
+namespace filemanager
+{
     // 语言分组结构体
     struct CharacterInfo
     {
-        std::string character;    // 字符本身
-        std::string pos;          // 所在工作表的位置
+        std::string character; // 字符本身
+        std::string pos;       // 所在工作表的位置
     };
 
-    struct CharacterBody {
-        std::string bodyname;    // bodyname
+    struct CharacterBody
+    {
+        std::string bodyname;                  // bodyname
         std::vector<CharacterInfo> characters; //   字符列表
     };
 
-    struct LanguageGroup {
+    struct LanguageGroup
+    {
         std::string languageType;
         std::vector<CharacterBody> bodies;
     };
@@ -39,25 +42,32 @@ namespace filemanager {
     };
 
     // 查询索引结构体，支持分类预选+字符查询
-    struct CharacterIndex {
+    struct CharacterIndex
+    {
         // languageType -> bodyname -> character -> CharacterInfo
         std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::vector<CharacterInfo>>>> data;
 
         // 构建索引
-        void build(const std::vector<LanguageGroup>& groups) {
+        void build(const std::vector<LanguageGroup> &groups)
+        {
             data.clear();
-            for (const auto& group : groups) {
+            for (const auto &group : groups)
+            {
                 std::unordered_set<std::string> seenBodies;
-                for (const auto& body : group.bodies) {
+                for (const auto &body : group.bodies)
+                {
                     // 只保留第一个出现的 bodyname，后续重复的丢弃
-                    if (seenBodies.find(body.bodyname) != seenBodies.end()) {
+                    if (seenBodies.find(body.bodyname) != seenBodies.end())
+                    {
                         continue;
                     }
                     seenBodies.insert(body.bodyname);
                     std::unordered_set<std::string> seenChars;
-                    for (const auto& info : body.characters) {
+                    for (const auto &info : body.characters)
+                    {
                         // 只保留第一个出现的 character，后续重复的丢弃
-                        if (seenChars.find(info.character) == seenChars.end()) {
+                        if (seenChars.find(info.character) == seenChars.end())
+                        {
                             data[group.languageType][body.bodyname][info.character].push_back(info);
                             seenChars.insert(info.character);
                         }
@@ -68,29 +78,39 @@ namespace filemanager {
         }
 
         // 按语言类型、bodyname、character 查询
-        std::vector<TextCharInfo> query(const std::string& languageType, const std::string& bodyname, const std::string& character) const {
+        std::vector<TextCharInfo> query(const std::string &languageType, const std::string &bodyname, const std::string &character) const
+        {
             std::vector<TextCharInfo> result;
             auto langIt = data.find(languageType);
-            if (langIt == data.end()) return result;
+            if (langIt == data.end())
+                return result;
             auto bodyIt = langIt->second.find(bodyname);
-            if (bodyIt == langIt->second.end()) return result;
+            if (bodyIt == langIt->second.end())
+                return result;
             auto charIt = bodyIt->second.find(character);
-            if (charIt == bodyIt->second.end()) return result;
-            for (const auto& info : charIt->second) {
+            if (charIt == bodyIt->second.end())
+                return result;
+            for (const auto &info : charIt->second)
+            {
                 result.push_back(TextCharInfo{info.character, info.pos, languageType, bodyname});
             }
             return result;
         }
 
         // 按 languageType 和 bodyname 查询所有字符
-        std::vector<TextCharInfo> queryByBody(const std::string& languageType, const std::string& bodyname) const {
+        std::vector<TextCharInfo> queryByBody(const std::string &languageType, const std::string &bodyname) const
+        {
             std::vector<TextCharInfo> result;
             auto langIt = data.find(languageType);
-            if (langIt == data.end()) return result;
+            if (langIt == data.end())
+                return result;
             auto bodyIt = langIt->second.find(bodyname);
-            if (bodyIt == langIt->second.end()) return result;
-            for (const auto& charPair : bodyIt->second) {
-                for (const auto& info : charPair.second) {
+            if (bodyIt == langIt->second.end())
+                return result;
+            for (const auto &charPair : bodyIt->second)
+            {
+                for (const auto &info : charPair.second)
+                {
                     result.push_back(TextCharInfo{info.character, info.pos, languageType, bodyname});
                 }
             }
@@ -98,15 +118,20 @@ namespace filemanager {
         }
 
         // 仅按字符查询（所有类型、所有 body）
-        std::vector<TextCharInfo> queryAll(const std::string& character) const {
+        std::vector<TextCharInfo> queryAll(const std::string &character) const
+        {
             std::vector<TextCharInfo> result;
-            for (const auto& langPair : data) {
-                const std::string& languageType = langPair.first;
-                for (const auto& bodyPair : langPair.second) {
-                    const std::string& bodyname = bodyPair.first;
+            for (const auto &langPair : data)
+            {
+                const std::string &languageType = langPair.first;
+                for (const auto &bodyPair : langPair.second)
+                {
+                    const std::string &bodyname = bodyPair.first;
                     auto charIt = bodyPair.second.find(character);
-                    if (charIt != bodyPair.second.end()) {
-                        for (const auto& info : charIt->second) {
+                    if (charIt != bodyPair.second.end())
+                    {
+                        for (const auto &info : charIt->second)
+                        {
                             result.push_back(TextCharInfo{info.character, info.pos, languageType, bodyname});
                         }
                     }
@@ -116,14 +141,19 @@ namespace filemanager {
         }
 
         // 获取所有索引内容
-        std::vector<TextCharInfo> getAll() const {
+        std::vector<TextCharInfo> getAll() const
+        {
             std::vector<TextCharInfo> result;
-            for (const auto& langPair : data) {
-                const std::string& languageType = langPair.first;
-                for (const auto& bodyPair : langPair.second) {
-                    const std::string& bodyname = bodyPair.first;
-                    for (const auto& charPair : bodyPair.second) {
-                        for (const auto& info : charPair.second) {
+            for (const auto &langPair : data)
+            {
+                const std::string &languageType = langPair.first;
+                for (const auto &bodyPair : langPair.second)
+                {
+                    const std::string &bodyname = bodyPair.first;
+                    for (const auto &charPair : bodyPair.second)
+                    {
+                        for (const auto &info : charPair.second)
+                        {
                             result.push_back(TextCharInfo{info.character, info.pos, languageType, bodyname});
                         }
                     }
@@ -133,7 +163,8 @@ namespace filemanager {
         }
     };
 
-    struct TemplateIndexEntry {
+    struct TemplateIndexEntry
+    {
         std::shared_ptr<CharacterIndex> index;
         time_t timestamp;
         time_t lastAccess;
@@ -141,24 +172,29 @@ namespace filemanager {
             : index(idx), timestamp(t), lastAccess(t) {}
     };
 
-    class TemplateIndexCacheManager {
-public:
-    static TemplateIndexCacheManager& getInstance();
-    std::shared_ptr<CharacterIndex> getTemplateIndex(const rtl::OUString& filePath, const rtl::OUString& sheetName);
-    void reloadTemplateIndex(const rtl::OUString& filePath, const rtl::OUString& sheetName);
-    void monitorTemplateFile(const std::string& filePath, const std::string& sheetName);
-    std::shared_ptr<CharacterIndex> getCharacterInfos(const rtl::OUString& filePath, const rtl::OUString& sheetName);
-    bool isLoading() const;
-    time_t getLastModified() const;
-    void setLastModified(time_t t);
+    class TemplateIndexCacheManager
+    {
+    public:
+        static TemplateIndexCacheManager &getInstance();
+        std::shared_ptr<CharacterIndex> getTemplateIndex(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+        void reloadTemplateIndex(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+        void monitorTemplateFile(const std::string &filePath, const std::string &sheetName);
+        std::shared_ptr<CharacterIndex> getCharacterInfos(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+        bool isLoading() const;
+        time_t getLastModified() const;
+        void setLastModified(time_t t);
+        int backupdefaultfile();
+        int setnewTodefaultfile();
+
     private:
         TemplateIndexCacheManager() = default;
         ~TemplateIndexCacheManager() = default;
-        TemplateIndexCacheManager(const TemplateIndexCacheManager&) = delete;
-        TemplateIndexCacheManager& operator=(const TemplateIndexCacheManager&) = delete;
-        std::string buildCacheKey(const rtl::OUString& filePath, const rtl::OUString& sheetName);
-        bool isCacheEntryExpired(const std::string& cacheKey) const;
+        TemplateIndexCacheManager(const TemplateIndexCacheManager &) = delete;
+        TemplateIndexCacheManager &operator=(const TemplateIndexCacheManager &) = delete;
+        std::string buildCacheKey(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+        bool isCacheEntryExpired(const std::string &cacheKey) const;
         void removeOldestCacheEntry();
+        void initializeDataPathFiles();
         std::unordered_map<std::string, std::unique_ptr<TemplateIndexEntry>> indexCache;
         mutable std::mutex cacheMutex;
         std::atomic<bool> loading{false};

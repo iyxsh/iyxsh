@@ -1,4 +1,4 @@
-#include "fileops.h"
+#include "apiops.h"
 #include "filequeue.h"
 #include "filehandlers.h"
 #include "spreadsheet.h"
@@ -11,77 +11,12 @@
 #include <string>
 #include <mutex>
 #include <unistd.h> // 添加 getcwd 头文件
-#include <dirent.h>
 #include <sys/stat.h>
 #include "../error/error_codes.h"
 #include "lofficeconn.h" // 确保 LibreOfficeConnectionManager 可用
 
 namespace filemanager
 {
-    void initializeDataPathFiles()
-    {
-        // 读取datapath目录下所有文件并加入队列
-        const char *datapath = json_config_get_string("datapath");
-        const char *workpathname = json_config_get_string("workpathname");
-        std::string filepath = std::string(datapath) + "/" + std::string(workpathname);
-        if (filepath.length() > 0)
-        {
-            DIR *dir = opendir(filepath.c_str());
-            if (dir)
-            {
-                logger_log_info("Scanning directory: %s", filepath.c_str());
-                struct dirent *entry;
-                while ((entry = readdir(dir)) != NULL)
-                {
-                    // 跳过目录和隐藏文件
-                    if (entry->d_type == DT_DIR || entry->d_name[0] == '.')
-                    {
-                        continue;
-                    }
-
-                    // 检查是否为ods文件
-                    std::string filename(entry->d_name);
-                    // 代码中任务和保存时使用的名称不包含路径和后缀（和接口保持一致，所有路径和后缀都在代码逻辑中处理）
-                    if (filename.length() > 4 && filename.substr(filename.length() - 4) == ".ods")
-                    {
-                        std::string filepath = std::string(datapath) + "/" + std::string(workpathname) + "/" + filename;
-
-                        // 获取文件状态
-                        struct stat fileStat;
-                        if (stat(filepath.c_str(), &fileStat) == 0)
-                        {
-                            // 创建文件任务
-                            filemanager::FileTask task;
-                            task.type = filemanager::TASK_UPDATE_TEMPLATE;
-                            task.filename = removeFileExtension(filename);
-                            task.createTime = std::time(nullptr);
-                            filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_PROCESSING);
-                            filemanager::FileQueueManager::getInstance().addFileTask(task);
-                            logger_log_info("Added existing file to queue: %s with mtime: %ld", filename.c_str(), (long)fileStat.st_mtime);
-                        }
-                        else
-                        {
-                            logger_log_warn("Failed to get file status for: %s", filepath.c_str());
-                        }
-                    }
-                }
-                closedir(dir);
-                logger_log_info("Finished scanning directory: %s", filepath.c_str());
-            }
-            else
-            {
-                logger_log_warn("Failed to open datapath directory: %s", filepath.c_str());
-            }
-        }
-        else
-        {
-            int errorCode = RESPONSE_FILE_PATH_NOT_FOUND; // 错误码宏定义
-            std::string errorMessage = ErrorCodeManager::getErrorMessage(errorCode);
-            logger_log_warn("%s", errorMessage.c_str());
-            return;
-        }
-    }
-
     void defaultGet(cJSON *results, const char *body)
     {
         logger_log_info("defaultGet start .................");
@@ -351,7 +286,7 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(fileName);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (fileInfo.xComponent == nullptr && !fileInfo.xComponent.is())
             {
                 cJSON *newCreate = createNewSpreadsheetFile(filePath, sheetName); // 创建新的电子表格文件
                 if (newCreate == nullptr)
@@ -364,6 +299,7 @@ namespace filemanager
             else
             {
                 // 如果文件已经加载，直接获取文档引用
+                logger_log_info("File already loaded: %s", fileName.c_str());
             }
         }
         catch (const std::exception &e)
@@ -392,95 +328,6 @@ namespace filemanager
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
     //切换模板备份文件
-    int backupdefaultfile()
-    {
-        // 生成唯一文件名
-        time_t now = time(0);
-        tm *ltm = localtime(&now);
-
-        char filename[100];
-        sprintf(filename, "default_%04d%02d%02d_%02d%02d%02d",
-                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
-                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-        logger_log_info("filename: %s", filename);
-
-        // 创建文件
-        rtl::OUString filePath;
-        rtl::OUString defaultFileName;
-        rtl::OUString sheetName;
-        getDefaultData(filePath, defaultFileName, sheetName);
-        // 备份在 default目录下
-        rtl::OUString absoluteFilePath = filePath + convertStringToOUString(ensureOdsExtension(std::string(filename)).c_str());
-        // 从缓存索引获取数据
-        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
-        // 启动时没有缓存，此处为空
-        if (idxPtr)
-        {
-            std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
-            // 首先创建个空文档 默认工作表名
-            cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
-            if (newCreate == nullptr)
-            {
-                logger_log_error("Failed to create new spreadsheet file: %s", filename);
-                return -1;
-            }
-            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
-            {
-                logger_log_error("Failed to write character infos to sheet");
-                return -1;
-            }
-        }
-        else
-        {
-            logger_log_error("Failed to get character infos from cache: idxPtr is null");
-        }
-        return 0;
-    }
-    //缓存新加保存机制，与备份功能相反
-    int setnewTodefaultfile()
-    {
-        // 生成唯一文件名
-        time_t now = time(0);
-        tm *ltm = localtime(&now);
-
-        char filename[100];
-        sprintf(filename, "newdefault_%04d%02d%02d_%02d%02d%02d",
-                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
-                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-        logger_log_info("filename: %s", filename);
-
-        // 创建文件
-        rtl::OUString filePath;
-        rtl::OUString defaultFileName;
-        rtl::OUString sheetName;
-        getDefaultData(filePath, defaultFileName, sheetName);
-        // 备份在 default目录下
-        rtl::OUString absoluteFilePath = filePath + convertStringToOUString(ensureOdsExtension(std::string(filename)).c_str());
-        // 从缓存索引获取数据
-        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
-        // 启动时没有缓存，此处为空
-        if (idxPtr)
-        {
-            std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
-            // 首先创建个空文档 默认工作表名
-            cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
-            if (newCreate == nullptr)
-            {
-                logger_log_error("Failed to create new spreadsheet file: %s", filename);
-                return -1;
-            }
-            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
-            {
-                logger_log_error("Failed to write character infos to sheet");
-                return -1;
-            }
-        }
-        else
-        {
-            logger_log_error("Failed to get character infos from cache: idxPtr is null");
-        }
-        return 0;
-    }
     void newfile(cJSON *results, const char *body)
     {
         // newfile不需要请求体，所以即使body为空也继续处理

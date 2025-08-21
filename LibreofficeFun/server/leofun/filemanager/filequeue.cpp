@@ -548,9 +548,9 @@ namespace filemanager
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
         try
         {
-            //直接重新初始化文件
+            // 直接重新初始化文件
             int res = fileTempleteChange(task.filename);
-            if(res != 0)
+            if (res != 0)
             {
                 logger_log_error("Failed to update template: %s", task.filename.c_str());
                 filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Failed to update template: ") + task.filename);
@@ -820,7 +820,8 @@ namespace filemanager
             {
                 // 通过公有接口实现文件状态映射表的重命名逻辑
                 FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
-                if (fileInfo.filename == task.filename) {
+                if (fileInfo.filename == task.filename)
+                {
                     filemanager::FileQueueManager::getInstance().removeFileInfo(task.filename);
                     fileInfo.filename = newFilename;
                     filemanager::FileQueueManager::getInstance().addFileStatus(fileInfo);
@@ -896,38 +897,55 @@ namespace filemanager
     // 移除文件信息
     void FileQueueManager::removeFileInfo(const std::string &filename)
     {
-    FileInfo info = getFileInfo(filename);
-    if (info.filename == filename) {
-        if (info.xComponent.is()) {
-            try {
-                closeDocument(info.xComponent);
-            } catch (...) {
-                logger_log_error("Exception when closing xComponent for file: %s", filename.c_str());
+        FileInfo info = getFileInfo(filename);
+        if (info.filename == filename)
+        {
+            if (info.xComponent.is())
+            {
+                try
+                {
+                    closeDocument(info.xComponent);
+                }
+                catch (...)
+                {
+                    logger_log_error("Exception when closing xComponent for file: %s", filename.c_str());
+                }
             }
+            eraseFileStatus(filename);
+            logger_log_info("Removed file info for: %s", filename.c_str());
         }
-        eraseFileStatus(filename);
-        logger_log_info("Removed file info for: %s", filename.c_str());
-    }
     }
 
     void FileQueueManager::eraseFileStatus(const std::string &filename)
     {
-    std::lock_guard<std::mutex> lock(statusMutex);
-    fileStatusMap.erase(filename);
+        std::lock_guard<std::mutex> lock(statusMutex);
+        fileStatusMap.erase(filename);
     }
 
-     // 获取队列和错误统计信息
-    QueueStats FileQueueManager::getQueueStats() const {
+    // 获取队列和错误统计信息
+    QueueStats FileQueueManager::getQueueStats() const
+    {
         QueueStats stats{};
         {
             std::lock_guard<std::mutex> lock(statusMutex);
-            for (const auto& kv : fileStatusMap) {
-                switch (kv.second.status) {
-                    case FILE_STATUS_ERROR: stats.errorCount++; break;
-                    case FILE_STATUS_READY: stats.readyCount++; break;
-                    case FILE_STATUS_PROCESSING: stats.processingCount++; break;
-                    case FILE_STATUS_CLOSED: stats.closedCount++; break;
-                    default: break;
+            for (const auto &kv : fileStatusMap)
+            {
+                switch (kv.second.status)
+                {
+                case FILE_STATUS_ERROR:
+                    stats.errorCount++;
+                    break;
+                case FILE_STATUS_READY:
+                    stats.readyCount++;
+                    break;
+                case FILE_STATUS_PROCESSING:
+                    stats.processingCount++;
+                    break;
+                case FILE_STATUS_CLOSED:
+                    stats.closedCount++;
+                    break;
+                default:
+                    break;
                 }
             }
         }
