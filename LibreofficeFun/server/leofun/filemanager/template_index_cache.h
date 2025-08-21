@@ -10,7 +10,7 @@
 #include <ctime>
 #include <vector>
 #include <rtl/ustring.hxx>
-
+//处理模板文件的加载、重载、备份、新生；索引的建立，更新，删除；索引的查询等操作。
 namespace filemanager
 {
     // 语言分组结构体

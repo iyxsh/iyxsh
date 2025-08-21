@@ -38,35 +38,41 @@ endif()
 
 # 源文件
 set(SOURCES
-    ./leofun/leofun.cpp
-    ./leofun/filemanager/filequeue.cpp
-    ./leofun/filemanager/apiops.cpp
-    ./leofun/filemanager/filehandlers.cpp
-    ./leofun/filemanager/lofficeconn.cpp
-    ./leofun/filemanager/spreadsheet.cpp
-    ./leofun/filemanager/utils.cpp
-    ./leofun/filemanager/template_index_cache.cpp
-    ./leofun/apihandle/handle.cpp
     ./leofun/cJSON/cJSON.c
     ./leofun/logger/logger.cpp
     ./leofun/config/json_config.cpp
     ./leofun/error/error_codes.cpp
+    ./leofun/filemanager/utils.cpp
+    ./leofun/filemanager/ErrorHandler.cpp
+    ./leofun/filemanager/unicodetable.cpp
+    ./leofun/filemanager/LibreOfficeService.cpp
+    ./leofun/filemanager/spreadsheet.cpp
+    ./leofun/filemanager/lofficeconn.cpp
+    ./leofun/filemanager/filehandlers.cpp
+    ./leofun/filemanager/filequeue.cpp
+    ./leofun/filemanager/apiops.cpp
+    ./leofun/apihandle/handle.cpp
+    ./leofun/filemanager/template_index_cache.cpp
+    ./leofun/leofun.cpp
 )
 
 # 头文件
 set(HEADERS
-    ./leofun/filemanager/filequeue.h
-    ./leofun/filemanager/apiops.h
-    ./leofun/filemanager/filehandlers.h
-    ./leofun/filemanager/lofficeconn.h
-    ./leofun/filemanager/spreadsheet.h
-    ./leofun/filemanager/utils.h
-    ./leofun/filemanager/template_index_cache.h
-    ./leofun/apihandle/handle.h
     ./leofun/cJSON/cJSON.h
     ./leofun/logger/logger.h
     ./leofun/config/json_config.h
     ./leofun/error/error_codes.h
+    ./leofun/filemanager/utils.h
+    ./leofun/filemanager/ErrorHandler.h
+    ./leofun/filemanager/unicodetable.h
+    ./leofun/filemanager/LibreOfficeService.h
+    ./leofun/filemanager/spreadsheet.h
+    ./leofun/filemanager/lofficeconn.h
+    ./leofun/filemanager/filehandlers.h
+    ./leofun/filemanager/filequeue.h
+    ./leofun/filemanager/apiops.h
+    ./leofun/apihandle/handle.h  
+    ./leofun/filemanager/template_index_cache.h    
 )
 
 # 创建可执行文件

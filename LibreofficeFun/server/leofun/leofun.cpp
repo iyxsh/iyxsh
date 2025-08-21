@@ -11,7 +11,7 @@
 #include "./filemanager/filequeue.h"
 #include "./filemanager/lofficeconn.h"
 #include "./filemanager/template_index_cache.h"
-#include "./filemanager/fileops.h"
+#include "./filemanager/apiops.h"
 #include "./error/error_codes.h"
 #include "./filemanager/utils.h"
 

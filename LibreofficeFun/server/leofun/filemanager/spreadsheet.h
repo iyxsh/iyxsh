@@ -60,9 +60,6 @@ namespace filemanager
     /// @brief 关闭文档
     void closeDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docInterface);
 
-    /// @brief 读取整个电子表格文件为JSON
-    cJSON *readSpreadsheetFile(const rtl::OUString &filePath);
-
     /// @brief 创建新电子表格文件
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
                                     const rtl::OUString &sheetName);
@@ -87,7 +84,6 @@ namespace filemanager
     // 内部辅助函数
     cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
     cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
-    rtl::OUString findCharPositions(const rtl::OUString &newValue, cJSON *sheetData);
 
     // 公共函数用于加载文档
     com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
@@ -97,11 +93,6 @@ namespace filemanager
     // 分页读取工作表内容
     cJSON *readSheetDataRange(const rtl::OUString &filePath, const rtl::OUString &sheetName, int startIndex, int endIndex);
     void clearSheet(const uno::Reference<sheet::XSpreadsheet> &sheet);
-    void copySheetContent(const uno::Reference<sheet::XSpreadsheet> &srcSheet, const uno::Reference<sheet::XSpreadsheet> &dstSheet);
-    int copySheetToAnotherFile(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sourceDoc,
-                               const rtl::OUString &sourceSheetName,
-                               const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &targetDoc);
-
     // 声明用于查找字符串位置的函数
     std::string findStringInSpreadsheet(const rtl::OUString &targetString, css::uno::Reference<css::sheet::XSpreadsheet> sheet);
     std::vector<LanguageGroup> readSheetAndGroupByLanguage(css::uno::Reference<css::sheet::XSpreadsheet> sheet);

@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <string>
+#include <iostream>
 #include <rtl/ustring.hxx>
 
 namespace filemanager

@@ -815,6 +815,43 @@ namespace filemanager
                 return;
             }
 
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xComponent.is())
+            {
+                xDoc = loadSpreadsheetDocument(oldAbsoluteFilePath, fileInfo.xComponent);
+                if (!fileInfo.xComponent.is())
+                {
+                    logger_log_error("processDeleteFileTask -- Failed to load document: %s", task.filename.c_str());
+                    return;
+                }
+            }
+            else
+            {
+                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            }
+            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
+            closeDocument(xComp);
+
+            // 首先判断是否文件已经加载
+            FileInfo fileInfoNew = filemanager::FileQueueManager::getInstance().getFileInfo(newFilename);
+            uno::Reference<sheet::XSpreadsheetDocument> xDocNew;
+            if (!fileInfoNew.xComponent.is())
+            {
+                xDocNew = loadSpreadsheetDocument(newAbsoluteFilePath, fileInfoNew.xComponent);
+                if (!fileInfoNew.xComponent.is())
+                {
+                    //相反的流程，此处新文件名不存在才对
+                }
+            }
+            else
+            {
+                xDocNew = uno::Reference<sheet::XSpreadsheetDocument>(fileInfoNew.xComponent, uno::UNO_QUERY); // 类型转换
+                logger_log_error("file %s exists:", newFilename.c_str());
+                return; //如果新文件名存在直接返回报错
+            }
+
             // 重命名文件
             if (rename(oldFilePath.c_str(), newFilePath.c_str()) == 0)
             {
