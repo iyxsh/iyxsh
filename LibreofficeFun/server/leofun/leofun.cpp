@@ -9,7 +9,7 @@
 #include "./logger/logger.h"
 #include "./config/json_config.h"
 #include "./filemanager/filequeue.h"
-#include "./filemanager/lofficeconn.h"
+#include "./filemanager/LibreOfficeService.h"
 #include "./filemanager/template_index_cache.h"
 #include "./filemanager/apiops.h"
 #include "./error/error_codes.h"
@@ -590,7 +590,7 @@ void cleanup_resources(int sig)
     filemanager::FileQueueManager::getInstance().stopTaskProcessor();
 
     // 释放 LibreOffice 连接
-    filemanager::LibreOfficeConnectionManager::release();
+    filemanager::LibreOfficeService::shutdown();
 
     exit(EXIT_FAILURE);
 }
@@ -615,7 +615,7 @@ int main()
 
     // 初始化 LibreOffice 连接
     std::cout << "Attempting to initialize LibreOffice connection..." << std::endl;
-    if (!filemanager::LibreOfficeConnectionManager::initialize())
+    if (!filemanager::LibreOfficeService::initialize())
     {
         // 记录详细的错误信息到日志
         logger_log_warn("========================================");
@@ -758,7 +758,7 @@ extern "C" void cleanup(int sig)
     filemanager::FileQueueManager::getInstance().stopTaskProcessor();
 
     // 释放 LibreOffice 连接
-    filemanager::LibreOfficeConnectionManager::release();
+    filemanager::LibreOfficeService::shutdown();
 
     // 清理配置
     json_config_free();

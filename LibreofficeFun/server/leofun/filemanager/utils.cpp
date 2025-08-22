@@ -301,6 +301,25 @@ namespace filemanager
         return convertToAbsolutePath(FilePathStr);
     }
     // Function to convert a number to Excel column letter notation
+    std::string extractFilenameWithoutODSExtension(const std::string &filepath) {
+        // 查找最后一个路径分隔符
+        size_t lastSlash = filepath.find_last_of("/\\");
+        std::string filename = (lastSlash == std::string::npos) ? filepath : filepath.substr(lastSlash + 1);
+        
+        // 转换为小写比较
+        std::string lowerFilename = filename;
+        std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(),
+                      [](unsigned char c){ return std::tolower(c); });
+        
+        // 去除.ods或.ODS后缀
+        if (lowerFilename.size() >= 4 && 
+            lowerFilename.substr(lowerFilename.size() - 4) == ".ods") {
+            filename = filename.substr(0, filename.size() - 4);
+        }
+        
+        return filename;
+    }
+
     std::string numberToExcelColumn(int num)
     {
         std::string columnName;

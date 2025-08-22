@@ -30,6 +30,13 @@ namespace filemanager
     std::string getAbsoluteString(const std::string &fileName);
     std::string numberToExcelColumn(int num);
     void ExcelColumnToNumber(const std::string &posStr,int *col,int *row);
+    
+    /**
+     * @brief 从文件路径中提取文件名并去除.ods/.ODS后缀
+     * @param filepath 文件路径
+     * @return 去除后缀的文件名
+     */
+    std::string extractFilenameWithoutODSExtension(const std::string &filepath);
 } // namespace filemanager
 
 #endif // UTILS_H

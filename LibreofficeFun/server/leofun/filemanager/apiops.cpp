@@ -13,7 +13,7 @@
 #include <unistd.h> // 添加 getcwd 头文件
 #include <sys/stat.h>
 #include "../error/error_codes.h"
-#include "lofficeconn.h" // 确保 LibreOfficeConnectionManager 可用
+#include "LibreOfficeService.h" // 确保 LibreOfficeService 头文件 可用
 
 namespace filemanager
 {
@@ -236,6 +236,7 @@ namespace filemanager
     {
         // newfileCreate不需要请求体，所以即使body为空也继续处理
         // 但如果有body且不为空，需要验证其为有效JSON（如果需要解析）
+        logger_log_info("newfileCreate called with body: %s ", body);
         std::string fileName;
         if (body && strlen(body) > 0)
         {
@@ -272,7 +273,6 @@ namespace filemanager
         }
         // 实现创建文件的函数
         logger_log_info("Creating file: %s", fileName.c_str());
-        uno::Reference<lang::XComponent> xComp;
         try
         {
             rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(fileName).c_str());
@@ -286,7 +286,7 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(fileName);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (fileInfo.xComponent == nullptr && !fileInfo.xComponent.is())
+            if (fileInfo.xDoc == nullptr && !fileInfo.xDoc.is())
             {
                 cJSON *newCreate = createNewSpreadsheetFile(filePath, sheetName); // 创建新的电子表格文件
                 if (newCreate == nullptr)
@@ -651,20 +651,20 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                     return;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
 
             if (!xDoc.is())
             {

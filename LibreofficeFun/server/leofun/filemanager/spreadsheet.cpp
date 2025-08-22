@@ -3,7 +3,6 @@
 #include "ErrorHandler.h"
 #include "filequeue.h"
 #include "template_index_cache.h"
-#include "lofficeconn.h"
 #include "unicodetable.h"
 #include "utils.h"
 #include "../cJSON/cJSON.h"
@@ -16,35 +15,26 @@ namespace filemanager {
 
 // 加载电子表格文档
 com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
-loadSpreadsheetDocument(const rtl::OUString &filePath, 
-                       com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp) 
+loadSpreadsheetDocument(const rtl::OUString &filePath) 
 {
     try {
         auto xDoc = LibreOfficeService::loadSpreadsheetDocument(filePath);
-        if (xDoc.is()) {
-            xComp = uno::Reference<lang::XComponent>(xDoc, uno::UNO_QUERY);
+        if (!xDoc.is()) {
+            logger_log_error("loadSpreadsheetDocument,Failed to load spreadsheet document: %s",convertOUStringToString(filePath).c_str());
+            return nullptr;
         }
         return xDoc;
-    } 
+    }
     catch (const uno::Exception &e) {
         ErrorHandler::handleUnoException(e, "loadSpreadsheetDocument");
-        if (xComp.is()) {
-            LibreOfficeService::closeDocument(xComp);
-        }
         return nullptr;
     }
     catch (const std::exception &e) {
         ErrorHandler::handleStdException(e, "loadSpreadsheetDocument");
-        if (xComp.is()) {
-            LibreOfficeService::closeDocument(xComp);
-        }
         return nullptr;
     }
     catch (...) {
         ErrorHandler::handleUnknownException("loadSpreadsheetDocument");
-        if (xComp.is()) {
-            LibreOfficeService::closeDocument(xComp);
-        }
         return nullptr;
     }
 }
@@ -72,7 +62,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
     }
 
     /// @brief 直接保存当前文档（不指定路径，保存到原始位置）
-    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface)
+    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface)
     {
         try {
             LibreOfficeService::saveDocument(docIface);
@@ -89,7 +79,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
     }
 
     /// @brief 保存文档到指定路径
-    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface,
+    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface,
                      const rtl::OUString &filePath)
     {
         try {
@@ -107,7 +97,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
     }
 
     /// @brief 关闭文档
-    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface)
+    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface)
     {
         try {
             LibreOfficeService::closeDocument(docIface);
@@ -127,38 +117,11 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
                                     const rtl::OUString &sheetName)
     {
-        uno::Reference<lang::XComponent> xComp;
         try
         {
-            // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
-            if (!xLoader.is())
-            {
-                std::cerr << "createNewSpreadsheetFile: Failed to get component loader" << std::endl;
-                return nullptr;
-            }
-
-            uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<uno::XInterface> loadedIface = xLoader->loadComponentFromURL(
-                convertStringToOUString("private:factory/scalc"), convertStringToOUString("_blank"), 0, args);
-            if (!loadedIface.is())
-            {
-                std::cerr << "createNewSpreadsheetFile: loadComponentFromURL returned null!" << std::endl;
-                return nullptr;
-            }
-
-            xComp = uno::Reference<lang::XComponent>(loadedIface, uno::UNO_QUERY);
-            if (!xComp.is())
-            {
-                std::cerr << "createNewSpreadsheetFile: loaded interface is not XComponent!" << std::endl;
-                return nullptr;
-            }
-
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
-            if (!xDoc.is())
-            {
-                std::cerr << "createNewSpreadsheetFile: loaded component is not a spreadsheet document!" << std::endl;
-                closeDocument(xComp);
+            // 获取新文档
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc = LibreOfficeService::CreateNewSpreadsheetDocument();
+            if (!xDoc.is()) {
                 return nullptr;
             }
 
@@ -166,7 +129,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             if (!sheets.is())
             {
                 std::cerr << "createNewSpreadsheetFile: Cannot get sheets" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return nullptr;
             }
 
@@ -174,7 +137,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             if (!nameAccess.is())
             {
                 std::cerr << "createNewSpreadsheetFile: Cannot get name access" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return nullptr;
             }
 
@@ -196,61 +159,28 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             if (!sheet.is())
             {
                 std::cerr << "createNewSpreadsheetFile: Cannot get sheet" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return nullptr;
             }
 
             // 新建文档空的，第一次保存并关闭文档
             saveDocument(xDoc, filePath);
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
         {
             std::cerr << "createNewSpreadsheetFile UNO error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            if (xComp.is())
-            {
-                try
-                {
-                    closeDocument(xComp); // 确保在异常情况下关闭文档
-                }
-                catch (...)
-                {
-                    std::cerr << "createNewSpreadsheetFile: Exception while closing document" << std::endl;
-                }
-            }
             return nullptr;
         }
         catch (const std::exception &e)
         {
             std::cerr << "createNewSpreadsheetFile std exception: " << e.what() << std::endl;
-            if (xComp.is())
-            {
-                try
-                {
-                    closeDocument(xComp); // 确保在异常情况下关闭文档
-                }
-                catch (...)
-                {
-                    std::cerr << "createNewSpreadsheetFile: Exception while closing document" << std::endl;
-                }
-            }
             return nullptr;
         }
         catch (...)
         {
             std::cerr << "createNewSpreadsheetFile unknown exception occurred" << std::endl;
-            if (xComp.is())
-            {
-                try
-                {
-                    closeDocument(xComp); // 确保在异常情况下关闭文档
-                }
-                catch (...)
-                {
-                    std::cerr << "createNewSpreadsheetFile: Exception while closing document" << std::endl;
-                }
-            }
             return nullptr;
         }
         return cJSON_CreateString("success");
@@ -263,50 +193,36 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                                     const rtl::OUString &newValue,
                                     const rtl::OUString &cellType)
     {
-        uno::Reference<lang::XComponent> xComp;
         try
         {
-            // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
-            if (!xLoader.is())
+            // 确保文件未被加载或已关闭
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath).c_str());
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xDoc.is())
             {
-                std::cerr << "updateSpreadsheetContent: Failed to get component loader" << std::endl;
-                return cJSON_CreateString("Failed to get component loader");
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
+                {
+                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
+                    return cJSON_CreateString("failed to load document");
+                }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(convertOUStringToString(filePath), xDoc, std::string());
             }
-
-            logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-            logger_log_info("newValue: %s", rtl::OUStringToOString(newValue, RTL_TEXTENCODING_UTF8).getStr());
-            rtl::OUString curFilePath;
-            getAbsolutePath(filePath, curFilePath);
-
-            // 构造文件URL
-            rtl::OUString fileUrl = convertStringToOUString("file://") + curFilePath.replaceAll("\\", "/");
-            logger_log_info("curFilePath: %s", rtl::OUStringToOString(curFilePath, RTL_TEXTENCODING_UTF8).getStr());
-            logger_log_info("SheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
-            // 加载文档
-            uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(fileUrl, convertStringToOUString("_blank"), 0, args);
-            xComp = xComponent;
-            if (!xComp.is())
+            else
             {
-                std::cerr << "updateSpreadsheetContent: Failed to load document" << std::endl;
-                return cJSON_CreateString("Failed to load document");
+                xDoc = fileInfo.xDoc;
             }
-
-            // 获取文档和工作表
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
             if (!xDoc.is())
             {
-                std::cerr << "updateSpreadsheetContent: Loaded component is not a spreadsheet document" << std::endl;
-                closeDocument(xComp);
-                return cJSON_CreateString("Loaded component is not a spreadsheet document");
+                logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
+                return cJSON_CreateString("Failed to load document");
             }
 
             uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
             if (!sheet.is())
             {
                 std::cerr << "updateSpreadsheetContent: Cannot get sheet" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return cJSON_CreateString("Cannot get sheet");
             }
 
@@ -319,7 +235,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             if (!cell.is())
             {
                 std::cerr << "updateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return cJSON_CreateString("Cannot get cell");
             }
             // 直接默认设置为公式
@@ -337,35 +253,23 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
 
             // 保存文档
             saveDocumentDirect(xDoc);
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
 
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
         {
             std::cerr << "updateSpreadsheetContent UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString(rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
             std::cerr << "updateSpreadsheetContent std exception: " << e.what() << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString(e.what());
         }
         catch (...)
         {
             std::cerr << "updateSpreadsheetContent unknown exception occurred" << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString("Unknown error occurred");
         }
         return cJSON_CreateString("success");
@@ -393,7 +297,6 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                                          const rtl::OUString &sheetName,
                                          const cJSON *updatecells)
     {
-        uno::Reference<lang::XComponent> xComp;
         try
         {
             // 获取绝对路径
@@ -402,21 +305,20 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
                     return cJSON_CreateString("Failed to load document");
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return cJSON_CreateString("Failed to load document");
@@ -426,7 +328,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             if (!sheet.is())
             {
                 std::cerr << "batchUpdateSpreadsheetContent: Cannot get sheet" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return cJSON_CreateString("Cannot get sheet");
             }
 
@@ -470,7 +372,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                             if (!cell.is())
                             {
                                 std::cerr << "updateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                                closeDocument(xComp);
+                                closeDocument(xDoc);
                                 return cJSON_CreateString("Cannot get cell");
                             }
                             if (sheetName == wordsSheetName)
@@ -529,7 +431,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                             if (!cell.is())
                             {
                                 std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                                closeDocument(xComp);
+                                closeDocument(xDoc);
                                 return cJSON_CreateString("Cannot get cell");
                             }
 
@@ -564,7 +466,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
 
             // 保存文档
             saveDocumentDirect(xDoc);
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
             cJSON *jobj = cJSON_CreateObject();
             cJSON_AddStringToObject(jobj, "result", "success");
             return jobj;
@@ -572,28 +474,16 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
         catch (const uno::Exception &e)
         {
             std::cerr << "batchUpdateSpreadsheetContent UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString(rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
             std::cerr << "batchUpdateSpreadsheetContent std exception: " << e.what() << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString(e.what());
         }
         catch (...)
         {
             std::cerr << "batchUpdateSpreadsheetContent unknown exception occurred" << std::endl;
-            if (xComp.is())
-            {
-                closeDocument(xComp);
-            }
             return cJSON_CreateString("Unknown error occurred");
         }
     }
@@ -610,40 +500,35 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
         // 减少日志输出以提高性能
         // logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
         // logger_log_info("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
-        uno::Reference<lang::XComponent> xComp; // 在函数作用域内声明，确保在任何情况下都能正确关闭
         try
         {
-            // 获取ComponentLoader
-            uno::Reference<frame::XComponentLoader> xLoader = LibreOfficeConnectionManager::getComponentLoader();
-            if (!xLoader.is())
+            // 首先判断是否文件已经加载
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath));
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
+            if (!fileInfo.xDoc.is())
             {
-                std::cerr << "readSheetData: Failed to get component loader" << std::endl;
-                return nullptr;
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
+                {
+                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
+                    return cJSON_CreateString("Failed to load document");
+                }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
             }
-
-            rtl::OUString url = convertStringToOUString("file://") + filePath.replaceAll("\\", "/");
-            uno::Sequence<beans::PropertyValue> args(0);
-            uno::Reference<lang::XComponent> xComponent = xLoader->loadComponentFromURL(url, convertStringToOUString("_blank"), 0, args);
-            xComp = xComponent;
-            if (!xComp.is())
+            else
             {
-                std::cerr << "readSheetData: Cannot load document!" << std::endl;
-                return nullptr;
+                xDoc = fileInfo.xDoc;
             }
-
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc(xComp, uno::UNO_QUERY);
             if (!xDoc.is())
             {
-                std::cerr << "readSheetData: Cannot open spreadsheet!" << std::endl;
-                closeDocument(xComp);
-                return nullptr;
+                return cJSON_CreateString("Failed to load document");
             }
 
             uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
             if (!sheet.is())
             {
                 std::cerr << "readSheetData: Cannot get sheet!" << std::endl;
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return nullptr;
             }
 
@@ -752,7 +637,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             // 清理辅助对象
             cJSON_Delete(addedContents);
 
-            closeDocument(xComp);
+            closeDocument(xDoc);
             return contentMap;
         }
         catch (const uno::Exception &e)
@@ -784,21 +669,20 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
                     return -1;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return -1;
@@ -808,7 +692,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
             if (!nameAccess->hasByName(sheetName))
             {
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return -1;
             }
             uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
@@ -840,7 +724,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                 }
             }
 
-            closeDocument(xComp);
+            closeDocument(xDoc);
             return validRowCount;
         }
         catch (...)
@@ -861,21 +745,20 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
                     return cJSON_CreateString("failed");
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return cJSON_CreateString("failed");
@@ -884,7 +767,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
             if (!nameAccess->hasByName(sheetName))
             {
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return result;
             }
             uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
@@ -936,7 +819,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
                 }
                 cJSON_AddItemToArray(result, rowObj);
             }
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
         }
         catch (...)
         {
@@ -1169,21 +1052,20 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
         // 首先判断是否文件已经加载
         FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
         uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-        if (!fileInfo.xComponent.is())
+        if (!fileInfo.xDoc.is())
         {
-            xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-            if (!fileInfo.xComponent.is())
+            xDoc = loadSpreadsheetDocument(filePath);
+            if (!xDoc.is())
             {
                 logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
                 return false;
             }
+            filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
         }
         else
         {
-            xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            xDoc = fileInfo.xDoc;
         }
-        uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
         if (!xDoc.is())
         {
             return false;
@@ -1193,7 +1075,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
         if (!sheet.is())
         {
             logger_log_error("writeCharacterInfosToSheet: Failed to get sheet");
-            closeDocument(xComp);
+            closeDocument(xDoc);
             return false;
         }
         for (const auto &info : infos)
@@ -1214,7 +1096,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
             }
         }
         saveDocumentDirect(xDoc);
-        // closeDocument(xComp);
+        // closeDocument(xDoc);
         return true;
     }
 
@@ -1321,74 +1203,110 @@ loadSpreadsheetDocument(const rtl::OUString &filePath,
         return resultBuffer.makeStringAndClear();
     }
 
-    bool FileExists(const rtl::OUString &filePath)
-    {
-        // return osl::FileBase::E_None == osl::File::isExistent(filePath);
-        //osl::FileStatus status(osl_FileStatus_Mask_Type);
-        //if (osl::FileBase::E_None == osl::File::getStatus(filePath, status))
-        //{
-        //    return status.isValid();
-        //}
-    }
-
-    void DeleteFileWithUNO(const rtl::OUString &filePath)
+    /**
+     * @brief 通过UNO API删除文件，确保连接状态与文件系统一致
+     * @param filePath 文件路径
+     * @return bool 删除是否成功
+     */
+    bool DeleteFileWithUNO(const rtl::OUString &filePath)
     {
         try
         {
             // 获取组件上下文
-            uno::Reference<uno::XComponentContext> xContext = LibreOfficeConnectionManager::getContext();
+            uno::Reference<uno::XComponentContext> xContext = LibreOfficeService::getContext();
+            if (!xContext.is())
+            {
+                logger_log_error("Failed to get UNO context for file deletion");
+                return false;
+            }
 
             // 获取服务管理器
             uno::Reference<lang::XMultiComponentFactory> xServiceManager = xContext->getServiceManager();
+            if (!xServiceManager.is())
+            {
+                logger_log_error("Failed to get UNO service manager for file deletion");
+                return false;
+            }
 
             // 获取 XSimpleFileAccess
             uno::Reference<ucb::XSimpleFileAccess> fileAccess(xServiceManager->createInstanceWithContext(
-                                                                  "com.sun.star.ucb.SimpleFileAccess", xContext),
-                                                              uno::UNO_QUERY);
+                                                                      "com.sun.star.ucb.SimpleFileAccess", xContext),
+                                                                  uno::UNO_QUERY);
+            if (!fileAccess.is())
+            {
+                logger_log_error("Failed to get SimpleFileAccess service for file deletion");
+                return false;
+            }
 
             // 检查文件是否存在
             if (fileAccess->exists(filePath))
             {
                 // 删除文件
                 fileAccess->kill(filePath);
-                logger_log_info("File deleted successfully: %s", convertOUStringToString(filePath).c_str());
+                logger_log_info("File deleted successfully via UNO API: %s", convertOUStringToString(filePath).c_str());
+                return true;
             }
             else
             {
-                logger_log_error("File does not exist: %s", convertOUStringToString(filePath).c_str());
+                logger_log_error("File does not exist, no need to delete: %s", convertOUStringToString(filePath).c_str());
+                return true; // 文件不存在视为删除成功，避免后续不必要的错误处理
             }
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
-        }
-    }
-
-    void SafeDeleteFile(const rtl::OUString &filePath)
-    {
-        try
-        {
-            // 检查文件存在性
-            if (!FileExists(filePath))
-            {
-                logger_log_error("File does not exist: %s", convertOUStringToString(filePath).c_str());
-                return;
-            }
-
-            // 调用 UNO API 删除文件
-            DeleteFileWithUNO(filePath);
-        }
-        catch (const uno::Exception &e)
-        {
-            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", 
+                            convertOUStringToString(filePath).c_str(), 
+                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            // 抛出异常，让上层函数能够捕获并处理
+            throw;
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Standard exception occurred while deleting file: %s, Error: %s", convertOUStringToString(filePath).c_str(), std::string(e.what()).c_str());
+            logger_log_error("Standard exception occurred while deleting file: %s, Error: %s", 
+                            convertOUStringToString(filePath).c_str(), 
+                            std::string(e.what()).c_str());
+            throw;
         }
         catch (...)
         {
-            logger_log_error("Unknown exception occurred while deleting file: %s", convertOUStringToString(filePath).c_str());
+            logger_log_error("Unknown exception occurred while deleting file: %s", 
+                            convertOUStringToString(filePath).c_str());
+            throw;
         }
+        return false;
+    }
+
+    /**
+     * @brief 安全删除文件，调用UNO API删除并处理异常
+     * @param filePath 文件路径
+     * @return bool 删除是否成功
+     */
+    bool SafeDeleteFile(const rtl::OUString &filePath)
+    {
+        try
+        {
+            // 直接调用UNO API删除文件，它内部已包含文件存在性检查
+            return DeleteFileWithUNO(filePath);
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("UNO Exception occurred while safely deleting file: %s, Error: %s", 
+                            convertOUStringToString(filePath).c_str(), 
+                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Standard exception occurred while safely deleting file: %s, Error: %s", 
+                            convertOUStringToString(filePath).c_str(), 
+                            std::string(e.what()).c_str());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception occurred while safely deleting file: %s", 
+                            convertOUStringToString(filePath).c_str());
+        }
+        
+        // 如果发生异常，返回删除失败
+        return false;
     }
 }

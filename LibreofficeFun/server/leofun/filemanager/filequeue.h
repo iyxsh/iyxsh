@@ -12,6 +12,8 @@
 #include "../cJSON/cJSON.h" // 使用相对当前文件的路径
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
+#include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
+using namespace com::sun::star;
 namespace filemanager
 {
 
@@ -48,7 +50,7 @@ namespace filemanager
         time_t lastModified;
         std::string errorMessage;
         // 优化：xComponent用于缓存已加载的UNO文档组件，需配合引用计数管理生命周期
-        com::sun::star::uno::Reference<com::sun::star::lang::XComponent> xComponent;
+        uno::Reference<sheet::XSpreadsheetDocument> xDoc;
         int refCount = 0; // 引用计数，>0表示有业务持有，关闭时需判断
     };
 
@@ -127,6 +129,8 @@ namespace filemanager
 
         // 更新文件状态
         void updateFileStatus(const std::string &filename, FileStatus status, const std::string &errorMsg = "");
+
+        void updateFilexDoc(const std::string &filename, uno::Reference<sheet::XSpreadsheetDocument> &xDoc, const std::string &errorMsg);
 
         // 获取文件状态
         FileStatus getFileStatus(const std::string &filename);

@@ -5,10 +5,17 @@
 #include "../logger/logger.h"
 #include <iostream>
 #include <chrono>
-#include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include "spreadsheet.h"
+#include "LibreOfficeService.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <errno.h>
+#endif
 namespace filemanager
 {
 
@@ -41,7 +48,7 @@ namespace filemanager
         info.status = status;
         info.lastModified = std::time(nullptr);
         info.errorMessage = errorMsg;
-        info.xComponent = nullptr; // 新增字段，初始为空
+        info.xDoc = nullptr; // 新增字段，初始为空
         info.refCount = 0;
         fileStatusMap[filename] = info;
 
@@ -58,6 +65,28 @@ namespace filemanager
     }
 
     // 更新文件状态
+    void FileQueueManager::updateFilexDoc(const std::string &filename, uno::Reference<sheet::XSpreadsheetDocument> &xDoc, const std::string &errorMsg)
+    {
+        std::lock_guard<std::mutex> lock(statusMutex);
+        auto it = fileStatusMap.find(filename);
+        if (it != fileStatusMap.end())
+        {
+            it->second.xDoc = xDoc;
+        }
+        else
+        {
+            // 如果文件不存在于状态映射表中，则添加新条目
+            FileInfo info;
+            info.filename = filename;
+            info.status = FILE_STATUS_READY;
+            info.errorMessage = errorMsg;
+            info.lastModified = std::time(nullptr);
+            info.xDoc = xDoc;
+            info.refCount = 0;
+            fileStatusMap[filename] = info;
+        }
+    }
+
     void FileQueueManager::updateFileStatus(const std::string &filename, FileStatus status, const std::string &errorMsg)
     {
         std::lock_guard<std::mutex> lock(statusMutex);
@@ -76,7 +105,7 @@ namespace filemanager
             info.status = status;
             info.errorMessage = errorMsg;
             info.lastModified = std::time(nullptr);
-            info.xComponent = nullptr;
+            info.xDoc = nullptr;
             info.refCount = 0;
             fileStatusMap[filename] = info;
         }
@@ -108,7 +137,7 @@ namespace filemanager
         info.filename = filename;
         info.status = FILE_STATUS_CLOSED;
         info.lastModified = 0;
-        info.xComponent = nullptr;
+        info.xDoc = nullptr;
         info.refCount = 0;
         return info;
     }
@@ -481,38 +510,123 @@ namespace filemanager
             // 将OUString路径转换为std::string
             std::string filePath = filemanager::convertOUStringToString(absoluteFilePath);
 
-            // 首先判断是否文件已经加载
+            // 首先移除文件信息状态记录，防止其他线程访问
+            filemanager::FileQueueManager::getInstance().eraseFileStatus(task.filename);
+
+            // 确保文件未被加载或已关闭
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(absoluteFilePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(absoluteFilePath);
+                if (!xDoc.is())
                 {
-                    logger_log_error("processDeleteFileTask -- Failed to load document: %s", task.filename.c_str());
+                    logger_log_error("Failed to load document: %s", task.filename.c_str());
                     return;
+                }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
+            }
+            else
+            {
+                xDoc = fileInfo.xDoc;
+            }
+            if (xDoc.is())
+            {
+                closeDocument(xDoc);
+            }
+
+            // 使用LibreOffice UNO API安全删除文件，确保连接状态与文件系统一致
+            bool deleted = false;
+            try
+            {
+                // 尝试通过UNO API删除文件，使用返回值判断是否删除成功
+                deleted = filemanager::SafeDeleteFile(absoluteFilePath);
+            }
+            catch (...)
+            {
+                logger_log_error("UNO API delete failed, attempting OS-level delete as fallback");
+
+// 如果UNO API删除失败，作为备选方案使用操作系统API
+#ifdef _WIN32
+                // 尝试多次删除，处理可能的文件锁问题
+                int retryCount = 5;
+                while (retryCount > 0)
+                {
+                    deleted = DeleteFileA(filePath.c_str()) != 0;
+                    if (deleted)
+                        break;
+
+                    // 如果删除失败，等待一段时间后重试
+                    logger_log_warning("Failed to delete file: %s, retrying... (%d attempts left)",
+                                       filePath.c_str(), retryCount - 1);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    retryCount--;
+                }
+#else
+                deleted = unlink(filePath.c_str()) == 0;
+#endif
+            }
+
+            if (deleted)
+            {
+                logger_log_info("Successfully deleted file: %s", filePath.c_str());
+                
+                // 增加额外的等待时间，确保文件完全从操作系统缓存中释放
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                
+                // 在删除文件后，尝试使用UNO API再次确认文件已被删除
+                try
+                {
+                    uno::Reference<uno::XComponentContext> xContext = LibreOfficeService::getContext();
+                    if (xContext.is())
+                    {
+                        uno::Reference<lang::XMultiComponentFactory> xServiceManager(xContext->getServiceManager(), uno::UNO_QUERY);
+                        if (xServiceManager.is())
+                        {
+                            uno::Reference<ucb::XSimpleFileAccess> fileAccess(xServiceManager->createInstanceWithContext(
+                                convertStringToOUString("com.sun.star.ucb.SimpleFileAccess"), xContext), uno::UNO_QUERY);
+                            if (fileAccess.is())
+                            {
+                                // 尝试多次检查文件是否存在，直到确认文件已删除或达到最大重试次数
+                                int confirmRetry = 3;
+                                while (confirmRetry > 0)
+                                {
+                                    if (!fileAccess->exists(absoluteFilePath))
+                                    {
+                                        logger_log_info("UNO API confirmed file deleted: %s", filePath.c_str());
+                                        break;
+                                    }
+                                    
+                                    logger_log_info("File still exists in UNO cache, waiting...");
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                                    confirmRetry--;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (const uno::Exception& e)
+                {
+                    logger_log_error("UNO Exception during file deletion confirmation: %s", 
+                        rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                }
+                catch (...)
+                {
+                    logger_log_error("Unknown exception during file deletion confirmation");
                 }
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+#ifdef _WIN32
+                DWORD error = GetLastError();
+                logger_log_error("Failed to delete file: %s, Windows error: %d", filePath.c_str(), error);
+#else
+                logger_log_error("Failed to delete file: %s, errno: %d", filePath.c_str(), errno);
+#endif
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-            closeDocument(xComp);                                        // 关闭文档
-            // 删除文件
-            if (unlink(filePath.c_str()) == 0)
-            {
-                logger_log_info("Successfully deleted file: %s",
-                                filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
-            }
-            else
-            {
-                logger_log_error("Failed to delete file: %s, errno: %d",
-                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str(),
-                                 errno);
-            }
+
             // 从状态映射表中移除文件
-            filemanager::FileQueueManager::getInstance().eraseFileStatus(task.filename);
+            filemanager::FileQueueManager::getInstance().removeFileInfo(task.filename);
         }
         catch (const std::system_error &e)
         {
@@ -818,38 +932,39 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(oldAbsoluteFilePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(oldAbsoluteFilePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("processDeleteFileTask -- Failed to load document: %s", task.filename.c_str());
                     return;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-            closeDocument(xComp);
+            closeDocument(xDoc);
 
             // 首先判断是否文件已经加载
             FileInfo fileInfoNew = filemanager::FileQueueManager::getInstance().getFileInfo(newFilename);
             uno::Reference<sheet::XSpreadsheetDocument> xDocNew;
-            if (!fileInfoNew.xComponent.is())
+            if (!fileInfoNew.xDoc.is())
             {
-                xDocNew = loadSpreadsheetDocument(newAbsoluteFilePath, fileInfoNew.xComponent);
-                if (!fileInfoNew.xComponent.is())
+                xDocNew = loadSpreadsheetDocument(newAbsoluteFilePath);
+                if (!fileInfoNew.xDoc.is())
                 {
-                    //相反的流程，此处新文件名不存在才对
+                    // 相反的流程，此处新文件名不存在才对
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
             }
             else
             {
-                xDocNew = uno::Reference<sheet::XSpreadsheetDocument>(fileInfoNew.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
                 logger_log_error("file %s exists:", newFilename.c_str());
-                return; //如果新文件名存在直接返回报错
+                return; // 如果新文件名存在直接返回报错
             }
 
             // 重命名文件
@@ -937,15 +1052,15 @@ namespace filemanager
         FileInfo info = getFileInfo(filename);
         if (info.filename == filename)
         {
-            if (info.xComponent.is())
+            if (info.xDoc.is())
             {
                 try
                 {
-                    closeDocument(info.xComponent);
+                    closeDocument(info.xDoc);
                 }
                 catch (...)
                 {
-                    logger_log_error("Exception when closing xComponent for file: %s", filename.c_str());
+                    logger_log_error("Exception when closing xDoc for file: %s", filename.c_str());
                 }
             }
             eraseFileStatus(filename);

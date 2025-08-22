@@ -267,31 +267,29 @@ namespace filemanager
     {
         loading.store(true);
         std::string cacheKey = buildCacheKey(filePath, sheetName);
-        uno::Reference<lang::XComponent> xComp;
         try
         {
             logger_log_info("Reloading template index for %s %s .....................", convertOUStringToString(filePath).c_str(), convertOUStringToString(sheetName).c_str());
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
                     return;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 loading.store(false);
                 return;
             }
@@ -299,7 +297,7 @@ namespace filemanager
             uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
             if (!sheet.is())
             {
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 loading.store(false);
                 return;
             }
@@ -313,16 +311,14 @@ namespace filemanager
                     removeOldestCacheEntry();
                 indexCache[cacheKey] = std::make_unique<TemplateIndexEntry>(indexPtr, now);
             }
-            closeDocument(xComp);
+            closeDocument(xDoc);
         }
         catch (const std::exception &e)
         {
-            closeDocument(xComp);
             logger_log_error("Exception in reloadTemplateIndex: %s", e.what());
         }
         catch (...)
         {
-            closeDocument(xComp);
             logger_log_error("Unknown exception in reloadTemplateIndex");
         }
         loading.store(false);

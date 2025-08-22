@@ -1,7 +1,7 @@
 #include "filehandlers.h"
 #include "spreadsheet.h"
 #include "filequeue.h"
-#include "lofficeconn.h"
+#include "LibreOfficeService.h"
 #include "utils.h"
 #include "../cJSON/cJSON.h"
 #include "../logger/logger.h"
@@ -17,7 +17,6 @@
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
-#include "lofficeconn.h"
 
 namespace filemanager
 {
@@ -58,7 +57,7 @@ namespace filemanager
         std::string filename = filenameItem->valuestring;
         FileInfo fileInfo = FileQueueManager::getInstance().getFileInfo(filename);
 
-        if (!fileInfo.xComponent.is())
+        if (!fileInfo.xDoc.is())
         {
             logger_log_info("File %s is not opened, no need to close", filename.c_str());
             return -1;
@@ -67,7 +66,7 @@ namespace filemanager
         try
         {
             // 关闭文档
-            closeDocument(fileInfo.xComponent);
+            closeDocument(fileInfo.xDoc);
 
             // 删除文件信息和状态信息
             FileQueueManager::getInstance().removeFileInfo(filename);
@@ -104,7 +103,7 @@ namespace filemanager
         try
         {
             // 使用LibreOffice连接管理器
-            if (!LibreOfficeConnectionManager::initialize())
+            if (!LibreOfficeService::initialize())
             {
                 logger_log_error("Error: Failed to initialize LibreOffice connection");
                 return -1;
@@ -425,21 +424,20 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                     return -1;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return -1;
@@ -455,7 +453,7 @@ namespace filemanager
             {
                 logger_log_info("Worksheet %s already exists in file: %s",
                                 sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return 0; // 工作表已存在，返回成功
             }
 
@@ -466,7 +464,7 @@ namespace filemanager
             saveDocumentDirect(xDoc);
 
             // 关闭文档
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
 
             logger_log_info("Successfully added worksheet %s to file: %s",
                             std::string(sheetnameItem->valuestring).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
@@ -518,21 +516,20 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                     return -1;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return -1;
@@ -548,7 +545,7 @@ namespace filemanager
             {
                 logger_log_info("Worksheet %s does not exist in file: %s",
                                 sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return 0; // 工作表不存在,只给报错信息，不返回错误
             }
 
@@ -562,7 +559,7 @@ namespace filemanager
             saveDocumentDirect(xDoc);
 
             // 关闭文档
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
 
             logger_log_info("Successfully removed worksheet %s from file: %s",
                             sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
@@ -614,21 +611,20 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xComponent.is())
+            if (!fileInfo.xDoc.is())
             {
-                xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-                if (!fileInfo.xComponent.is())
+                xDoc = loadSpreadsheetDocument(filePath);
+                if (!xDoc.is())
                 {
                     logger_log_error("Failed to load document: %s", filenameItem->valuestring);
                     return -1;
                 }
+                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
             else
             {
-                xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+                xDoc = fileInfo.xDoc;
             }
-            uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
             if (!xDoc.is())
             {
                 return -1;
@@ -639,7 +635,7 @@ namespace filemanager
             if (!nameContainer.is())
             {
                 logger_log_error("Failed to obtain XNameContainer for sheets");
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return -1;
             }
 
@@ -650,14 +646,14 @@ namespace filemanager
             {
                 logger_log_error("Worksheet %s does not exist in file: %s",
                                  sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return -1;
             }
             if (nameContainer->hasByName(newSheetName))
             {
                 logger_log_error("New worksheet name %s already exists in file: %s",
                                  newsheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xComp);
+                closeDocument(xDoc);
                 return -1;
             }
 
@@ -672,7 +668,7 @@ namespace filemanager
 
             // 保存文档
             saveDocumentDirect(xDoc);
-            // closeDocument(xComp);
+            // closeDocument(xDoc);
             return 0;
         }
         catch (const uno::Exception &e)
@@ -785,21 +781,20 @@ namespace filemanager
         // 首先判断是否文件已经加载
         FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(filename);
         uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-        if (!fileInfo.xComponent.is())
+        if (!fileInfo.xDoc.is())
         {
-            xDoc = loadSpreadsheetDocument(filePath, fileInfo.xComponent);
-            if (!fileInfo.xComponent.is())
+            xDoc = loadSpreadsheetDocument(filePath);
+            if (!xDoc.is())
             {
                 logger_log_error("Failed to load document: %s", filename.c_str());
                 return -1;
             }
+            filemanager::FileQueueManager::getInstance().updateFilexDoc(filename, xDoc, std::string());
         }
         else
         {
-            xDoc = uno::Reference<sheet::XSpreadsheetDocument>(fileInfo.xComponent, uno::UNO_QUERY); // 类型转换
+            xDoc = fileInfo.xDoc;
         }
-        uno::Reference<lang::XComponent> xComp(fileInfo.xComponent); // 声明并初始化 xComp
-
         if (!xDoc.is())
         {
             return -1;

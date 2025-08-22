@@ -52,13 +52,13 @@ namespace filemanager
     cJSON *readCellToJson(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sheet,
                           const rtl::OUString &cellAddress);
     /// @brief 直接保存打开的文档，不要路径
-    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docIface);
+    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface);
     /// @brief 保存文档到指定路径
-    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &doc,
+    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &doc,
                       const rtl::OUString &filePath);
 
     /// @brief 关闭文档
-    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &docInterface);
+    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docInterface);
 
     /// @brief 创建新电子表格文件
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
@@ -87,7 +87,7 @@ namespace filemanager
 
     // 公共函数用于加载文档
     com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
-    loadSpreadsheetDocument(const rtl::OUString &filename, com::sun::star::uno::Reference<com::sun::star::lang::XComponent> &xComp);
+    loadSpreadsheetDocument(const rtl::OUString &filename);
     // 获取工作表总记录数
     int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName);
     // 分页读取工作表内容
@@ -103,6 +103,12 @@ namespace filemanager
                                     const std::vector<TextCharInfo> &infos);
     std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index);
     rtl::OUString infosToFormatString(const std::vector<TextCharInfo> &infos);
+    
+    // 通过UNO API删除文件，确保连接状态与文件系统一致
+    bool DeleteFileWithUNO(const rtl::OUString &filePath);
+    
+    // 安全删除文件，调用UNO API删除并处理异常
+    bool SafeDeleteFile(const rtl::OUString &filePath);
 } // namespace filemanager
 
 #endif // SPREADSHEET_H
