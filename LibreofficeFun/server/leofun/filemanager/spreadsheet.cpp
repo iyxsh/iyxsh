@@ -8,36 +8,47 @@
 #include "../cJSON/cJSON.h"
 #include "../logger/logger.h"
 #include "../config/json_config.h"
+#include "DocumentManager.h"
 #include <map>
 #include <utility> // std::pair
+#include <filesystem>
 
-namespace filemanager {
-
-// 加载电子表格文档
-com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
-loadSpreadsheetDocument(const rtl::OUString &filePath) 
+namespace filemanager
 {
-    try {
-        auto xDoc = LibreOfficeService::loadSpreadsheetDocument(filePath);
-        if (!xDoc.is()) {
-            logger_log_error("loadSpreadsheetDocument,Failed to load spreadsheet document: %s",convertOUStringToString(filePath).c_str());
-            return nullptr;
+    // 加载电子表格文档
+    std::string loadSpreadsheetDocument(const rtl::OUString &filePath)
+    {
+        try
+        {
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(
+                convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+
+            if (docId.empty())
+            {
+                logger_log_error("loadSpreadsheetDocument,Failed to load spreadsheet document: %s", convertOUStringToString(filePath).c_str());
+                return "";
+            }
+
+            logger_log_info("Successfully loaded spreadsheet document: %s with docId: %s",
+                            convertOUStringToString(filePath).c_str(), docId.c_str());
+            return docId;
         }
-        return xDoc;
+        catch (const uno::Exception &e)
+        {
+            ErrorHandler::handleUnoException(e, "loadSpreadsheetDocument");
+            return "";
+        }
+        catch (const std::exception &e)
+        {
+            ErrorHandler::handleStdException(e, "loadSpreadsheetDocument");
+            return "";
+        }
+        catch (...)
+        {
+            ErrorHandler::handleUnknownException("loadSpreadsheetDocument");
+            return "";
+        }
     }
-    catch (const uno::Exception &e) {
-        ErrorHandler::handleUnoException(e, "loadSpreadsheetDocument");
-        return nullptr;
-    }
-    catch (const std::exception &e) {
-        ErrorHandler::handleStdException(e, "loadSpreadsheetDocument");
-        return nullptr;
-    }
-    catch (...) {
-        ErrorHandler::handleUnknownException("loadSpreadsheetDocument");
-        return nullptr;
-    }
-}
 
     // 列索引与Excel列名转换
     std::string columnIndexToName(int columnIndex)
@@ -54,62 +65,190 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
     }
 
     /// @brief 读取单元格内容为JSON
-    cJSON *readCellToJson(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sheet,
+    cJSON *readCellToJson(const std::string &docId, const std::string &sheetName,
                           const rtl::OUString &cellAddress)
     {
-        // 实现读取单元格内容的函数
-        return nullptr;
+        try
+        {
+            // 从DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("readCellToJson: Document not found with id: %s", docId.c_str());
+                return nullptr;
+            }
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("readCellToJson: Document is not a spreadsheet: %s", docId.c_str());
+                return nullptr;
+            }
+
+            // 获取工作表
+            auto sheet = spreadsheetDoc->getSheet(sheetName);
+            if (!sheet.is())
+            {
+                logger_log_error("readCellToJson: Sheet not found: %s", sheetName.c_str());
+                return nullptr;
+            }
+
+            // 解析单元格地址
+            sal_Int32 col = 0, row = 0;
+            parseCellAddress(cellAddress, col, row);
+
+            // 获取单元格
+            auto cell = sheet->getCellByPosition(col, row);
+            if (!cell.is())
+            {
+                logger_log_error("readCellToJson: Cannot get cell at %s",
+                                 rtl::OUStringToOString(cellAddress, RTL_TEXTENCODING_UTF8).getStr());
+                return nullptr;
+            }
+
+            // 创建返回的JSON对象
+            cJSON *result = cJSON_CreateObject();
+
+            // 获取单元格内容
+            try
+            {
+                uno::Reference<com::sun::star::text::XText> xText(cell, uno::UNO_QUERY);
+                if (xText.is())
+                {
+                    rtl::OUString cellString = xText->getString();
+                    cJSON_AddStringToObject(result, "content",
+                                            rtl::OUStringToOString(cellString, RTL_TEXTENCODING_UTF8).getStr());
+                }
+                else
+                {
+                    // 获取数值或公式
+                    double cellValue = cell->getValue();
+                    rtl::OUString cellFormula = cell->getFormula();
+
+                    if (cellFormula.getLength() > 0)
+                    {
+                        cJSON_AddStringToObject(result, "content",
+                                                rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr());
+                        cJSON_AddStringToObject(result, "type", "formula");
+                    }
+                    else
+                    {
+                        cJSON_AddNumberToObject(result, "content", cellValue);
+                        cJSON_AddStringToObject(result, "type", "number");
+                    }
+                }
+                cJSON_AddStringToObject(result, "result", "success");
+                return result;
+            }
+            catch (const uno::Exception &e)
+            {
+                cJSON_Delete(result);
+                logger_log_error("readCellToJson exception: %s",
+                                 rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                return nullptr;
+            }
+        }
+        catch (const std::exception &e)
+        {
+            ErrorHandler::handleStdException(e, "readCellToJson");
+            return nullptr;
+        }
+        catch (...)
+        {
+            ErrorHandler::handleUnknownException("readCellToJson");
+            return nullptr;
+        }
     }
 
     /// @brief 直接保存当前文档（不指定路径，保存到原始位置）
-    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface)
+    bool saveDocumentDirect(const std::string &docId)
     {
-        try {
-            LibreOfficeService::saveDocument(docIface);
+        try
+        {
+            // 从DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("saveDocumentDirect: Document not found with id: %s", docId.c_str());
+                return false;
+            }
+
+            // 调用文档对象的save方法
+            return doc->save();
         }
-        catch (const uno::Exception &e) {
+        catch (const uno::Exception &e)
+        {
             ErrorHandler::handleUnoException(e, "saveDocumentDirect");
+            return false;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             ErrorHandler::handleStdException(e, "saveDocumentDirect");
+            return false;
         }
-        catch (...) {
+        catch (...)
+        {
             ErrorHandler::handleUnknownException("saveDocumentDirect");
+            return false;
         }
     }
 
     /// @brief 保存文档到指定路径
-    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface,
-                     const rtl::OUString &filePath)
+    bool saveDocument(const std::string &docId, const rtl::OUString &filePath)
     {
-        try {
-            LibreOfficeService::saveDocument(docIface, filePath);
+        try
+        {
+            // 从DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("saveDocument: Document not found with id: %s", docId.c_str());
+                return false;
+            }
+
+            // 调用文档对象的saveAs方法
+            return doc->saveAs(convertOUStringToString(filePath));
         }
-        catch (const uno::Exception &e) {
+        catch (const uno::Exception &e)
+        {
             ErrorHandler::handleUnoException(e, "saveDocument");
+            return false;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             ErrorHandler::handleStdException(e, "saveDocument");
+            return false;
         }
-        catch (...) {
+        catch (...)
+        {
             ErrorHandler::handleUnknownException("saveDocument");
+            return false;
         }
     }
 
     /// @brief 关闭文档
-    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface)
+    bool closeDocument(const std::string &docId)
     {
-        try {
-            LibreOfficeService::closeDocument(docIface);
+        try
+        {
+            // 调用DocumentManager的closeDocument方法
+            return filemanager::DocumentManager::getInstance().closeDocument(docId);
         }
-        catch (const uno::Exception &e) {
+        catch (const uno::Exception &e)
+        {
             ErrorHandler::handleUnoException(e, "closeDocument");
+            return false;
         }
-        catch (const std::exception &e) {
+        catch (const std::exception &e)
+        {
             ErrorHandler::handleStdException(e, "closeDocument");
+            return false;
         }
-        catch (...) {
+        catch (...)
+        {
             ErrorHandler::handleUnknownException("closeDocument");
+            return false;
         }
     }
 
@@ -119,75 +258,106 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
     {
         try
         {
-            // 获取新文档
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc = LibreOfficeService::CreateNewSpreadsheetDocument();
-            if (!xDoc.is()) {
-                return nullptr;
+            // 检查文件是否已存在
+            std::filesystem::path filePathStr(convertOUStringToString(filePath));
+            if (std::filesystem::exists(filePathStr))
+            {
+                logger_log_error("createNewSpreadsheetFile: File already exists: %s",
+                                 convertOUStringToString(filePath).c_str());
+                return cJSON_CreateString("File already exists");
             }
 
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            if (!sheets.is())
+            // 使用DocumentManager创建新文档
+            std::string docId = filemanager::DocumentManager::getInstance().createDocument(
+                convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+
+            if (docId.empty())
             {
-                std::cerr << "createNewSpreadsheetFile: Cannot get sheets" << std::endl;
-                closeDocument(xDoc);
-                return nullptr;
+                logger_log_error("createNewSpreadsheetFile: Failed to create spreadsheet document");
+                return cJSON_CreateString("Failed to create document");
             }
 
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-            if (!nameAccess.is())
+            // 获取创建的文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                std::cerr << "createNewSpreadsheetFile: Cannot get name access" << std::endl;
-                closeDocument(xDoc);
-                return nullptr;
+                logger_log_error("createNewSpreadsheetFile: Cannot get created document");
+                return cJSON_CreateString("Failed to get document");
             }
 
-            uno::Reference<sheet::XSpreadsheet> sheet;
-            if (nameAccess->hasByName(sheetName))
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
             {
-                // 已存在则直接获取
-                uno::Any any = nameAccess->getByName(sheetName);
-                any >>= sheet;
-            }
-            else
-            {
-                // 不存在则插入
-                sheets->insertNewByName(sheetName, 0);
-                uno::Any any = nameAccess->getByName(sheetName);
-                any >>= sheet;
+                logger_log_error("createNewSpreadsheetFile: Document is not a spreadsheet");
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
+                return cJSON_CreateString("Document is not a spreadsheet");
             }
 
-            if (!sheet.is())
+            // 如果指定了工作表名称，检查并创建
+            if (sheetName.getLength() > 0)
             {
-                std::cerr << "createNewSpreadsheetFile: Cannot get sheet" << std::endl;
-                closeDocument(xDoc);
-                return nullptr;
+                std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+
+                // 获取工作表名称列表
+                auto sheetNames = spreadsheetDoc->getSheetNames();
+
+                // 检查工作表是否已存在
+                bool sheetExists = false;
+                for (const auto &name : sheetNames)
+                {
+                    if (name == sheetNameStr)
+                    {
+                        sheetExists = true;
+                        break;
+                    }
+                }
+
+                // 如果不存在，创建新工作表
+                if (!sheetExists)
+                {
+                    if (!spreadsheetDoc->createSheet(sheetNameStr))
+                    {
+                        logger_log_error("createNewSpreadsheetFile: Failed to create sheet: %s",
+                                         sheetNameStr.c_str());
+                        // 仍然返回成功，因为文档创建成功了
+                    }
+                }
             }
 
-            // 新建文档空的，第一次保存并关闭文档
-            saveDocument(xDoc, filePath);
-            // closeDocument(xDoc);
-            return cJSON_CreateString("success");
+            // 保存文档
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("createNewSpreadsheetFile: Failed to save document");
+                // 仍然返回成功，因为文档创建成功了
+            }
+
+            // 创建返回的JSON对象，包含文档ID
+            cJSON *result = cJSON_CreateObject();
+            cJSON_AddStringToObject(result, "result", "success");
+            cJSON_AddStringToObject(result, "docId", docId.c_str());
+            return result;
         }
         catch (const uno::Exception &e)
         {
-            std::cerr << "createNewSpreadsheetFile UNO error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
-            return nullptr;
+            logger_log_error("createNewSpreadsheetFile UNO error: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return cJSON_CreateString(rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
-            std::cerr << "createNewSpreadsheetFile std exception: " << e.what() << std::endl;
-            return nullptr;
+            logger_log_error("createNewSpreadsheetFile std exception: %s", e.what());
+            return cJSON_CreateString(e.what());
         }
         catch (...)
         {
-            std::cerr << "createNewSpreadsheetFile unknown exception occurred" << std::endl;
-            return nullptr;
+            logger_log_error("createNewSpreadsheetFile unknown exception occurred");
+            return cJSON_CreateString("Unknown error occurred");
         }
-        return cJSON_CreateString("success");
     }
 
     /// @brief 更新电子表格内容
-    cJSON *updateSpreadsheetContent(const rtl::OUString &filePath,
+    cJSON *updateSpreadsheetContent(const std::string &docId,
                                     const rtl::OUString &sheetName,
                                     const rtl::OUString &cellAddress,
                                     const rtl::OUString &newValue,
@@ -195,34 +365,28 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
     {
         try
         {
-            // 确保文件未被加载或已关闭
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath).c_str());
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
-                    return cJSON_CreateString("failed to load document");
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(convertOUStringToString(filePath), xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
-                logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
-                return cJSON_CreateString("Failed to load document");
+                logger_log_error("updateSpreadsheetContent: Document not found for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document not found");
             }
 
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("updateSpreadsheetContent: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document is not a spreadsheet");
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
             if (!sheet.is())
             {
-                std::cerr << "updateSpreadsheetContent: Cannot get sheet" << std::endl;
-                closeDocument(xDoc);
+                logger_log_error("updateSpreadsheetContent: Cannot get sheet: %s", sheetNameStr.c_str());
                 return cJSON_CreateString("Cannot get sheet");
             }
 
@@ -234,10 +398,10 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
             uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
             if (!cell.is())
             {
-                std::cerr << "updateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                closeDocument(xDoc);
+                logger_log_error("updateSpreadsheetContent: Cannot get cell at %d,%d", col, row);
                 return cJSON_CreateString("Cannot get cell");
             }
+
             // 直接默认设置为公式
             if (sheetName == "wordsSheet")
             {
@@ -246,36 +410,39 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
             }
             else
             {
-                std::string tmp = findStringInSpreadsheet(newValue, sheet);
+                std::string tmp = findStringInDocIdSpreadsheet(docId, sheetName,newValue);
                 logger_log_info("updateSpreadsheetContent: %s", tmp.c_str());
                 cell->setFormula(convertStringToOUString(tmp.c_str()));
             }
 
             // 保存文档
-            saveDocumentDirect(xDoc);
-            // closeDocument(xDoc);
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("updateSpreadsheetContent: Failed to save document");
+                // 仍然返回成功，因为单元格更新成功了
+            }
 
             return cJSON_CreateString("success");
         }
         catch (const uno::Exception &e)
         {
-            std::cerr << "updateSpreadsheetContent UNO exception: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_error("updateSpreadsheetContent UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return cJSON_CreateString(rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
-            std::cerr << "updateSpreadsheetContent std exception: " << e.what() << std::endl;
+            logger_log_error("updateSpreadsheetContent std exception: %s", e.what());
             return cJSON_CreateString(e.what());
         }
         catch (...)
         {
-            std::cerr << "updateSpreadsheetContent unknown exception occurred" << std::endl;
+            logger_log_error("updateSpreadsheetContent unknown exception occurred");
             return cJSON_CreateString("Unknown error occurred");
         }
-        return cJSON_CreateString("success");
     }
 
-    /// @brief 获取工作表
+    /// @brief 获取工作表 - 旧版本（保留兼容性）
     com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> getSheet(
         const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &document,
         const rtl::OUString &sheetName)
@@ -292,43 +459,86 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
         return sheet;
     }
 
+    /// @brief 获取工作表 - 新版本（使用DocumentManager）
+    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> getSheet(
+        const std::string &docId,
+        const rtl::OUString &sheetName)
+    {
+        try
+        {
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("getSheet: Document not found for docId: %s", docId.c_str());
+                return nullptr;
+            }
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("getSheet: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return nullptr;
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
+            {
+                logger_log_error("getSheet: Sheet not found: %s", sheetNameStr.c_str());
+            }
+
+            return sheet;
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("getSheet UNO error: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return nullptr;
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("getSheet std exception: %s", e.what());
+            return nullptr;
+        }
+        catch (...)
+        {
+            logger_log_error("getSheet unknown exception occurred");
+            return nullptr;
+        }
+    }
+
     // 批量更新函数
-    cJSON *batchUpdateSpreadsheetContent(const rtl::OUString &filePathStr,
+    cJSON *batchUpdateSpreadsheetContent(const std::string &docId,
                                          const rtl::OUString &sheetName,
                                          const cJSON *updatecells)
     {
         try
         {
-            // 获取绝对路径
-            rtl::OUString filePath;
-            getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
-                    return cJSON_CreateString("Failed to load document");
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
-                return cJSON_CreateString("Failed to load document");
+                logger_log_error("batchUpdateSpreadsheetContent: Document not found for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document not found");
             }
 
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("batchUpdateSpreadsheetContent: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document is not a spreadsheet");
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
             if (!sheet.is())
             {
-                std::cerr << "batchUpdateSpreadsheetContent: Cannot get sheet" << std::endl;
-                closeDocument(xDoc);
+                logger_log_error("batchUpdateSpreadsheetContent: Cannot get sheet: %s", sheetNameStr.c_str());
                 return cJSON_CreateString("Cannot get sheet");
             }
 
@@ -372,7 +582,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
                             if (!cell.is())
                             {
                                 std::cerr << "updateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                                closeDocument(xDoc);
+                                filemanager::DocumentManager::getInstance().closeDocument(docId);
                                 return cJSON_CreateString("Cannot get cell");
                             }
                             if (sheetName == wordsSheetName)
@@ -431,7 +641,7 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
                             if (!cell.is())
                             {
                                 std::cerr << "batchUpdateSpreadsheetContent: Cannot get cell at " << col << "," << row << std::endl;
-                                closeDocument(xDoc);
+                                filemanager::DocumentManager::getInstance().closeDocument(docId);
                                 return cJSON_CreateString("Cannot get cell");
                             }
 
@@ -465,8 +675,12 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
             }
 
             // 保存文档
-            saveDocumentDirect(xDoc);
-            // closeDocument(xDoc);
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("batchUpdateSpreadsheetContent: Failed to save document");
+                // 仍然返回成功，因为批量更新已经完成
+            }
+
             cJSON *jobj = cJSON_CreateObject();
             cJSON_AddStringToObject(jobj, "result", "success");
             return jobj;
@@ -489,47 +703,40 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
     }
 
     // 内部辅助函数
-    cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue)
+    std::string findValueInSheet(const std::string &docId, const rtl::OUString &sheetName, const rtl::OUString &searchValue)
     {
         // 实现查找值的函数
-        return nullptr;
+        return findStringInDocIdSpreadsheet(docId, sheetName, searchValue);
     }
 
-    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName)
+    cJSON *readSheetData(const std::string &docId, const rtl::OUString &sheetName)
     {
         // 减少日志输出以提高性能
-        // logger_log_info("filePath: %s", rtl::OUStringToOString(filePath, RTL_TEXTENCODING_UTF8).getStr());
-        // logger_log_info("sheetName: %s", rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
         try
         {
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
-                    return cJSON_CreateString("Failed to load document");
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
-                return cJSON_CreateString("Failed to load document");
+                logger_log_error("readSheetData: Document not found for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document not found");
             }
 
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("readSheetData: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document is not a spreadsheet");
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
             if (!sheet.is())
             {
-                std::cerr << "readSheetData: Cannot get sheet!" << std::endl;
-                closeDocument(xDoc);
-                return nullptr;
+                logger_log_error("readSheetData: Cannot get sheet: %s", sheetNameStr.c_str());
+                return cJSON_CreateString("Cannot get sheet");
             }
 
             // 创建返回的 cJSON 对象，用于存储单元格内容和位置的映射
@@ -637,65 +844,55 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
             // 清理辅助对象
             cJSON_Delete(addedContents);
 
-            closeDocument(xDoc);
+            // 不需要关闭文档，DocumentManager会管理文档生命周期
             return contentMap;
         }
         catch (const uno::Exception &e)
         {
-            std::cerr << "readSheetData UNO error: " << rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr() << std::endl;
+            logger_log_error("readSheetData UNO error: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return nullptr;
         }
         catch (const std::exception &e)
         {
-            std::cerr << "readSheetData std exception: " << e.what() << std::endl;
+            logger_log_error("readSheetData std exception: %s", e.what());
             return nullptr;
         }
         catch (...)
         {
-            std::cerr << "readSheetData unknown exception occurred" << std::endl;
+            logger_log_error("readSheetData unknown exception occurred");
             return nullptr;
         }
-        return cJSON_CreateString("success");
     }
 
     // 获取工作表总行数（持续读取行直到遇到第一个空白行）
-    int getTotalRecordCount(const rtl::OUString &filePathStr, const rtl::OUString &sheetName)
+    int getTotalRecordCount(const std::string &docId, const rtl::OUString &sheetName)
     {
         try
         {
-            // 获取绝对路径
-            rtl::OUString filePath;
-            getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
-                    return -1;
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
+                logger_log_error("getTotalRecordCount: Document not found for docId: %s", docId.c_str());
                 return -1;
             }
 
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-            if (!nameAccess->hasByName(sheetName))
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
             {
-                closeDocument(xDoc);
+                logger_log_error("getTotalRecordCount: Document is not a spreadsheet for docId: %s", docId.c_str());
                 return -1;
             }
-            uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
+            {
+                logger_log_error("getTotalRecordCount: Cannot get sheet: %s", sheetNameStr.c_str());
+                return -1;
+            }
 
             int maxCols = json_config_get_int("maxCols");
             int maxRows = json_config_get_int("maxRows");
@@ -724,53 +921,56 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
                 }
             }
 
-            closeDocument(xDoc);
+            // 不需要关闭文档，DocumentManager会管理文档生命周期
             return validRowCount;
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("getTotalRecordCount UNO error: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return -1;
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("getTotalRecordCount std exception: %s", e.what());
+            return -1;
         }
         catch (...)
         {
+            logger_log_error("getTotalRecordCount unknown exception occurred");
             return -1;
         }
     }
 
     // 分页读取工作表内容（简单实现：返回 startIndex 到 endIndex 行的内容）
-    cJSON *readSheetDataRange(const rtl::OUString &filePathStr, const rtl::OUString &sheetName, int startIndex, int endIndex)
+    cJSON *readSheetDataRange(const std::string &docId, const rtl::OUString &sheetName, int startIndex, int endIndex)
     {
         cJSON *result = cJSON_CreateArray();
         try
         {
-            // 获取绝对路径
-            rtl::OUString filePath;
-            getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
-                    return cJSON_CreateString("failed");
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
+                logger_log_error("readSheetDataRange: Document not found for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document not found");
             }
-            else
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
             {
-                xDoc = fileInfo.xDoc;
+                logger_log_error("readSheetDataRange: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return cJSON_CreateString("Document is not a spreadsheet");
             }
-            if (!xDoc.is())
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
             {
-                return cJSON_CreateString("failed");
+                logger_log_error("readSheetDataRange: Cannot get sheet: %s", sheetNameStr.c_str());
+                return cJSON_CreateString("Cannot get sheet");
             }
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-            if (!nameAccess->hasByName(sheetName))
-            {
-                closeDocument(xDoc);
-                return result;
-            }
-            uno::Reference<sheet::XSpreadsheet> sheet(nameAccess->getByName(sheetName), uno::UNO_QUERY);
             for (int row = startIndex; row < endIndex; ++row)
             {
                 cJSON *rowObj = cJSON_CreateObject();
@@ -819,11 +1019,18 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
                 }
                 cJSON_AddItemToArray(result, rowObj);
             }
-            // closeDocument(xDoc);
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("readSheetDataRange UNO error: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("readSheetDataRange std exception: %s", e.what());
         }
         catch (...)
         {
-            // 忽略异常，返回已收集内容
+            logger_log_error("readSheetDataRange unknown exception occurred");
         }
         return result;
     }
@@ -1042,62 +1249,93 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
     }
 
     // 批量写入 CharacterInfo 到指定文件和工作表
-    bool writeCharacterInfosToSheet(const rtl::OUString &filePathStr,
+    bool writeCharacterInfosToSheet(const std::string &docId,
                                     const rtl::OUString &sheetName,
                                     const std::vector<TextCharInfo> &infos)
     {
-        // 获取绝对路径
-        rtl::OUString filePath;
-        getAbsolutePath(filePathStr, filePath);
-        // 首先判断是否文件已经加载
-        FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePathStr));
-        uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-        if (!fileInfo.xDoc.is())
+        try
         {
-            xDoc = loadSpreadsheetDocument(filePath);
-            if (!xDoc.is())
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                logger_log_error("Failed to load document: %s", convertOUStringToString(filePathStr).c_str());
+                logger_log_error("writeCharacterInfosToSheet: Document not found for docId: %s", docId.c_str());
                 return false;
             }
-            filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
-        }
-        else
-        {
-            xDoc = fileInfo.xDoc;
-        }
-        if (!xDoc.is())
-        {
-            return false;
-        }
 
-        uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
-        if (!sheet.is())
-        {
-            logger_log_error("writeCharacterInfosToSheet: Failed to get sheet");
-            closeDocument(xDoc);
-            return false;
-        }
-        for (const auto &info : infos)
-        {
-            logger_log_info("writeCharacterInfosToSheet: Writing info: %s %s %s %s", info.character.c_str(), info.pos.c_str(), info.languageType.c_str(), info.bodyname.c_str());
-            try
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
             {
-                // pos 形如 "A1"，需解析为行列
-                std::string posStr = info.pos;
-                int col = 0, row = 0;
-                ExcelColumnToNumber(posStr, &col, &row);
-                uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                cell->setFormula(convertStringToOUString(info.character.c_str()));
+                logger_log_error("writeCharacterInfosToSheet: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return false;
             }
-            catch (...)
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
             {
-                logger_log_error("writeCharacterInfosToSheet: Failed to write %s to %s", info.character.c_str(), info.pos.c_str());
+                logger_log_error("writeCharacterInfosToSheet: Cannot get sheet: %s", sheetNameStr.c_str());
+                return false;
             }
+            for (const auto &info : infos)
+            {
+                logger_log_info("writeCharacterInfosToSheet: Writing info: %s %s %s %s", info.character.c_str(), info.pos.c_str(), info.languageType.c_str(), info.bodyname.c_str());
+                try
+                {
+                    // pos 形如 "A1"，需解析为行列
+                    std::string posStr = info.pos;
+                    int col = 0, row = 0;
+                    ExcelColumnToNumber(posStr, &col, &row);
+                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                    cell->setFormula(convertStringToOUString(info.character.c_str()));
+                }
+                catch (const uno::Exception &e)
+                {
+                    logger_log_error("writeCharacterInfosToSheet: UNO exception writing %s to %s: %s",
+                                     info.character.c_str(),
+                                     info.pos.c_str(),
+                                     rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                }
+                catch (const std::exception &e)
+                {
+                    logger_log_error("writeCharacterInfosToSheet: std exception writing %s to %s: %s",
+                                     info.character.c_str(),
+                                     info.pos.c_str(),
+                                     e.what());
+                }
+                catch (...)
+                {
+                    logger_log_error("writeCharacterInfosToSheet: unknown exception writing %s to %s",
+                                     info.character.c_str(),
+                                     info.pos.c_str());
+                }
+            }
+
+            // 使用DocumentManager保存文档
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("writeCharacterInfosToSheet: Failed to save document for docId: %s", docId.c_str());
+                return false;
+            }
+
+            return true;
         }
-        saveDocumentDirect(xDoc);
-        // closeDocument(xDoc);
-        return true;
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("writeCharacterInfosToSheet: UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("writeCharacterInfosToSheet: std exception: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("writeCharacterInfosToSheet: unknown exception occurred");
+        }
+        return false;
     }
 
     // 使用 CharacterIndex::queryAll 查询字符所有位置（特定一般一个），返回 pos 列表，没有的新添加（后保存到模板文件）
@@ -1230,8 +1468,8 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
 
             // 获取 XSimpleFileAccess
             uno::Reference<ucb::XSimpleFileAccess> fileAccess(xServiceManager->createInstanceWithContext(
-                                                                      "com.sun.star.ucb.SimpleFileAccess", xContext),
-                                                                  uno::UNO_QUERY);
+                                                                  "com.sun.star.ucb.SimpleFileAccess", xContext),
+                                                              uno::UNO_QUERY);
             if (!fileAccess.is())
             {
                 logger_log_error("Failed to get SimpleFileAccess service for file deletion");
@@ -1254,23 +1492,23 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s", 
-                            convertOUStringToString(filePath).c_str(), 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO Exception occurred while deleting file: %s, Error: %s",
+                             convertOUStringToString(filePath).c_str(),
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             // 抛出异常，让上层函数能够捕获并处理
             throw;
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Standard exception occurred while deleting file: %s, Error: %s", 
-                            convertOUStringToString(filePath).c_str(), 
-                            std::string(e.what()).c_str());
+            logger_log_error("Standard exception occurred while deleting file: %s, Error: %s",
+                             convertOUStringToString(filePath).c_str(),
+                             std::string(e.what()).c_str());
             throw;
         }
         catch (...)
         {
-            logger_log_error("Unknown exception occurred while deleting file: %s", 
-                            convertOUStringToString(filePath).c_str());
+            logger_log_error("Unknown exception occurred while deleting file: %s",
+                             convertOUStringToString(filePath).c_str());
             throw;
         }
         return false;
@@ -1290,23 +1528,176 @@ loadSpreadsheetDocument(const rtl::OUString &filePath)
         }
         catch (const uno::Exception &e)
         {
-            logger_log_error("UNO Exception occurred while safely deleting file: %s, Error: %s", 
-                            convertOUStringToString(filePath).c_str(), 
-                            rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            logger_log_error("UNO Exception occurred while safely deleting file: %s, Error: %s",
+                             convertOUStringToString(filePath).c_str(),
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
         catch (const std::exception &e)
         {
-            logger_log_error("Standard exception occurred while safely deleting file: %s, Error: %s", 
-                            convertOUStringToString(filePath).c_str(), 
-                            std::string(e.what()).c_str());
+            logger_log_error("Standard exception occurred while safely deleting file: %s, Error: %s",
+                             convertOUStringToString(filePath).c_str(),
+                             std::string(e.what()).c_str());
         }
         catch (...)
         {
-            logger_log_error("Unknown exception occurred while safely deleting file: %s", 
-                            convertOUStringToString(filePath).c_str());
+            logger_log_error("Unknown exception occurred while safely deleting file: %s",
+                             convertOUStringToString(filePath).c_str());
         }
-        
+
         // 如果发生异常，返回删除失败
         return false;
+    }
+
+    // 清空指定文档和工作表的内容
+    void clearSheet(const std::string &docId, const rtl::OUString &sheetName)
+    {
+        try
+        {
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("clearSheet: Document not found for docId: %s", docId.c_str());
+                return;
+            }
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("clearSheet: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return;
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
+            {
+                logger_log_error("clearSheet: Cannot get sheet: %s", sheetNameStr.c_str());
+                return;
+            }
+
+            // 调用内部函数清空工作表
+            clearSheet(sheet);
+
+            // 使用DocumentManager保存文档
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("clearSheet: Failed to save document for docId: %s", docId.c_str());
+            }
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("clearSheet: UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("clearSheet: std exception: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("clearSheet: unknown exception occurred");
+        }
+    }
+
+    // 在指定文档和工作表中查找字符串
+    std::string findStringInDocIdSpreadsheet(const std::string &docId, const rtl::OUString &sheetName, const rtl::OUString &targetString)
+    {
+        try
+        {
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("findStringInDocIdSpreadsheet: Document not found for docId: %s", docId.c_str());
+                return "";
+            }
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("findStringInDocIdSpreadsheet: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return "";
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
+            {
+                logger_log_error("findStringInDocIdSpreadsheet: Cannot get sheet: %s", sheetNameStr.c_str());
+                return "";
+            }
+
+            // 调用内部函数查找字符串
+            return findStringInSpreadsheet(targetString, sheet);
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("findStringInDocIdSpreadsheet: UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("findStringInDocIdSpreadsheet: std exception: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("findStringInDocIdSpreadsheet: unknown exception occurred");
+        }
+        return "";
+    }
+
+    // 读取工作表并按语言分组
+    std::vector<LanguageGroup> readSheetAndGroupByLanguage(const std::string &docId, const rtl::OUString &sheetName)
+    {
+        std::vector<LanguageGroup> result;
+        try
+        {
+            // 通过DocumentManager获取文档
+            auto doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
+            {
+                logger_log_error("readSheetAndGroupByLanguage: Document not found for docId: %s", docId.c_str());
+                return result;
+            }
+
+            // 转换为SpreadsheetDocument
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("readSheetAndGroupByLanguage: Document is not a spreadsheet for docId: %s", docId.c_str());
+                return result;
+            }
+
+            // 获取工作表
+            std::string sheetNameStr = rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr();
+            auto sheet = spreadsheetDoc->getSheet(sheetNameStr);
+            if (!sheet.is())
+            {
+                logger_log_error("readSheetAndGroupByLanguage: Cannot get sheet: %s", sheetNameStr.c_str());
+                return result;
+            }
+
+            // 调用内部函数读取工作表并按语言分组
+            result = readSheetAndGroupByLanguage(sheet);
+        }
+        catch (const uno::Exception &e)
+        {
+            logger_log_error("readSheetAndGroupByLanguage: UNO exception: %s",
+                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("readSheetAndGroupByLanguage: std exception: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("readSheetAndGroupByLanguage: unknown exception occurred");
+        }
+        return result;
     }
 }

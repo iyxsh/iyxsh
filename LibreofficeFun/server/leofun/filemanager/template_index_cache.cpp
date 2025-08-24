@@ -108,7 +108,23 @@ namespace filemanager
                 logger_log_error("Failed to create new spreadsheet file: %s", filename);
                 return -1;
             }
-            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
+            // 使用DocumentManager打开文档获取docId
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(absoluteFilePath));
+            if (docId.empty())
+            {
+                logger_log_error("Failed to open document: %s", convertOUStringToString(absoluteFilePath).c_str());
+                return -1;
+            }
+            
+            if (!writeCharacterInfosToSheet(docId, sheetName, infos))
+            {
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
+                logger_log_error("Failed to write character infos to sheet");
+                return -1;
+            }
+            
+            // 关闭文档
+            filemanager::DocumentManager::getInstance().closeDocument(docId);
             {
                 logger_log_error("Failed to write character infos to sheet");
                 return -1;
@@ -153,7 +169,23 @@ namespace filemanager
                 logger_log_error("Failed to create new spreadsheet file: %s", filename);
                 return -1;
             }
-            if (!writeCharacterInfosToSheet(absoluteFilePath, sheetName, infos))
+            // 使用DocumentManager打开文档获取docId
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(absoluteFilePath));
+            if (docId.empty())
+            {
+                logger_log_error("Failed to open document: %s", convertOUStringToString(absoluteFilePath).c_str());
+                return -1;
+            }
+            
+            if (!writeCharacterInfosToSheet(docId, sheetName, infos))
+            {
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
+                logger_log_error("Failed to write character infos to sheet");
+                return -1;
+            }
+            
+            // 关闭文档
+            filemanager::DocumentManager::getInstance().closeDocument(docId);
             {
                 logger_log_error("Failed to write character infos to sheet");
                 return -1;
@@ -271,33 +303,19 @@ namespace filemanager
         {
             logger_log_info("Reloading template index for %s %s .....................", convertOUStringToString(filePath).c_str(), convertOUStringToString(sheetName).c_str());
             // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(convertOUStringToString(filePath));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 使用DocumentManager打开文档获取docId
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath));
+            if (docId.empty())
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
-                    return;
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(extractFilenameWithoutODSExtension(convertOUStringToString(filePath)), xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
-                closeDocument(xDoc);
+                logger_log_error("Failed to load document: %s", convertOUStringToString(filePath).c_str());
                 loading.store(false);
                 return;
             }
 
-            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(xDoc, sheetName);
+            uno::Reference<sheet::XSpreadsheet> sheet = getSheet(docId, sheetName);
             if (!sheet.is())
             {
-                closeDocument(xDoc);
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
                 loading.store(false);
                 return;
             }
@@ -311,7 +329,8 @@ namespace filemanager
                     removeOldestCacheEntry();
                 indexCache[cacheKey] = std::make_unique<TemplateIndexEntry>(indexPtr, now);
             }
-            closeDocument(xDoc);
+            // 关闭文档
+            filemanager::DocumentManager::getInstance().closeDocument(docId);
         }
         catch (const std::exception &e)
         {

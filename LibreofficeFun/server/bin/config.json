@@ -12,6 +12,8 @@
     "maxRows": 20000,
     "log_max_size": 10,
     "log_max_backups": 30,
+    "maxOpenDocuments": 10,
+    "log_level": 0,
     "gridcircle": [
         {
             "id": 1,

@@ -236,8 +236,9 @@ namespace filemanager
     {
         // newfileCreate不需要请求体，所以即使body为空也继续处理
         // 但如果有body且不为空，需要验证其为有效JSON（如果需要解析）
+        // 因为UNO单例模式，删除重新建同名文件会出问题，所以设计一下流程
         logger_log_info("newfileCreate called with body: %s ", body);
-        std::string fileName;
+        std::string inputfileName(""); // 默认为空
         if (body && strlen(body) > 0)
         {
             cJSON *jsonRoot = cJSON_Parse(body);
@@ -249,7 +250,7 @@ namespace filemanager
             cJSON *filenameItem = cJSON_GetObjectItem(jsonRoot, "filename");
             if (filenameItem && cJSON_IsString(filenameItem))
             {
-                fileName = std::string(filenameItem->valuestring);
+                inputfileName = std::string(filenameItem->valuestring);
             }
             else
             {
@@ -257,20 +258,17 @@ namespace filemanager
                 return;
             }
         }
-        else
-        {
-            // 生成唯一文件名
-            time_t now = time(0);
-            tm *ltm = localtime(&now);
+        // 生成唯一文件名
+        time_t now = time(0);
+        tm *ltm = localtime(&now);
 
-            char filename[100];
-            sprintf(filename, "spreadsheet_%04d%02d%02d_%02d%02d%02d",
-                    1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
-                    ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-            logger_log_info("filename: %s", filename);
+        char filename[100];
+        sprintf(filename, "spreadsheet_%04d%02d%02d_%02d%02d%02d",
+                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
+                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+        logger_log_info("filename: %s", filename);
 
-            fileName = std::string(filename);
-        }
+        std::string fileName = std::string(filename);
         // 实现创建文件的函数
         logger_log_info("Creating file: %s", fileName.c_str());
         try
@@ -286,7 +284,7 @@ namespace filemanager
             // 首先判断是否文件已经加载
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(fileName);
             uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (fileInfo.xDoc == nullptr && !fileInfo.xDoc.is())
+            if (fileInfo.xDoc == nullptr && !fileInfo.xDoc.is() && fileInfo.status == FileStatus::FILE_STATUS_NOT_FOUND)
             {
                 cJSON *newCreate = createNewSpreadsheetFile(filePath, sheetName); // 创建新的电子表格文件
                 if (newCreate == nullptr)
@@ -322,12 +320,26 @@ namespace filemanager
         filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
         filemanager::FileQueueManager::getInstance().addFileTask(task);
 
+        //如果有上送的文件名采用重命名逻辑实现
+        if (!inputfileName.empty())
+        {
+            // 创建文件任务
+            filemanager::FileTask task;
+            task.type = filemanager::TASK_RENAME_FILE;
+            task.filename = fileName;
+            task.createTime = std::time(nullptr);
+            cJSON *taskData = cJSON_CreateObject();
+            cJSON_AddStringToObject(taskData, "oldFilename", fileName.c_str());
+            cJSON_AddStringToObject(taskData, "newFilename", inputfileName.c_str());
+            task.taskData = taskData;
+            filemanager::FileQueueManager::getInstance().addFileTask(task);
+        }
         // 构造返回结果
-        cJSON_AddStringToObject(results, "filename", fileName.c_str());
+        cJSON_AddStringToObject(results, "filename", task.filename.c_str());
         cJSON_AddStringToObject(results, "filestatus", "created");
         ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
     }
-    //切换模板备份文件
+    // 切换模板备份文件
     void newfile(cJSON *results, const char *body)
     {
         // newfile不需要请求体，所以即使body为空也继续处理
@@ -649,21 +661,36 @@ namespace filemanager
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
             // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 使用DocumentManager打开文档
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath));
+            if (docId.empty())
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
-                    return;
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
+                logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                return;
             }
-            else
+
+            // 获取文档对象
+            auto docObj = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!docObj)
             {
-                xDoc = fileInfo.xDoc;
+                logger_log_error("Failed to get document object: %s", filenameItem->valuestring);
+                return;
+            }
+
+            // 转换为SpreadsheetDocument类型
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(docObj);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("Document is not a spreadsheet: %s", filenameItem->valuestring);
+                return;
+            }
+
+            // 获取XSpreadsheetDocument接口
+            uno::Reference<sheet::XSpreadsheetDocument> xDoc = spreadsheetDoc->getSpreadsheetDocument();
+            if (!xDoc.is())
+            {
+                logger_log_error("Failed to get spreadsheet document interface: %s", filenameItem->valuestring);
+                return;
             }
 
             if (!xDoc.is())

@@ -24,7 +24,8 @@ namespace filemanager
         FILE_STATUS_PROCESSING, // 文件正在处理中
         FILE_STATUS_READY,      // 文件就绪
         FILE_STATUS_ERROR,      // 文件处理出错
-        FILE_STATUS_CLOSED      // 文件已关闭
+        FILE_STATUS_CLOSED,     // 文件已关闭
+        FILE_STATUS_NOT_FOUND   // 文件未找到
     };
 
     // 文件任务类型枚举

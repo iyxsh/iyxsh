@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 project(libreofficefun VERSION 0.1)
 
 # 设置C++标准
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 设置默认构建类型（单配置生成器）
@@ -48,6 +48,7 @@ set(SOURCES
     ./leofun/filemanager/LibreOfficeService.cpp
     ./leofun/filemanager/spreadsheet.cpp
     ./leofun/filemanager/lofficeconn.cpp
+    ./leofun/filemanager/DocumentManager.cpp
     ./leofun/filemanager/filehandlers.cpp
     ./leofun/filemanager/filequeue.cpp
     ./leofun/filemanager/apiops.cpp
@@ -68,6 +69,7 @@ set(HEADERS
     ./leofun/filemanager/LibreOfficeService.h
     ./leofun/filemanager/spreadsheet.h
     ./leofun/filemanager/lofficeconn.h
+    ./leofun/filemanager/DocumentManager.h
     ./leofun/filemanager/filehandlers.h
     ./leofun/filemanager/filequeue.h
     ./leofun/filemanager/apiops.h

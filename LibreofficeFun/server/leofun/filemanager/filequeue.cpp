@@ -135,7 +135,7 @@ namespace filemanager
 
         FileInfo info;
         info.filename = filename;
-        info.status = FILE_STATUS_CLOSED;
+        info.status = FILE_STATUS_NOT_FOUND;
         info.lastModified = 0;
         info.xDoc = nullptr;
         info.refCount = 0;
@@ -514,25 +514,9 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().eraseFileStatus(task.filename);
 
             // 确保文件未被加载或已关闭
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
-            {
-                xDoc = loadSpreadsheetDocument(absoluteFilePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("Failed to load document: %s", task.filename.c_str());
-                    return;
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            if (xDoc.is())
-            {
-                closeDocument(xDoc);
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(absoluteFilePath), filemanager::DocumentType::SPREADSHEET);
+            if (!docId.empty()) {
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
             }
 
             // 使用LibreOffice UNO API安全删除文件，确保连接状态与文件系统一致
@@ -929,41 +913,17 @@ namespace filemanager
                 return;
             }
 
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(task.filename);
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
-            {
-                xDoc = loadSpreadsheetDocument(oldAbsoluteFilePath);
-                if (!xDoc.is())
-                {
-                    logger_log_error("processDeleteFileTask -- Failed to load document: %s", task.filename.c_str());
-                    return;
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
+            // 首先关闭源文件，如果已加载
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(oldAbsoluteFilePath), filemanager::DocumentType::SPREADSHEET);
+            if (!docId.empty()) {
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
             }
-            else
-            {
-                xDoc = fileInfo.xDoc;
-            }
-            closeDocument(xDoc);
 
-            // 首先判断是否文件已经加载
-            FileInfo fileInfoNew = filemanager::FileQueueManager::getInstance().getFileInfo(newFilename);
-            uno::Reference<sheet::XSpreadsheetDocument> xDocNew;
-            if (!fileInfoNew.xDoc.is())
-            {
-                xDocNew = loadSpreadsheetDocument(newAbsoluteFilePath);
-                if (!fileInfoNew.xDoc.is())
-                {
-                    // 相反的流程，此处新文件名不存在才对
-                }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(task.filename, xDoc, std::string());
-            }
-            else
-            {
-                xDoc = fileInfo.xDoc;
+            // 检查目标文件是否存在
+            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(newFilename);
+            if (fileInfo.filename == newFilename && fileInfo.status != FILE_STATUS_NOT_FOUND) {
                 logger_log_error("file %s exists:", newFilename.c_str());
+                filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Target file already exists");
                 return; // 如果新文件名存在直接返回报错
             }
 
@@ -1052,17 +1012,7 @@ namespace filemanager
         FileInfo info = getFileInfo(filename);
         if (info.filename == filename)
         {
-            if (info.xDoc.is())
-            {
-                try
-                {
-                    closeDocument(info.xDoc);
-                }
-                catch (...)
-                {
-                    logger_log_error("Exception when closing xDoc for file: %s", filename.c_str());
-                }
-            }
+            // 不再需要手动关闭xDoc，DocumentManager会处理资源释放
             eraseFileStatus(filename);
             logger_log_info("Removed file info for: %s", filename.c_str());
         }

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <iostream>
+#include <filesystem>
 #include <rtl/ustring.hxx>
 
 namespace filemanager

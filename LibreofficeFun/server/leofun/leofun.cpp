@@ -657,6 +657,26 @@ int main()
         port = 8443; // 默认端口
     }
 
+    //设置日志级别
+    switch(json_config_get_int("log_level"))
+    {
+        case 0:
+            logger_set_level(LogLevel::LOG_LEVEL_DEBUG);
+            break;
+        case 1:
+            logger_set_level(LogLevel::LOG_LEVEL_INFO);
+            break;
+        case 2:
+            logger_set_level(LogLevel::LOG_LEVEL_WARN);
+            break;
+        case 3:
+            logger_set_level(LogLevel::LOG_LEVEL_ERROR);
+            break;
+        default:
+            logger_set_level(LogLevel::LOG_LEVEL_INFO);
+            break;
+    }
+
     // 创建SSL上下文
     global_ctx = create_ssl_context();
 

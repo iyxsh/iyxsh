@@ -29,17 +29,38 @@ namespace filemanager
         rtl::OUString defaultFileName;
         rtl::OUString sheetName;
         getDefaultData(filePath, defaultFileName, sheetName);
+
+        // 获取文档ID
+        std::string docId = filemanager::DocumentManager::getInstance().getDocumentIdByPath(
+            convertOUStringToString(absfilePath));
+        if (docId.empty())
+        {
+            logger_log_error("Failed to create document: %s", convertOUStringToString(absfilePath).c_str());
+            return -1;
+        }
+
         // 从缓存索引获取数据
         std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
         if (!idxPtr)
         {
             logger_log_error("Failed to get character infos from cache: idxPtr is null");
+            filemanager::DocumentManager::getInstance().closeDocument(docId);
             return -1;
         }
         std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
-        if (!writeCharacterInfosToSheet(absfilePath, sheetName, infos))
+
+        // 写入数据到工作表
+        if (!writeCharacterInfosToSheet(docId, sheetName, infos))
         {
             logger_log_error("Failed to write character infos to sheet");
+            filemanager::DocumentManager::getInstance().closeDocument(docId);
+            return -1;
+        }
+
+        // 保存并关闭文档
+        if (!filemanager::DocumentManager::getInstance().closeDocument(docId))
+        {
+            logger_log_error("Failed to close document: %s", convertOUStringToString(absfilePath).c_str());
             return -1;
         }
         return 0;
@@ -65,8 +86,12 @@ namespace filemanager
 
         try
         {
-            // 关闭文档
-            closeDocument(fileInfo.xDoc);
+            // 从DocumentManager获取文档ID并关闭文档
+            std::string docId = filemanager::DocumentManager::getInstance().getDocumentIdByPath(filename);
+            if (!docId.empty())
+            {
+                filemanager::DocumentManager::getInstance().closeDocument(docId);
+            }
 
             // 删除文件信息和状态信息
             FileQueueManager::getInstance().removeFileInfo(filename);
@@ -146,11 +171,19 @@ namespace filemanager
                         }
                         // 使用UTF-8编码处理文件名和sheet名
                         rtl::OUString filePath = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-                        rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
                         rtl::OUString absoluteFilePath;
                         getAbsolutePath(filePath, absoluteFilePath);
+                        rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
+                        // 获取文档ID
+                        std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(absoluteFilePath), filemanager::DocumentType::SPREADSHEET);
+                        if (docId.empty())
+                        {
+                            logger_log_error("Failed to open document for update: %s", convertOUStringToString(absoluteFilePath).c_str());
+                            hasError = true;
+                            continue;
+                        }
                         // 执行批量更新多个单元格内容
-                        cJSON *result = batchUpdateSpreadsheetContent(absoluteFilePath, sheetName, updatecellsItem);
+                        cJSON *result = batchUpdateSpreadsheetContent(docId, sheetName, updatecellsItem);
                         if (!result)
                         {
                             logger_log_error("Error: Batch update failed for file: %s", filenameItem->valuestring);
@@ -229,7 +262,14 @@ namespace filemanager
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            cJSON *result = readSheetData(filePath, sheetName);
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+            if (docId.empty())
+            {
+                logger_log_error("Failed to open document for reading: %s", convertOUStringToString(filePath).c_str());
+                return -1;
+            }
+            cJSON *result = readSheetData(docId, sheetName);
             if (result)
             {
                 cJSON_Delete(result);
@@ -300,10 +340,18 @@ namespace filemanager
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
             rtl::OUString searchValue = convertStringToOUString(searchValueItem->valuestring);
 
-            cJSON *foundItems = findValueInSheet(filePath, sheetName, searchValue);
-            if (foundItems)
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+            if (docId.empty())
             {
-                cJSON_AddItemToObject(results, "results", foundItems);
+                logger_log_error("Failed to open document for searching: %s", convertOUStringToString(filePath).c_str());
+                cJSON_AddStringToObject(results, "error", "Failed to open document");
+                return;
+            }
+            std::string res = findValueInSheet(docId, sheetName, searchValue);
+            if (!res.empty())
+            {
+                cJSON_AddStringToObject(results, "results", res.c_str());
             }
             else
             {
@@ -366,7 +414,15 @@ namespace filemanager
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            cJSON *contentMap = readSheetData(filePath, sheetName);
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+            if (docId.empty())
+            {
+                logger_log_error("Failed to open document for reading: %s", convertOUStringToString(filePath).c_str());
+                cJSON_AddStringToObject(results, "error", "Failed to open document");
+                return;
+            }
+            cJSON *contentMap = readSheetData(docId, sheetName);
             if (contentMap)
             {
                 cJSON_AddItemToObject(results, "contents", contentMap);
@@ -414,60 +470,65 @@ namespace filemanager
             logger_log_error("Missing filename or sheetname in add worksheet data");
             return -1;
         }
-
+        rtl::OUString filePath, sheetName;
+        getAbsolutePath(convertStringToOUString(filenameItem->valuestring), filePath);
         try
         {
-            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            // 获取绝对路径
-            rtl::OUString filePath;
-            getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().getDocumentIdByPath(convertOUStringToString(filePath));
+            if (docId.empty())
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
+                // 如果文档尚未打开，使用DocumentManager打开它
+                docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+                if (docId.empty())
                 {
-                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    logger_log_error("Failed to open document: %s", filenameItem->valuestring);
                     return -1;
                 }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
-            else
+
+            // 从DocumentManager获取文档对象
+            std::shared_ptr<filemanager::Document> doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
+                logger_log_error("Failed to get document object: %s", filenameItem->valuestring);
                 return -1;
             }
 
-            // 获取工作表集合
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            // 转换为SpreadsheetDocument
+            std::shared_ptr<filemanager::SpreadsheetDocument> spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("Document is not a spreadsheet: %s", filenameItem->valuestring);
+                return -1;
+            }
 
-            // 检查工作表是否已存在
+            // 检查工作表是否存在
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-            if (nameAccess->hasByName(sheetName))
+            css::uno::Reference<css::sheet::XSpreadsheet> sheet = spreadsheetDoc->getSheet(convertOUStringToString(sheetName));
+            if (sheet.is())
             {
                 logger_log_info("Worksheet %s already exists in file: %s",
                                 sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xDoc);
                 return 0; // 工作表已存在，返回成功
             }
 
             // 添加新工作表
-            sheets->insertNewByName(sheetName, 0);
+            if (!spreadsheetDoc->createSheet(convertOUStringToString(sheetName)))
+            {
+                logger_log_error("Failed to create sheet: %s", sheetnameItem->valuestring);
+                return -1;
+            }
 
             // 保存文档
-            saveDocumentDirect(xDoc);
-
-            // 关闭文档
-            // closeDocument(xDoc);
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("Failed to save document after adding sheet: %s", filenameItem->valuestring);
+                return -1;
+            }
 
             logger_log_info("Successfully added worksheet %s to file: %s",
-                            std::string(sheetnameItem->valuestring).c_str(), ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
+                            sheetnameItem->valuestring, filenameItem->valuestring);
             return 0;
         }
         catch (const uno::Exception &e)
@@ -513,53 +574,58 @@ namespace filemanager
             // 获取绝对路径
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().getDocumentIdByPath(convertOUStringToString(filePath));
+            if (docId.empty())
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
+                // 如果文档尚未打开，使用DocumentManager打开它
+                docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+                if (docId.empty())
                 {
-                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    logger_log_error("Failed to open document: %s", filenameItem->valuestring);
                     return -1;
                 }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
-            else
+
+            // 从DocumentManager获取文档对象
+            std::shared_ptr<filemanager::Document> doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
+                logger_log_error("Failed to get document object: %s", filenameItem->valuestring);
                 return -1;
             }
 
-            // 获取工作表集合
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+            // 转换为SpreadsheetDocument
+            std::shared_ptr<filemanager::SpreadsheetDocument> spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("Document is not a spreadsheet: %s", filenameItem->valuestring);
+                return -1;
+            }
 
             // 检查工作表是否存在
             rtl::OUString sheetName = convertStringToOUString(sheetnameItem->valuestring);
-            if (!nameAccess->hasByName(sheetName))
+            css::uno::Reference<css::sheet::XSpreadsheet> sheet = spreadsheetDoc->getSheet(convertOUStringToString(sheetName));
+            if (!sheet.is())
             {
                 logger_log_info("Worksheet %s does not exist in file: %s",
                                 sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xDoc);
                 return 0; // 工作表不存在,只给报错信息，不返回错误
             }
 
             // 删除工作表
-            sheets->removeByName(sheetName);
+            if (!spreadsheetDoc->deleteSheet(convertOUStringToString(sheetName)))
+            {
+                logger_log_error("Failed to delete sheet: %s", sheetnameItem->valuestring);
+                return -1;
+            }
 
             // 保存文档
-            rtl::OUString filenameOstr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            rtl::OUString absoluteFilePath;
-            getAbsolutePath(filenameOstr, absoluteFilePath);
-            saveDocumentDirect(xDoc);
-
-            // 关闭文档
-            // closeDocument(xDoc);
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("Failed to save document after removing sheet: %s", filenameItem->valuestring);
+                return -1;
+            }
 
             logger_log_info("Successfully removed worksheet %s from file: %s",
                             sheetnameItem->valuestring, ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
@@ -601,41 +667,52 @@ namespace filemanager
             logger_log_error("Missing required parameters for renaming worksheet");
             return -1;
         }
-
+        rtl::OUString filePath, sheetName, newSheetName;
+        getAbsolutePath(convertStringToOUString(filenameItem->valuestring), filePath);
         try
         {
-            rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(std::string(filenameItem->valuestring)).c_str());
-            // 获取绝对路径
-            rtl::OUString filePath;
-            getAbsolutePath(filePathStr, filePath);
-            // 首先判断是否文件已经加载
-            FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(std::string(filenameItem->valuestring));
-            uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-            if (!fileInfo.xDoc.is())
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().getDocumentIdByPath(convertOUStringToString(filePath));
+            if (docId.empty())
             {
-                xDoc = loadSpreadsheetDocument(filePath);
-                if (!xDoc.is())
+                // 如果文档尚未打开，使用DocumentManager打开它
+                docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+                if (docId.empty())
                 {
-                    logger_log_error("Failed to load document: %s", filenameItem->valuestring);
+                    logger_log_error("Failed to open document: %s", filenameItem->valuestring);
                     return -1;
                 }
-                filemanager::FileQueueManager::getInstance().updateFilexDoc(std::string(filenameItem->valuestring), xDoc, std::string());
             }
-            else
+
+            // 从DocumentManager获取文档对象
+            std::shared_ptr<filemanager::Document> doc = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!doc)
             {
-                xDoc = fileInfo.xDoc;
-            }
-            if (!xDoc.is())
-            {
+                logger_log_error("Failed to get document object: %s", filenameItem->valuestring);
                 return -1;
             }
 
-            uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
-            uno::Reference<container::XNameContainer> nameContainer(sheets, uno::UNO_QUERY);
+            // 转换为SpreadsheetDocument
+            std::shared_ptr<filemanager::SpreadsheetDocument> spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(doc);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("Document is not a spreadsheet: %s", filenameItem->valuestring);
+                return -1;
+            }
+
+            // 获取工作表容器
+            css::uno::Reference<css::sheet::XSpreadsheetDocument> xDoc = spreadsheetDoc->getSpreadsheetDocument();
+            if (!xDoc.is())
+            {
+                logger_log_error("Failed to get spreadsheet document");
+                return -1;
+            }
+
+            css::uno::Reference<css::sheet::XSpreadsheets> sheets = xDoc->getSheets();
+            css::uno::Reference<css::container::XNameContainer> nameContainer(sheets, css::uno::UNO_QUERY);
             if (!nameContainer.is())
             {
                 logger_log_error("Failed to obtain XNameContainer for sheets");
-                closeDocument(xDoc);
                 return -1;
             }
 
@@ -646,16 +723,16 @@ namespace filemanager
             {
                 logger_log_error("Worksheet %s does not exist in file: %s",
                                  sheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xDoc);
                 return -1;
             }
             if (nameContainer->hasByName(newSheetName))
             {
                 logger_log_error("New worksheet name %s already exists in file: %s",
                                  newsheetnameItem->valuestring, filenameItem->valuestring);
-                closeDocument(xDoc);
                 return -1;
             }
+
+            // 工作表集合已经在前面获取了
 
             // 复制原工作表到新名称
             uno::Sequence<rtl::OUString> names = sheets->getElementNames();
@@ -667,8 +744,12 @@ namespace filemanager
                             sheetnameItem->valuestring, newsheetnameItem->valuestring, filenameItem->valuestring);
 
             // 保存文档
-            saveDocumentDirect(xDoc);
-            // closeDocument(xDoc);
+            if (!spreadsheetDoc->save())
+            {
+                logger_log_error("Failed to save document after renaming sheet: %s", filenameItem->valuestring);
+                return -1;
+            }
+
             return 0;
         }
         catch (const uno::Exception &e)
@@ -720,8 +801,16 @@ namespace filemanager
             rtl::OUString filePath;
             getAbsolutePath(filePathStr, filePath);
 
+            // 获取文档ID
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+            if (docId.empty())
+            {
+                logger_log_error("Failed to open document: %s", convertOUStringToString(filePath).c_str());
+                return -1;
+            }
+
             // 获取工作表总记录数
-            int totalRecords = getTotalRecordCount(filePath, sheetName);
+            int totalRecords = getTotalRecordCount(docId, sheetName);
             if (totalRecords < 0)
             {
                 logger_log_error("Failed to get total record count for file: %s, sheet: %s",
@@ -734,7 +823,7 @@ namespace filemanager
             int endIndex = std::min(startIndex + pageSize, totalRecords);
 
             // 读取指定范围的数据
-            cJSON *sheetContent = readSheetDataRange(filePath, sheetName, startIndex, endIndex);
+            cJSON *sheetContent = readSheetDataRange(docId, sheetName, startIndex, endIndex);
             if (!sheetContent)
             {
                 logger_log_error("Failed to read spreadsheet contents for file: %s, sheet: %s",
@@ -778,25 +867,11 @@ namespace filemanager
         // 获取绝对路径
         rtl::OUString filePath;
         getAbsolutePath(filePathStr, filePath);
-        // 首先判断是否文件已经加载
-        FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(filename);
-        uno::Reference<sheet::XSpreadsheetDocument> xDoc;
-        if (!fileInfo.xDoc.is())
+        // 首先通过DocumentManager加载文档
+        std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+        if (docId.empty())
         {
-            xDoc = loadSpreadsheetDocument(filePath);
-            if (!xDoc.is())
-            {
-                logger_log_error("Failed to load document: %s", filename.c_str());
-                return -1;
-            }
-            filemanager::FileQueueManager::getInstance().updateFilexDoc(filename, xDoc, std::string());
-        }
-        else
-        {
-            xDoc = fileInfo.xDoc;
-        }
-        if (!xDoc.is())
-        {
+            logger_log_error("Failed to load document: %s", filename.c_str());
             return -1;
         }
         // 使用getDefaultData获取默认配置
@@ -816,8 +891,22 @@ namespace filemanager
         // 创建新的临时工作表
         rtl::OUString tempSheetName = defaultSheetName + "_temp";
 
+        // 获取文档对象
+        std::shared_ptr<filemanager::Document> docObj = filemanager::DocumentManager::getInstance().getDocument(docId);
+        if (!docObj)
+        {
+            logger_log_error("Failed to get document object: %s", filename.c_str());
+            return -1;
+        }
+        // 获取文档
+        uno::Reference<sheet::XSpreadsheetDocument> doc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(docObj)->getSpreadsheetDocument();
+        if (!doc.is())
+        {
+            logger_log_error("Failed to get XSpreadsheetDocument: %s", filename.c_str());
+            return -1;
+        }
         // 获取工作表集合
-        uno::Reference<sheet::XSpreadsheets> sheets = xDoc->getSheets();
+        uno::Reference<sheet::XSpreadsheets> sheets = doc->getSheets();
         uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
         {
             // 检查工作表是否已存在
@@ -851,7 +940,7 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().addFileTask(SheetTask);
         }
         // 2 将默认工作表的数据写入新创建的工作表
-        if (!writeCharacterInfosToSheet(filePath, tempSheetName, defaultInfos))
+        if (!writeCharacterInfosToSheet(docId, tempSheetName, defaultInfos))
         {
             logger_log_error("Failed to write character infos to new temporary sheet");
             return -1;
@@ -866,9 +955,9 @@ namespace filemanager
             {
                 continue;
             }
-            int totalRecords = getTotalRecordCount(filePath, sheetNames[i]);                 // 获取总记录数
-            cJSON *sheetData = readSheetDataRange(filePath, sheetNames[i], 0, totalRecords); // 读取所有数据
-            cJSON *resjson = batchUpdateSpreadsheetContent(filePath, sheetNames[i], sheetData);
+            int totalRecords = getTotalRecordCount(docId, sheetNames[i]);                 // 获取总记录数
+            cJSON *sheetData = readSheetDataRange(docId, sheetNames[i], 0, totalRecords); // 读取所有数据
+            cJSON *resjson = batchUpdateSpreadsheetContent(docId, sheetNames[i], sheetData);
             if (cJSON_GetObjectItem(resjson, "result") != nullptr &&
                 std::string(cJSON_GetObjectItem(resjson, "result")->valuestring) != "success")
             {
@@ -877,14 +966,23 @@ namespace filemanager
             }
         }
         // 4 重命名默认工作表为备份
-        rtl::OUString backupSheetName = defaultSheetName + "_backup";
+        // 生成唯一文件名
+        time_t now = time(0);
+        tm *ltm = localtime(&now);
+
+        char filenamebackup[100];
+        sprintf(filenamebackup, "_backup_%04d%02d%02d_%02d%02d%02d",
+                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
+                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+        logger_log_info("filenamebackup: %s", filenamebackup);
+        rtl::OUString backupSheetName = defaultSheetName + convertStringToOUString(filenamebackup);
 
         filemanager::FileTask SheetTask1;
         SheetTask1.type = filemanager::TASK_RENAME_WORKSHEET;
         SheetTask1.filename = filename;
         SheetTask1.data = std::string("");
         SheetTask1.createTime = std::time(nullptr);
-        cJSON* taskData = cJSON_CreateObject();
+        cJSON *taskData = cJSON_CreateObject();
         cJSON_AddStringToObject(taskData, "filename", filename.c_str());
         cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(defaultSheetName).c_str());
         cJSON_AddStringToObject(taskData, "newsheetname", convertOUStringToString(backupSheetName).c_str());
@@ -897,7 +995,7 @@ namespace filemanager
         SheetTask2.filename = filename;
         SheetTask2.data = std::string("");
         SheetTask2.createTime = std::time(nullptr);
-        cJSON* taskData2 = cJSON_CreateObject();
+        cJSON *taskData2 = cJSON_CreateObject();
         cJSON_AddStringToObject(taskData2, "filename", filename.c_str());
         cJSON_AddStringToObject(taskData2, "sheetname", convertOUStringToString(tempSheetName).c_str());
         cJSON_AddStringToObject(taskData2, "newsheetname", convertOUStringToString(defaultSheetName).c_str());

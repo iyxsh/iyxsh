@@ -43,29 +43,29 @@
 #include "../config/json_config.h"
 #include "utils.h"
 #include "template_index_cache.h"
+#include "DocumentManager.h"
 
 using namespace com::sun::star;
 
 namespace filemanager
 {
     /// @brief 读取单元格内容为JSON
-    cJSON *readCellToJson(const com::sun::star::uno::Reference<com::sun::star::uno::XInterface> &sheet,
+    cJSON *readCellToJson(const std::string &docId,
+                          const rtl::OUString &sheetName,
                           const rtl::OUString &cellAddress);
-    /// @brief 直接保存打开的文档，不要路径
-    void saveDocumentDirect(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docIface);
     /// @brief 保存文档到指定路径
-    void saveDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &doc,
+    bool saveDocument(const std::string &docId,
                       const rtl::OUString &filePath);
 
     /// @brief 关闭文档
-    void closeDocument(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &docInterface);
+    bool closeDocument(const std::string &docId);
 
     /// @brief 创建新电子表格文件
     cJSON *createNewSpreadsheetFile(const rtl::OUString &filePath,
                                     const rtl::OUString &sheetName);
 
     /// @brief 更新电子表格内容
-    cJSON *updateSpreadsheetContent(const rtl::OUString &filePath,
+    cJSON *updateSpreadsheetContent(const std::string &docId,
                                     const rtl::OUString &sheetName,
                                     const rtl::OUString &cellAddress,
                                     const rtl::OUString &newValue,
@@ -73,32 +73,42 @@ namespace filemanager
 
     /// @brief 获取工作表
     com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> getSheet(
-        const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument> &document,
+        const std::string &docId,
         const rtl::OUString &sheetName);
 
     // 批量更新函数
-    cJSON *batchUpdateSpreadsheetContent(const rtl::OUString &filePath,
+    cJSON *batchUpdateSpreadsheetContent(const std::string &docId,
                                          const rtl::OUString &sheetName,
                                          const cJSON *updateData);
 
     // 内部辅助函数
-    cJSON *findValueInSheet(const rtl::OUString &filePath, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
-    cJSON *readSheetData(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+    std::string findValueInSheet(const std::string &docId, const rtl::OUString &sheetName, const rtl::OUString &searchValue);
+    cJSON *readSheetData(const std::string &docId, const rtl::OUString &sheetName);
 
     // 公共函数用于加载文档
-    com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheetDocument>
-    loadSpreadsheetDocument(const rtl::OUString &filename);
+    std::string loadSpreadsheetDocument(const rtl::OUString &filename);
     // 获取工作表总记录数
-    int getTotalRecordCount(const rtl::OUString &filePath, const rtl::OUString &sheetName);
+    int getTotalRecordCount(const std::string &docId, const rtl::OUString &sheetName);
     // 分页读取工作表内容
-    cJSON *readSheetDataRange(const rtl::OUString &filePath, const rtl::OUString &sheetName, int startIndex, int endIndex);
-    void clearSheet(const uno::Reference<sheet::XSpreadsheet> &sheet);
+    cJSON *readSheetDataRange(const std::string &docId, const rtl::OUString &sheetName, int startIndex, int endIndex);
+    // 内部函数：清空工作表内容
+    void clearSheet(const com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> &sheet);
+    // 公共函数：清空指定文档和工作表的内容
+    void clearSheet(const std::string &docId, const rtl::OUString &sheetName);
     // 声明用于查找字符串位置的函数
-    std::string findStringInSpreadsheet(const rtl::OUString &targetString, css::uno::Reference<css::sheet::XSpreadsheet> sheet);
-    std::vector<LanguageGroup> readSheetAndGroupByLanguage(css::uno::Reference<css::sheet::XSpreadsheet> sheet);
+    std::string findStringInSpreadsheet(const rtl::OUString &targetString, com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> sheet);
+    std::string findStringInDocIdSpreadsheet(const std::string &docId, const rtl::OUString &sheetName, const rtl::OUString &targetString);
+    
+    // 内部函数：从工作表读取所有单元格内容，按语言分组返回
+    std::vector<LanguageGroup> readSheetAndGroupByLanguage(com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> sheet);
+    // 公共函数：从指定文档和工作表读取所有单元格内容，按语言分组返回
+    std::vector<LanguageGroup> readSheetAndGroupByLanguage(const std::string &docId, const rtl::OUString &sheetName);
 
+    // 主处理函数：拆分文本，分类，查找位置，返回每个字符的详细信息
+    std::vector<TextCharInfo> splitAndClassifyText(const std::string &text, com::sun::star::uno::Reference<com::sun::star::sheet::XSpreadsheet> sheet);
+    
     // 批量写入 CharacterInfo 到指定文件和工作表
-    bool writeCharacterInfosToSheet(const rtl::OUString &filePath,
+    bool writeCharacterInfosToSheet(const std::string &docId,
                                     const rtl::OUString &sheetName,
                                     const std::vector<TextCharInfo> &infos);
     std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index);
