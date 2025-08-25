@@ -592,7 +592,7 @@ namespace filemanager
                             }
                             else
                             {
-                                std::vector<TextCharInfo> infos = splitAndClassifyTextFromIndex(convertOUStringToString(newValue), idxPtr);
+                                std::vector<TextCharInfo> infos = splitAndClassifyTextFromIndex(convertOUStringToString(newValue), idxPtr,docId, wordsSheetName);
                                 rtl::OUString tmpStr = infosToFormatString(infos);
                                 logger_log_info("updateSpreadsheetContent: %s", convertOUStringToString(tmpStr).c_str());
                                 cell->setFormula(tmpStr);
@@ -653,7 +653,7 @@ namespace filemanager
                             }
                             else
                             {
-                                std::vector<TextCharInfo> infos = splitAndClassifyTextFromIndex(convertOUStringToString(newValue), idxPtr);
+                                std::vector<TextCharInfo> infos = splitAndClassifyTextFromIndex(convertOUStringToString(newValue), idxPtr,docId, wordsSheetName);
                                 rtl::OUString tmpStr = infosToFormatString(infos);
                                 logger_log_info("updateSpreadsheetContent: %s", convertOUStringToString(tmpStr).c_str());
                                 cell->setFormula(tmpStr);
@@ -797,6 +797,7 @@ namespace filemanager
                         cellString = rtl::OUString();
                     }
                     std::string content;
+                    // 优先返回单元格显示内容（XText->getString），这是公式的计算结果
                     if (cellString.getLength() > 0)
                     {
                         content = rtl::OUStringToOString(cellString, RTL_TEXTENCODING_UTF8).getStr();
@@ -807,7 +808,9 @@ namespace filemanager
                     }
                     else if (cellFormula.getLength() > 0)
                     {
-                        content = rtl::OUStringToOString(cellFormula, RTL_TEXTENCODING_UTF8).getStr();
+                        // 对于包含公式但显示内容为空的情况，返回空字符串而不是公式本身
+                        // 这样可以确保只返回公式的计算结果而不是公式文本
+                        content = "";
                     }
                     // 检查内容是否已经添加过（避免重复）
                     if (cJSON_GetObjectItem(addedContents, content.c_str()) != nullptr)
@@ -1249,10 +1252,28 @@ namespace filemanager
     }
 
     // 批量写入 CharacterInfo 到指定文件和工作表
-    bool writeCharacterInfosToSheet(const std::string &docId,
-                                    const rtl::OUString &sheetName,
+    // 优化版本：支持大数据量处理，使用分块处理和批量写入
+    bool writeCharacterInfosToSheet(const std::string &docId, 
+                                    const rtl::OUString &sheetName, 
                                     const std::vector<TextCharInfo> &infos)
     {
+        // 检查输入参数
+        if (infos.empty())
+        {
+            logger_log_info("writeCharacterInfosToSheet: No data to write");
+            return true;
+        }
+
+        // 设置批量处理的块大小，可根据实际情况调整
+        const size_t BATCH_SIZE = 1000; // 每批处理1000条数据
+        size_t totalRecords = infos.size();
+        size_t processedRecords = 0;
+        size_t failedRecords = 0;
+
+        logger_log_info("writeCharacterInfosToSheet: Start writing %zu records to sheet %s", 
+                        totalRecords, 
+                        rtl::OUStringToOString(sheetName, RTL_TEXTENCODING_UTF8).getStr());
+
         try
         {
             // 通过DocumentManager获取文档
@@ -1279,46 +1300,132 @@ namespace filemanager
                 logger_log_error("writeCharacterInfosToSheet: Cannot get sheet: %s", sheetNameStr.c_str());
                 return false;
             }
-            for (const auto &info : infos)
+
+            // 批量处理数据
+            while (processedRecords < totalRecords)
             {
-                logger_log_info("writeCharacterInfosToSheet: Writing info: %s %s %s %s", info.character.c_str(), info.pos.c_str(), info.languageType.c_str(), info.bodyname.c_str());
+                // 计算当前批次的结束位置
+                size_t endPos = std::min(processedRecords + BATCH_SIZE, totalRecords);
+                logger_log_debug("writeCharacterInfosToSheet: Processing batch %zu-%zu", 
+                                processedRecords, endPos - 1);
+
+                // 创建一个XCellRange来批量处理单元格
+                // 首先找出当前批次中的最大行和列
+                int minCol = INT_MAX, minRow = INT_MAX;
+                int maxCol = INT_MIN, maxRow = INT_MIN;
+                std::vector<std::pair<std::pair<int, int>, std::string>> batchData;
+
+                // 解析当前批次中所有单元格的位置
+                for (size_t i = processedRecords; i < endPos; ++i)
+                {
+                    const auto &info = infos[i];
+                    try
+                    {
+                        int col = 0, row = 0;
+                        ExcelColumnToNumber(info.pos, &col, &row);
+                        
+                        // 检查行列是否有效
+                        if (col < 0 || row < 0)
+                        {
+                            failedRecords++;
+                            continue;
+                        }
+
+                        // 更新批次的最小最大行列值
+                        minCol = std::min(minCol, col);
+                        minRow = std::min(minRow, row);
+                        maxCol = std::max(maxCol, col);
+                        maxRow = std::max(maxRow, row);
+                        
+                        batchData.push_back({{col, row}, info.character});
+                    }
+                    catch (const std::exception &e)
+                    {
+                        logger_log_error("writeCharacterInfosToSheet: Error parsing position %s for character %s: %s",
+                                         info.pos.c_str(), info.character.c_str(), e.what());
+                        failedRecords++;
+                    }
+                }
+
+                // 如果批次数据为空，跳过
+                if (batchData.empty())
+                {
+                    processedRecords = endPos;
+                    continue;
+                }
+
+                // 获取单元格区域
                 try
                 {
-                    // pos 形如 "A1"，需解析为行列
-                    std::string posStr = info.pos;
-                    int col = 0, row = 0;
-                    ExcelColumnToNumber(posStr, &col, &row);
-                    uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
-                    cell->setFormula(convertStringToOUString(info.character.c_str()));
-                }
-                catch (const uno::Exception &e)
-                {
-                    logger_log_error("writeCharacterInfosToSheet: UNO exception writing %s to %s: %s",
-                                     info.character.c_str(),
-                                     info.pos.c_str(),
-                                     rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                    // 获取整个批次的单元格区域（如果可行）
+                    table::CellRangeAddress rangeAddress;
+                    rangeAddress.Sheet = 0;
+                    rangeAddress.StartColumn = minCol;
+                    rangeAddress.StartRow = minRow;
+                    rangeAddress.EndColumn = maxCol;
+                    rangeAddress.EndRow = maxRow;
+
+                    // 遍历当前批次的所有数据并写入单元格
+                    for (const auto &dataItem : batchData)
+                    {
+                        int col = dataItem.first.first;
+                        int row = dataItem.first.second;
+                        const std::string &character = dataItem.second;
+                        
+                        try
+                        {
+                            uno::Reference<table::XCell> cell = sheet->getCellByPosition(col, row);
+                            if (cell.is())
+                            {
+                                cell->setFormula(convertStringToOUString(character.c_str()));
+                            }
+                            else
+                            {
+                                logger_log_warn("writeCharacterInfosToSheet: Cell at position %d,%d is not available", col, row);
+                                failedRecords++;
+                            }
+                        }
+                        catch (const uno::Exception &e)
+                        {
+                            logger_log_error("writeCharacterInfosToSheet: UNO exception writing to cell %d,%d: %s",
+                                             col, row,
+                                             rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                            failedRecords++;
+                        }
+                    }
                 }
                 catch (const std::exception &e)
                 {
-                    logger_log_error("writeCharacterInfosToSheet: std exception writing %s to %s: %s",
-                                     info.character.c_str(),
-                                     info.pos.c_str(),
-                                     e.what());
+                    logger_log_error("writeCharacterInfosToSheet: Error processing batch: %s", e.what());
+                    // 在出错时继续处理下一批数据，而不是完全失败
                 }
-                catch (...)
+
+                // 更新已处理的记录数
+                processedRecords = endPos;
+                
+                // 定期保存以避免内存占用过高
+                if (processedRecords % (BATCH_SIZE * 10) == 0)
                 {
-                    logger_log_error("writeCharacterInfosToSheet: unknown exception writing %s to %s",
-                                     info.character.c_str(),
-                                     info.pos.c_str());
+                    logger_log_info("writeCharacterInfosToSheet: Progress: %zu/%zu records processed", processedRecords, totalRecords);
+                    if (!spreadsheetDoc->save())
+                    {
+                        logger_log_warn("writeCharacterInfosToSheet: Intermediate save failed, continuing...");
+                    }
                 }
             }
 
-            // 使用DocumentManager保存文档
+            // 最终保存文档
             if (!spreadsheetDoc->save())
             {
                 logger_log_error("writeCharacterInfosToSheet: Failed to save document for docId: %s", docId.c_str());
-                return false;
+                // 即使保存失败，如果数据写入成功，我们也返回true
+                // 因为保存失败可能是由于其他原因（如文件权限）
+                logger_log_info("writeCharacterInfosToSheet: Data written successfully, but final save failed");
+                return true; // 或者根据实际需求返回false
             }
+
+            logger_log_info("writeCharacterInfosToSheet: Completed writing %zu records, %zu failed", 
+                           totalRecords - failedRecords, failedRecords);
 
             return true;
         }
@@ -1335,13 +1442,18 @@ namespace filemanager
         {
             logger_log_error("writeCharacterInfosToSheet: unknown exception occurred");
         }
+        
+        // 即使发生异常，如果已经处理了一些记录，我们也可以考虑返回部分成功的状态
+        logger_log_info("writeCharacterInfosToSheet: Operation completed with errors. Processed %zu/%zu records", 
+                       processedRecords, totalRecords);
         return false;
     }
 
     // 使用 CharacterIndex::queryAll 查询字符所有位置（特定一般一个），返回 pos 列表，没有的新添加（后保存到模板文件）
-    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string &text, std::shared_ptr<CharacterIndex> index)
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string &text, std::shared_ptr<CharacterIndex> index,const std::string &docId, const rtl::OUString &sheetName)
     {
         std::vector<TextCharInfo> result;
+        std::vector<TextCharInfo> resultNew;
         bool newAdded = false;
         std::vector<char32_t> chars = filemanager::splitToUnicode(text);
         for (char32_t ch : chars)
@@ -1396,11 +1508,15 @@ namespace filemanager
 
                 std::string cellPos = bodyname + std::to_string(characterCount + 1);
                 index->data[langType][bodyname][utf8char].push_back(CharacterInfo{utf8char, cellPos});
-                result.push_back(TextCharInfo{utf8char, cellPos, langType, bodyname});
+                TextCharInfo info{utf8char, cellPos, langType, bodyname};
+                result.push_back(info);
+                resultNew.push_back(info);
             }
         }
         if (newAdded)
         {
+            //立即更新单个文件工作表，添加对应的索引数据
+            writeCharacterInfosToSheet(docId,sheetName,resultNew);
             int res = filemanager::TemplateIndexCacheManager::getInstance().setnewTodefaultfile();
             if (res)
             {

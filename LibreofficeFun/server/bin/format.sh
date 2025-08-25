@@ -8,7 +8,7 @@ echo "脚本目录: $script_dir"
 TARGET_DIR="$script_dir/../../"
 
 # 查找并转换文本文件（保持与readme.txt中的命令一致）
-find "$TARGET_DIR" -type f \( -name "*.c" -o -name "*.h" -o -name "*.txt" -o -name "*.cpp" \) \
+find "$TARGET_DIR" -type f \( -name "*.c" -o -name "*.h" -o -name "*.txt" -o -name "*.cpp" -o -name "*.sh" -o -name "*.json" -o -name "*.md" \) \
     -exec dos2unix --keep-bom {} \;
 
 echo "转换完成！已处理目录: $TARGET_DIR"

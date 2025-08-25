@@ -17,7 +17,7 @@ namespace filemanager
     int worksheetRename(cJSON *taskData);
     int querysheetdata(cJSON *root,cJSON *results);
     int fileclose(cJSON *taskData);
-    int fileTempleteChange(const std::string &filename);
+    int fileTemplateChange(const std::string &filename);
 } // namespace filemanager
 
 #endif // FILEHANDLERS_H

@@ -111,7 +111,7 @@ namespace filemanager
     bool writeCharacterInfosToSheet(const std::string &docId,
                                     const rtl::OUString &sheetName,
                                     const std::vector<TextCharInfo> &infos);
-    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index);
+    std::vector<TextCharInfo> splitAndClassifyTextFromIndex(const std::string& text, std::shared_ptr<CharacterIndex> index,const std::string &docId,const rtl::OUString &sheetName);
     rtl::OUString infosToFormatString(const std::vector<TextCharInfo> &infos);
     
     // 通过UNO API删除文件，确保连接状态与文件系统一致

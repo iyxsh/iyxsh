@@ -161,8 +161,8 @@ const validateForms = (forms) => {
     return forms.map((form, index) => {
       // 检查表单是否已经有所有必需的属性
       const hasAllRequiredFields = form.id &&
-        form.position &&
-        form.size &&
+        form.position && typeof form.position.x === 'number' && typeof form.position.y === 'number' &&
+        form.size && typeof form.size.width === 'number' && typeof form.size.height === 'number' &&
         typeof form.zIndex !== 'undefined';
 
       // 如果表单已经具备所有必需字段，则直接返回，避免创建新对象
@@ -174,29 +174,26 @@ const validateForms = (forms) => {
       const formId = form.id || `form-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
       // 确保表单有位置信息
-      const position = form.position || { x: 20, y: 20 };
+      const position = form.position && typeof form.position.x === 'number' && typeof form.position.y === 'number'
+        ? form.position
+        : { x: 20, y: 20 };
 
       // 确保表单有尺寸信息
-      const size = form.size || { width: 200, height: 100 };
+      const size = form.size && typeof form.size.width === 'number' && typeof form.size.height === 'number'
+        ? form.size
+        : { width: 200, height: 100 };
 
       // 确保表单有zIndex，如果没有则根据索引设置
       const zIndex = form.zIndex !== undefined ? form.zIndex : index + 1;
 
-      // 只有在确实需要修改时才创建新对象
-      if (form.id !== formId ||
-        form.position !== position ||
-        form.size !== size ||
-        form.zIndex !== zIndex) {
-        return {
-          ...form,
-          id: formId,
-          position,
-          size,
-          zIndex
-        };
-      }
-
-      return form;
+      // 总是创建新对象以确保响应式更新正确触发
+      return {
+        ...form,
+        id: formId,
+        position: { ...position }, // 创建新对象避免引用问题
+        size: { ...size }, // 创建新对象避免引用问题
+        zIndex
+      };
     });
   } catch (e) {
     handleError(e, '表单数据校验失败');
@@ -790,6 +787,12 @@ const handleFormSave = async (updatedForm) => {
           handleError(error, '保存表单失败');
         }
       }
+      
+      // 添加成功提示和关闭编辑器
+      nextTick(() => {
+        ElMessage.success('表单更新成功');
+        hideFormEditor(); // 保存成功后关闭编辑页面
+      });
     }
   } catch (error) {
     console.error('[FormGrid] 保存表单失败:', error);

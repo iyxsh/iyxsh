@@ -860,160 +860,328 @@ namespace filemanager
             return -1;
         }
     }
-    // 处理单文件更换模板
-    int fileTempleteChange(const std::string &filename)
+    // 辅助函数：生成时间戳
+    std::string generateTimestamp()
     {
-        rtl::OUString filePathStr = convertStringToOUString(ensureOdsExtension(filename).c_str());
-        // 获取绝对路径
-        rtl::OUString filePath;
-        getAbsolutePath(filePathStr, filePath);
-        // 首先通过DocumentManager加载文档
-        std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
-        if (docId.empty())
+        time_t now = time(0);
+        tm *ltm = localtime(&now);
+        if (!ltm)
         {
-            logger_log_error("Failed to load document: %s", filename.c_str());
-            return -1;
+            logger_log_error("Failed to get local time");
+            return "";
         }
-        // 使用getDefaultData获取默认配置
-        rtl::OUString defaultFilePath;
-        rtl::OUString defaultFileName;
-        rtl::OUString defaultSheetName;
-        getDefaultData(defaultFilePath, defaultFileName, defaultSheetName);
 
-        // 读取默认工作表的缓存数据
-        std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(defaultFilePath + defaultFileName, defaultSheetName);
-        if (!idxPtr)
-        {
-            logger_log_error("Failed to get character infos from cache: idxPtr is null");
-            return -1;
-        }
-        std::vector<TextCharInfo> defaultInfos = idxPtr->getAll(); // 获取所有数据
-        // 创建新的临时工作表
-        rtl::OUString tempSheetName = defaultSheetName + "_temp";
+        char timestamp[20];
+        sprintf(timestamp, "%04d%02d%02d_%02d%02d%02d",
+                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
+                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
 
-        // 获取文档对象
-        std::shared_ptr<filemanager::Document> docObj = filemanager::DocumentManager::getInstance().getDocument(docId);
-        if (!docObj)
-        {
-            logger_log_error("Failed to get document object: %s", filename.c_str());
-            return -1;
-        }
-        // 获取文档
-        uno::Reference<sheet::XSpreadsheetDocument> doc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(docObj)->getSpreadsheetDocument();
-        if (!doc.is())
-        {
-            logger_log_error("Failed to get XSpreadsheetDocument: %s", filename.c_str());
-            return -1;
-        }
-        // 获取工作表集合
-        uno::Reference<sheet::XSpreadsheets> sheets = doc->getSheets();
-        uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
-        {
-            // 检查工作表是否已存在
-            if (nameAccess->hasByName(tempSheetName))
-            {
-                logger_log_info("Worksheet %s already exists in file: %s",
-                                convertOUStringToString(tempSheetName).c_str(), filename.c_str());
-                // 删除工作表
-                // 创建删除工作表任务并添加到队列
-                filemanager::FileTask SheetTask;
-                SheetTask.type = filemanager::TASK_REMOVE_WORKSHEET;
-                SheetTask.filename = filename;
-                SheetTask.data = std::string("");
-                SheetTask.createTime = std::time(nullptr);
-                cJSON *taskData = cJSON_CreateObject();
-                cJSON_AddStringToObject(taskData, "filename", filename.c_str());
-                cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(tempSheetName).c_str());
-                SheetTask.taskData = taskData;
-                filemanager::FileQueueManager::getInstance().addFileTask(SheetTask);
-            }
+        return std::string(timestamp);
+    }
 
-            filemanager::FileTask SheetTask;
-            SheetTask.type = filemanager::TASK_ADD_WORKSHEET;
-            SheetTask.filename = filename;
-            SheetTask.data = std::string("");
-            SheetTask.createTime = std::time(nullptr);
-            cJSON *taskData = cJSON_CreateObject();
-            cJSON_AddStringToObject(taskData, "filename", filename.c_str());
-            cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(tempSheetName).c_str());
-            SheetTask.taskData = taskData;
-            filemanager::FileQueueManager::getInstance().addFileTask(SheetTask);
-        }
-        // 2 将默认工作表的数据写入新创建的工作表
-        if (!writeCharacterInfosToSheet(docId, tempSheetName, defaultInfos))
-        {
-            logger_log_error("Failed to write character infos to new temporary sheet");
-            return -1;
-        }
-        // 3 读取其它非默认工作表单元格的内容并重新写入新缓存
-        uno::Sequence<rtl::OUString> sheetNames = sheets->getElementNames();
-        cJSON *sheetArray = cJSON_CreateArray();
+    // 辅助函数：处理非默认工作表
+    bool processNonDefaultSheets(const std::string &docId,
+                                 const uno::Sequence<rtl::OUString> &sheetNames,
+                                 const rtl::OUString &defaultSheetName,
+                                 const rtl::OUString &tempSheetName,
+                                 cJSON *sheetArray)
+    {
         for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i)
         {
-            // 过滤wordsSheetName
+            // 跳过默认工作表和临时工作表
             if (sheetNames[i] == defaultSheetName || sheetNames[i] == tempSheetName)
             {
                 continue;
             }
-            int totalRecords = getTotalRecordCount(docId, sheetNames[i]);                 // 获取总记录数
-            cJSON *sheetData = readSheetDataRange(docId, sheetNames[i], 0, totalRecords); // 读取所有数据
-            cJSON *resjson = batchUpdateSpreadsheetContent(docId, sheetNames[i], sheetData);
-            if (cJSON_GetObjectItem(resjson, "result") != nullptr &&
-                std::string(cJSON_GetObjectItem(resjson, "result")->valuestring) != "success")
+
+            try
             {
-                logger_log_error("Failed to update cell contents in the temporary sheet");
-                return -1;
+                std::string currentSheetName = convertOUStringToString(sheetNames[i]);
+                logger_log_info("Processing sheet: %s", currentSheetName.c_str());
+
+                // 获取总记录数
+                int totalRecords = getTotalRecordCount(docId, sheetNames[i]);
+                if (totalRecords < 0)
+                {
+                    logger_log_error("Failed to get total record count for sheet: %s", currentSheetName.c_str());
+                    return false;
+                }
+
+                // 读取所有数据
+                cJSON *sheetData = readSheetDataRange(docId, sheetNames[i], 0, totalRecords);
+                if (!sheetData)
+                {
+                    logger_log_error("Failed to read data for sheet: %s", currentSheetName.c_str());
+                    return false;
+                }
+
+                // 更新电子表格内容
+                cJSON *resjson = batchUpdateSpreadsheetContent(docId, sheetNames[i], sheetData);
+                if (!resjson)
+                {
+                    logger_log_error("Failed to update content for sheet: %s", currentSheetName.c_str());
+                    cJSON_Delete(sheetData);
+                    return false;
+                }
+
+                // 检查更新结果
+                if (cJSON_GetObjectItem(resjson, "result") != nullptr &&
+                    std::string(cJSON_GetObjectItem(resjson, "result")->valuestring) != "success")
+                {
+                    logger_log_error("Failed to update cell contents in sheet: %s", currentSheetName.c_str());
+                    cJSON_Delete(sheetData);
+                    cJSON_Delete(resjson);
+                    return false;
+                }
+
+                // 释放资源
+                cJSON_Delete(sheetData);
+                cJSON_Delete(resjson);
+            }
+            catch (const std::exception &e)
+            {
+                logger_log_error("Exception processing sheet: %s, error: %s",
+                                 convertOUStringToString(sheetNames[i]).c_str(), e.what());
+                return false;
             }
         }
-        // 4 重命名默认工作表为备份
-        // 生成唯一文件名
-        time_t now = time(0);
-        tm *ltm = localtime(&now);
 
-        char filenamebackup[100];
-        sprintf(filenamebackup, "_backup_%04d%02d%02d_%02d%02d%02d",
-                1900 + ltm->tm_year, 1 + ltm->tm_mon, ltm->tm_mday,
-                ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
-        logger_log_info("filenamebackup: %s", filenamebackup);
-        rtl::OUString backupSheetName = defaultSheetName + convertStringToOUString(filenamebackup);
-
-        filemanager::FileTask SheetTask1;
-        SheetTask1.type = filemanager::TASK_RENAME_WORKSHEET;
-        SheetTask1.filename = filename;
-        SheetTask1.data = std::string("");
-        SheetTask1.createTime = std::time(nullptr);
-        cJSON *taskData = cJSON_CreateObject();
-        cJSON_AddStringToObject(taskData, "filename", filename.c_str());
-        cJSON_AddStringToObject(taskData, "sheetname", convertOUStringToString(defaultSheetName).c_str());
-        cJSON_AddStringToObject(taskData, "newsheetname", convertOUStringToString(backupSheetName).c_str());
-        SheetTask1.taskData = taskData;
-        filemanager::FileQueueManager::getInstance().addFileTask(SheetTask1);
-
-        // 5 重命名新加的临时工作表为默认工作表
-        filemanager::FileTask SheetTask2;
-        SheetTask2.type = filemanager::TASK_RENAME_WORKSHEET;
-        SheetTask2.filename = filename;
-        SheetTask2.data = std::string("");
-        SheetTask2.createTime = std::time(nullptr);
-        cJSON *taskData2 = cJSON_CreateObject();
-        cJSON_AddStringToObject(taskData2, "filename", filename.c_str());
-        cJSON_AddStringToObject(taskData2, "sheetname", convertOUStringToString(tempSheetName).c_str());
-        cJSON_AddStringToObject(taskData2, "newsheetname", convertOUStringToString(defaultSheetName).c_str());
-        SheetTask2.taskData = taskData2;
-        filemanager::FileQueueManager::getInstance().addFileTask(SheetTask2);
-
-        // 6 可选删除旧的备份工作表
-        // 创建删除工作表任务并添加到队列
-        // filemanager::FileTask SheetTask3;
-        // SheetTask3.type = filemanager::TASK_REMOVE_WORKSHEET;
-        // SheetTask3.filename = filename;
-        // SheetTask3.data = std::string("");
-        // SheetTask3.createTime = std::time(nullptr);
-        // cJSON* taskData3 = cJSON_CreateObject();
-        // cJSON_AddStringToObject(taskData3, "filename", filename.c_str());
-        // cJSON_AddStringToObject(taskData3, "sheetname", convertOUStringToString(backupSheetName).c_str());
-        // SheetTask3.taskData = taskData3;
-        // filemanager::FileQueueManager::getInstance().addFileTask(SheetTask3);
-        return 0;
+        return true;
     }
+
+    // 辅助函数：重命名和替换工作表
+    bool renameAndReplaceSheets(uno::Reference<sheet::XSpreadsheets> &sheets,
+                                const rtl::OUString &defaultSheetName,
+                                const rtl::OUString &tempSheetName,
+                                const rtl::OUString &backupSheetName)
+    {
+        try
+        {
+            // 复制原工作表到备份名称
+            sal_Int32 insertIndex = sheets->getElementNames().getLength();
+            sheets->copyByName(defaultSheetName, backupSheetName, insertIndex);
+            sheets->removeByName(defaultSheetName);
+
+            logger_log_info("Original sheet renamed to backup: %s -> %s",
+                            convertOUStringToString(defaultSheetName).c_str(),
+                            convertOUStringToString(backupSheetName).c_str());
+
+            // 复制临时工作表为默认工作表
+            sal_Int32 insertIndex2 = sheets->getElementNames().getLength();
+            sheets->copyByName(tempSheetName, defaultSheetName, insertIndex2);
+            sheets->removeByName(tempSheetName);
+
+            logger_log_info("Temporary sheet renamed to default: %s -> %s",
+                            convertOUStringToString(tempSheetName).c_str(),
+                            convertOUStringToString(defaultSheetName).c_str());
+
+            return true;
+        }
+        catch (const uno::Exception &e)
+        {
+            std::string errorMsg = rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr();
+            logger_log_error("UNO exception during sheet rename operations: %s", errorMsg.c_str());
+            return false;
+        }
+    }
+
+    // 处理单文件更换模板
+    int fileTemplateChange(const std::string &filename)
+    {
+        logger_log_info("Starting file template change for: %s", filename.c_str());
+
+        // 生成唯一时间戳作为临时工作表和备份工作表的标识
+        std::string timestamp = generateTimestamp();
+        if (timestamp.empty())
+        {
+            logger_log_error("Failed to generate timestamp");
+            return -1;
+        }
+
+        try
+        {
+            // 处理文件路径
+            std::string odsFilename = ensureOdsExtension(filename);
+            rtl::OUString filePathStr = convertStringToOUString(odsFilename.c_str());
+
+            // 获取绝对路径
+            rtl::OUString filePath;
+            getAbsolutePath(filePathStr, filePath);
+
+            // 首先通过DocumentManager加载文档
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(
+                convertOUStringToString(filePath), filemanager::DocumentType::SPREADSHEET);
+            if (docId.empty())
+            {
+                logger_log_error("Failed to load document: %s", odsFilename.c_str());
+                return -1;
+            }
+
+            // 获取文档对象
+            std::shared_ptr<filemanager::Document> docObj = filemanager::DocumentManager::getInstance().getDocument(docId);
+            if (!docObj)
+            {
+                logger_log_error("Failed to get document object: %s", odsFilename.c_str());
+                return -1;
+            }
+
+            // 转换为电子表格文档对象
+            auto spreadsheetDoc = std::dynamic_pointer_cast<filemanager::SpreadsheetDocument>(docObj);
+            if (!spreadsheetDoc)
+            {
+                logger_log_error("Failed to convert to spreadsheet document: %s", odsFilename.c_str());
+                return -1;
+            }
+
+            // 获取UNO文档接口
+            uno::Reference<sheet::XSpreadsheetDocument> doc = spreadsheetDoc->getSpreadsheetDocument();
+            if (!doc.is())
+            {
+                logger_log_error("Failed to get XSpreadsheetDocument: %s", odsFilename.c_str());
+                return -1;
+            }
+
+            // 获取工作表集合
+            uno::Reference<sheet::XSpreadsheets> sheets = doc->getSheets();
+            uno::Reference<container::XNameAccess> nameAccess(sheets, uno::UNO_QUERY);
+
+            // 使用getDefaultData获取默认配置
+            rtl::OUString defaultFilePath;
+            rtl::OUString defaultFileName;
+            rtl::OUString defaultSheetName;
+            getDefaultData(defaultFilePath, defaultFileName, defaultSheetName);
+
+            // 检查默认工作表是否存在
+            if (!nameAccess->hasByName(defaultSheetName))
+            {
+                logger_log_error("Default sheet %s not found in document",
+                                 convertOUStringToString(defaultSheetName).c_str());
+                return -1;
+            }
+
+            // 读取默认工作表的缓存数据
+            std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance()
+                                                         .getCharacterInfos(defaultFilePath + defaultFileName, defaultSheetName);
+            if (!idxPtr)
+            {
+                logger_log_error("Failed to get character infos from cache");
+                return -1;
+            }
+
+            std::vector<TextCharInfo> defaultInfos = idxPtr->getAll(); // 获取所有数据
+
+            if (defaultInfos.empty())
+            {
+                logger_log_error("No character information found in default template");
+                return -1;
+            }
+
+            // 创建临时工作表名称
+            std::string tempSheetNameStr = convertOUStringToString(defaultSheetName) + "_temp_" + timestamp;
+            rtl::OUString tempSheetName = convertStringToOUString(tempSheetNameStr.c_str());
+            logger_log_info("Temporary sheet name: %s", tempSheetNameStr.c_str());
+
+            // 检查工作表是否已存在并删除
+            if (nameAccess->hasByName(tempSheetName))
+            {
+                logger_log_info("Temporary worksheet %s already exists, deleting it", tempSheetNameStr.c_str());
+                // 删除工作表
+                if (!spreadsheetDoc->deleteSheet(tempSheetNameStr))
+                {
+                    logger_log_error("Failed to delete existing temporary sheet: %s", tempSheetNameStr.c_str());
+                    return -1;
+                }
+                logger_log_info("Existing temporary sheet deleted: %s", tempSheetNameStr.c_str());
+            }
+
+            // 创建工作表
+            if (!spreadsheetDoc->createSheet(tempSheetNameStr))
+            {
+                logger_log_error("Failed to create temporary sheet: %s", tempSheetNameStr.c_str());
+                return -1;
+            }
+            logger_log_info("Temporary sheet created: %s", tempSheetNameStr.c_str());
+
+            // 将默认工作表的数据写入新创建的临时工作表
+            if (!writeCharacterInfosToSheet(docId, tempSheetName, defaultInfos))
+            {
+                logger_log_error("Failed to write character infos to temporary sheet");
+                // 尝试清理已创建的临时工作表
+                spreadsheetDoc->deleteSheet(tempSheetNameStr);
+                return -1;
+            }
+            logger_log_info("Content written to temporary sheet: %s", tempSheetNameStr.c_str());
+
+            // 读取其它非默认工作表单元格的内容并重新写入新缓存
+            uno::Sequence<rtl::OUString> sheetNames = sheets->getElementNames();
+            cJSON *sheetArray = cJSON_CreateArray();
+            if (!processNonDefaultSheets(docId, sheetNames, defaultSheetName, tempSheetName, sheetArray))
+            {
+                logger_log_error("Failed to process non-default sheets");
+                // 释放资源并清理
+                cJSON_Delete(sheetArray);
+                spreadsheetDoc->deleteSheet(tempSheetNameStr);
+                return -1;
+            }
+
+            // 释放JSON资源
+            cJSON_Delete(sheetArray);
+
+            // 创建备份工作表名称
+            std::string backupSheetNameStr = convertOUStringToString(defaultSheetName) + "_backup_" + timestamp;
+            rtl::OUString backupSheetName = convertStringToOUString(backupSheetNameStr.c_str());
+            logger_log_info("Backup sheet name: %s", backupSheetNameStr.c_str());
+
+            // 执行工作表重命名和替换操作
+            if (!renameAndReplaceSheets(sheets, defaultSheetName, tempSheetName, backupSheetName))
+            {
+                logger_log_error("Failed to rename and replace sheets");
+                spreadsheetDoc->deleteSheet(tempSheetNameStr);
+                return -1;
+            }
+
+            // 可选删除备份工作表（设置为false可以保留备份用于调试）
+            bool deleteBackup = true;
+            if (deleteBackup)
+            {
+                if (!spreadsheetDoc->deleteSheet(backupSheetNameStr))
+                {
+                    logger_log_warn("Failed to delete backup sheet: %s, but operation continues",
+                                    backupSheetNameStr.c_str());
+                    // 即使删除备份失败，也继续执行，因为主要功能已经完成
+                }
+                else
+                {
+                    logger_log_info("Backup sheet deleted: %s", backupSheetNameStr.c_str());
+                }
+            }
+
+            // 保存文档以确保所有更改都被保存
+            if (!docObj->save())
+            {
+                logger_log_error("Failed to save document after template change");
+                return -1;
+            }
+
+            logger_log_info("File template change completed successfully for: %s", odsFilename.c_str());
+            return 0;
+        }
+        catch (const uno::Exception &e)
+        {
+            std::string errorMsg = rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr();
+            logger_log_error("UNO exception during file template change: %s", errorMsg.c_str());
+            return -1;
+        }
+        catch (const std::exception &e)
+        {
+            logger_log_error("Standard exception during file template change: %s", e.what());
+            return -1;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception during file template change");
+            return -1;
+        }
+    }
+
 } // namespace filemanager

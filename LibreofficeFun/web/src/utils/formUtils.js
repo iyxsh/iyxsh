@@ -35,7 +35,7 @@ export const formToExcelMapping = (inputObject, columnToFieldMapping, columnNumb
   return newMapping;
 };
 
-// 重新实现 excelToFormMapping 函数
+// 重新实现 excelToFormMapping 函数，添加对JSON字符串的解析
 export const excelToFormMapping = (fieldToColumnMapping, excelMapping) => {
   // 初始化 columnToFieldMapping
   const columnToFieldMapping = {};
@@ -51,10 +51,64 @@ export const excelToFormMapping = (fieldToColumnMapping, excelMapping) => {
   for (const [key, value] of Object.entries(excelMapping)) {
     const baseColumn = value.replace(/\d+/g, ''); // 去除数字部分
     if (columnToFieldMapping[baseColumn]) {
-      resultMapping[columnToFieldMapping[baseColumn]] = key;
+      const fieldName = columnToFieldMapping[baseColumn];
+      // 尝试解析key为JSON对象，特别是对于position和size等字段
+      if ((fieldName === 'position' || fieldName === 'size') && typeof key === 'string') {
+        try {
+          // 尝试将字符串解析为对象
+          const parsedValue = JSON.parse(key);
+          // 验证解析结果是否为对象且包含必要的坐标属性
+          if (typeof parsedValue === 'object' && parsedValue !== null) {
+            // 对于position，确保包含x和y属性
+            if (fieldName === 'position' && ('x' in parsedValue || 'y' in parsedValue)) {
+              resultMapping[fieldName] = parsedValue;
+              continue;
+            }
+            // 对于size，确保包含width和height属性
+            if (fieldName === 'size' && ('width' in parsedValue || 'height' in parsedValue)) {
+              resultMapping[fieldName] = parsedValue;
+              continue;
+            }
+          }
+        } catch (e) {
+          // 解析失败，继续使用原始值
+          console.warn(`[excelToFormMapping] 解析${fieldName}对象失败:`, e);
+        }
+      }
+      // 处理其他可能包含对象的字段
+      if (typeof key === 'string' && key.startsWith('{') && key.endsWith('}')) {
+        try {
+          const parsedValue = JSON.parse(key);
+          if (typeof parsedValue === 'object' && parsedValue !== null) {
+            resultMapping[fieldName] = parsedValue;
+            continue;
+          }
+        } catch (e) {
+          // 解析失败，使用原始值
+        }
+      }
+      // 使用原始值
+      resultMapping[fieldName] = key;
     } else {
       console.warn(`[excelToFormMapping] 未找到列映射: ${value}`);
     }
+  }
+
+  // 确保返回的对象包含必要的默认属性
+  if (!resultMapping.position) {
+    resultMapping.position = { x: 0, y: 0 };
+  } else {
+    // 确保position有x和y属性
+    resultMapping.position.x = resultMapping.position.x || 0;
+    resultMapping.position.y = resultMapping.position.y || 0;
+  }
+  
+  if (!resultMapping.size) {
+    resultMapping.size = { width: 200, height: 80 };
+  } else {
+    // 确保size有width和height属性
+    resultMapping.size.width = resultMapping.size.width || 200;
+    resultMapping.size.height = resultMapping.size.height || 80;
   }
 
   return resultMapping;

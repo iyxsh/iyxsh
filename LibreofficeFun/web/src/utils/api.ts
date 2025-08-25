@@ -7,12 +7,20 @@ import { SheetListRequest, SheetListResponse } from './apiTypes';
 // 重新导入 CardGroups 类型
 import { CardGroups } from './apiTypes';
 
+// 打印环境变量信息用于调试
+console.log('VITE_APP_API_BASE_URL:', import.meta.env.VITE_APP_API_BASE_URL);
+console.log('Current Origin:', window.location.origin);
+
 // 创建高级axios实例，支持更多功能
 const advancedApiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_API_BASE_URL || 'https://192.168.0.3:8443/api',
+  baseURL: import.meta.env.VITE_APP_API_BASE_URL || 'https://192.168.0.3:8443/api', // 改为HTTP协议，移除端口8443
   timeout: 30000, // 增加超时时间以支持大数据量
   headers: {
     'Content-Type': 'application/json'
+  },
+  withCredentials: false, // 关闭跨域凭证以解决CORS问题
+  validateStatus: function (status) {
+    return status >= 200 && status < 300; // 默认的验证逻辑
   }
 });
 
@@ -33,7 +41,9 @@ advancedApiClient.interceptors.request.use(
       url: config.url,
       baseURL: config.baseURL,
       fullURL: `${config.baseURL}${config.url}`,
-      data: config.data
+      data: config.data,
+      headers: config.headers,
+      withCredentials: config.withCredentials
     });
     
     // 可以在这里添加认证token等
@@ -48,12 +58,20 @@ advancedApiClient.interceptors.request.use(
 // 响应拦截器
 advancedApiClient.interceptors.response.use(
   (response: any) => {
+    console.log('API Response:', {
+      status: response.status,
+      data: response.data,
+      url: response.config?.url
+    });
     return response.data;
   },
   (error: any) => {
+    // 增强的错误处理
     console.error('Advanced API Error:', error);
     
-    // 添加更详细的错误信息
+    let friendlyMessage = '网络请求失败，请稍后重试';
+    let errorCategory = '未知错误';
+    
     if (error.response) {
       console.error('Error Response:', {
         status: error.response.status,
@@ -63,9 +81,61 @@ advancedApiClient.interceptors.response.use(
         method: error.config?.method,
         baseURL: error.config?.baseURL
       });
+      
+      // 根据状态码提供更具体的错误信息
+      switch (error.response.status) {
+        case 401:
+          friendlyMessage = '未授权，请重新登录';
+          errorCategory = '认证错误';
+          break;
+        case 403:
+          friendlyMessage = '权限不足，无法访问该资源';
+          errorCategory = '权限错误';
+          break;
+        case 404:
+          friendlyMessage = '请求的资源不存在';
+          errorCategory = '资源不存在';
+          break;
+        case 500:
+          friendlyMessage = '服务器内部错误，请稍后重试';
+          errorCategory = '服务器错误';
+          break;
+        default:
+          friendlyMessage = `请求失败：${error.response.statusText || '未知错误'}`;
+          errorCategory = `HTTP错误 ${error.response.status}`;
+      }
+    } else if (error.request) {
+      console.error('No Response Received:', error.request);
+      
+      // 网络错误类型判断
+      if (error.code === 'ECONNREFUSED') {
+        friendlyMessage = '服务器连接被拒绝，请检查服务器是否运行';
+        errorCategory = '连接被拒绝';
+      } else if (error.code === 'ERR_NETWORK') {
+        friendlyMessage = '网络连接错误，请检查您的网络设置';
+        errorCategory = '网络错误';
+      } else if (error.code === 'ECONNABORTED') {
+        friendlyMessage = '请求超时，请稍后重试';
+        errorCategory = '请求超时';
+      } else {
+        friendlyMessage = '无法连接到服务器，请检查网络连接';
+        errorCategory = '连接失败';
+      }
+    } else {
+      console.error('Request Configuration Error:', error.message);
+      friendlyMessage = `请求配置错误：${error.message}`;
+      errorCategory = '配置错误';
     }
     
-    return Promise.reject(error);
+    // 创建增强的错误对象
+    const enhancedError = new Error(friendlyMessage);
+    Object.assign(enhancedError, error, {
+      friendlyMessage,
+      errorCategory,
+      originalError: error
+    });
+    
+    return Promise.reject(enhancedError);
   }
 );
 

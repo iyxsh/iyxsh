@@ -47,7 +47,6 @@ set(SOURCES
     ./leofun/filemanager/unicodetable.cpp
     ./leofun/filemanager/LibreOfficeService.cpp
     ./leofun/filemanager/spreadsheet.cpp
-    ./leofun/filemanager/lofficeconn.cpp
     ./leofun/filemanager/DocumentManager.cpp
     ./leofun/filemanager/filehandlers.cpp
     ./leofun/filemanager/filequeue.cpp
@@ -68,7 +67,6 @@ set(HEADERS
     ./leofun/filemanager/unicodetable.h
     ./leofun/filemanager/LibreOfficeService.h
     ./leofun/filemanager/spreadsheet.h
-    ./leofun/filemanager/lofficeconn.h
     ./leofun/filemanager/DocumentManager.h
     ./leofun/filemanager/filehandlers.h
     ./leofun/filemanager/filequeue.h

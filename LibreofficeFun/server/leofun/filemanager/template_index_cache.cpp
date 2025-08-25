@@ -98,9 +98,14 @@ namespace filemanager
         // 从缓存索引获取数据
         std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
         // 启动时没有缓存，此处为空
-        if (idxPtr)
+        if (idxPtr && !idxPtr->isEmpty())
         {
             std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
+            if (infos.empty())
+            {
+                logger_log_warn("Character index data is empty");
+                return -1;
+            }
             // 首先创建个空文档 默认工作表名
             cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
             if (newCreate == nullptr)
@@ -159,9 +164,14 @@ namespace filemanager
         // 从缓存索引获取数据
         std::shared_ptr<CharacterIndex> idxPtr = filemanager::TemplateIndexCacheManager::getInstance().getCharacterInfos(filePath + defaultFileName, sheetName);
         // 启动时没有缓存，此处为空
-        if (idxPtr)
+        if (idxPtr && !idxPtr->isEmpty())
         {
             std::vector<TextCharInfo> infos = idxPtr->getAll(); // 获取所有数据
+            if (infos.empty())
+            {
+                logger_log_warn("Character index data is empty");
+                return -1;
+            }
             // 首先创建个空文档 默认工作表名
             cJSON *newCreate = createNewSpreadsheetFile(absoluteFilePath, sheetName);
             if (newCreate == nullptr)

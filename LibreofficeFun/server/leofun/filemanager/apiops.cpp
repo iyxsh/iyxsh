@@ -52,9 +52,16 @@ namespace filemanager
             std::string textStr(textItem->valuestring);
             // 这里 idx 只是 CharacterInfo 列表，需获取 CharacterIndex
             // 但 splitAndClassifyTextFromIndex 需要 CharacterIndex，实际应从缓存获取 index
+            // 调用此接口默认查询维护模板文件，不存在直接添加到此文件中
+            std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(AbsolutefilePath + defaultFileName));
+            if (docId.empty())
+            {
+                logger_log_error("Failed to load document: %s", convertOUStringToString(AbsolutefilePath + defaultFileName).c_str());
+                return;
+            }
             if (idxPtr)
             {
-                infos = splitAndClassifyTextFromIndex(textStr, idxPtr); // 获取指定文本的字符信息
+                infos = splitAndClassifyTextFromIndex(textStr, idxPtr, docId, sheetName); // 获取指定文本的字符信息
             }
             cJSON_Delete(root);
         }
@@ -320,7 +327,7 @@ namespace filemanager
         filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
         filemanager::FileQueueManager::getInstance().addFileTask(task);
 
-        //如果有上送的文件名采用重命名逻辑实现
+        // 如果有上送的文件名采用重命名逻辑实现
         if (!inputfileName.empty())
         {
             // 创建文件任务
@@ -333,11 +340,18 @@ namespace filemanager
             cJSON_AddStringToObject(taskData, "newFilename", inputfileName.c_str());
             task.taskData = taskData;
             filemanager::FileQueueManager::getInstance().addFileTask(task);
+            // 构造返回结果
+            cJSON_AddStringToObject(results, "filename", inputfileName.c_str());
+            cJSON_AddStringToObject(results, "filestatus", "created");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
         }
-        // 构造返回结果
-        cJSON_AddStringToObject(results, "filename", task.filename.c_str());
-        cJSON_AddStringToObject(results, "filestatus", "created");
-        ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+        else
+        {
+            // 构造返回结果
+            cJSON_AddStringToObject(results, "filename", task.filename.c_str());
+            cJSON_AddStringToObject(results, "filestatus", "created");
+            ErrorCodeManager::setErrorMessage(results, RESPONSE_SUCCESS);
+        }
     }
     // 切换模板备份文件
     void newfile(cJSON *results, const char *body)
@@ -712,8 +726,8 @@ namespace filemanager
             getDefaultData(defaultfilePath, defaultFileName, wordsSheetName);
             for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i)
             {
-                // 过滤wordsSheetName
-                if (sheetNames[i] == wordsSheetName)
+                // 过滤所有以wordsSheetName开头的工作表
+                if (sheetNames[i].startsWith(wordsSheetName))
                 {
                     continue;
                 }

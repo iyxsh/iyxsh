@@ -189,16 +189,79 @@ namespace filemanager
     // 停止任务处理线程
     void FileQueueManager::stopTaskProcessor()
     {
+        logger_log_info("Stopping task processor...");
+        
+        // 设置停止标志
+        {
+            std::lock_guard<std::mutex> lock(taskMutex);
+            shouldStop = true;
+        }
+        
+        // 关闭所有未关闭的文件
+        logger_log_info("Closing all open files...");
+        
+        // 复制文件状态映射，避免在锁定状态下进行耗时操作
+        std::unordered_map<std::string, FileInfo> tempFileStatusMap;
+        {
+            std::lock_guard<std::mutex> lock(statusMutex);
+            tempFileStatusMap = fileStatusMap;
+        }
+        
+        int closedFileCount = 0;
+        for (const auto& kv : tempFileStatusMap)
+        {
+            const std::string& filename = kv.first;
+            const FileInfo& fileInfo = kv.second;
+            
+            // 检查文件是否未关闭（状态不是CLOSED）
+            if (fileInfo.status != FILE_STATUS_CLOSED)
+            {
+                try
+                {
+                    // 尝试关闭文件
+                    std::string filePath = filemanager::convertOUStringToString(
+                        filemanager::convertStringToOUString(ensureOdsExtension(filename).c_str()));
+                    
+                    // 检查文件是否存在
+                    if (access(filePath.c_str(), F_OK) == 0)
+                    {
+                        // 通过DocumentManager关闭文件
+                        std::string docId = filemanager::DocumentManager::getInstance().openDocument(
+                            filePath, filemanager::DocumentType::SPREADSHEET);
+                        if (!docId.empty())
+                        {
+                            filemanager::DocumentManager::getInstance().closeDocument(docId);
+                            closedFileCount++;
+                            logger_log_info("Closed file: %s", filename.c_str());
+                        }
+                    }
+                    
+                    // 更新文件状态为已关闭
+                    updateFileStatus(filename, FILE_STATUS_CLOSED);
+                }
+                catch (const std::exception& e)
+                {
+                    logger_log_error("Failed to close file %s: %s", filename.c_str(), e.what());
+                }
+                catch (...)
+                {
+                    logger_log_error("Unknown error when closing file %s", filename.c_str());
+                }
+            }
+        }
+        
+        logger_log_info("Closed %d files during task processor shutdown", closedFileCount);
+        
+        // 通知条件变量，唤醒可能在等待的线程
+        taskCondition.notify_all();
+        
+        // 等待任务处理线程结束
         if (taskProcessorThread.joinable())
         {
-            {
-                std::lock_guard<std::mutex> lock(taskMutex);
-                shouldStop = true;
-            }
-            taskCondition.notify_all();
             taskProcessorThread.join();
-            logger_log_info("File task processor stopped");
         }
+        
+        logger_log_info("File task processor stopped");
     }
 
     // 任务处理线程函数
@@ -356,7 +419,7 @@ namespace filemanager
     // 处理文件创建任务
     void FileTaskProcessor::processCreateFileTask(const FileTask &task)
     {
-        logger_log_info("Processing create file task: %s",
+        logger_log_info(" ------------ Processing create file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
@@ -405,14 +468,14 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing create file task: %s",
+        logger_log_info(" ———————————— Finished processing create file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理文件更新任务
     void FileTaskProcessor::processUpdateFileTask(const FileTask &task)
     {
-        logger_log_info("Processing update file task: %s",
+        logger_log_info(" ------------ Processing update file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
@@ -469,14 +532,14 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing update file task: %s",
+        logger_log_info(" ———————————— Finished processing update file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理关闭文件任务
     void FileTaskProcessor::processCloseFileTask(const FileTask &task)
     {
-        logger_log_info("Processing close file task: %s", task.filename.c_str());
+        logger_log_info(" ------------ Processing close file task: %s", task.filename.c_str());
 
         // 更新文件状态为处理中
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
@@ -487,14 +550,14 @@ namespace filemanager
         // 更新文件状态为已关闭
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_CLOSED);
 
-        logger_log_info("Finished processing close file task: %s",
+        logger_log_info(" ———————————— Finished processing close file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理删除文件任务
     void FileTaskProcessor::processDeleteFileTask(const FileTask &task)
     {
-        logger_log_info("Processing delete file task: %s",
+        logger_log_info(" ------------ Processing delete file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
@@ -515,7 +578,8 @@ namespace filemanager
 
             // 确保文件未被加载或已关闭
             std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(absoluteFilePath), filemanager::DocumentType::SPREADSHEET);
-            if (!docId.empty()) {
+            if (!docId.empty())
+            {
                 filemanager::DocumentManager::getInstance().closeDocument(docId);
             }
 
@@ -554,10 +618,10 @@ namespace filemanager
             if (deleted)
             {
                 logger_log_info("Successfully deleted file: %s", filePath.c_str());
-                
+
                 // 增加额外的等待时间，确保文件完全从操作系统缓存中释放
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
-                
+
                 // 在删除文件后，尝试使用UNO API再次确认文件已被删除
                 try
                 {
@@ -568,7 +632,8 @@ namespace filemanager
                         if (xServiceManager.is())
                         {
                             uno::Reference<ucb::XSimpleFileAccess> fileAccess(xServiceManager->createInstanceWithContext(
-                                convertStringToOUString("com.sun.star.ucb.SimpleFileAccess"), xContext), uno::UNO_QUERY);
+                                                                                  convertStringToOUString("com.sun.star.ucb.SimpleFileAccess"), xContext),
+                                                                              uno::UNO_QUERY);
                             if (fileAccess.is())
                             {
                                 // 尝试多次检查文件是否存在，直到确认文件已删除或达到最大重试次数
@@ -580,7 +645,7 @@ namespace filemanager
                                         logger_log_info("UNO API confirmed file deleted: %s", filePath.c_str());
                                         break;
                                     }
-                                    
+
                                     logger_log_info("File still exists in UNO cache, waiting...");
                                     std::this_thread::sleep_for(std::chrono::milliseconds(300));
                                     confirmRetry--;
@@ -589,10 +654,10 @@ namespace filemanager
                         }
                     }
                 }
-                catch (const uno::Exception& e)
+                catch (const uno::Exception &e)
                 {
-                    logger_log_error("UNO Exception during file deletion confirmation: %s", 
-                        rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+                    logger_log_error("UNO Exception during file deletion confirmation: %s",
+                                     rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
                 }
                 catch (...)
                 {
@@ -634,20 +699,21 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing delete file task: %s",
+        logger_log_info(" ———————————— Finished processing delete file task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理更新模板任务
     void FileTaskProcessor::processUpdateTemplateTask(const FileTask &task)
     {
-        logger_log_info("Processing update template task");
+        logger_log_info(" ------------ Processing update template task",
+                        filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
         // 更新文件状态为处理中
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
         try
         {
             // 直接重新初始化文件
-            int res = fileTempleteChange(task.filename);
+            int res = fileTemplateChange(task.filename);
             if (res != 0)
             {
                 logger_log_error("Failed to update template: %s", task.filename.c_str());
@@ -665,14 +731,14 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Exception: ") + "Unknown exception");
         }
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_READY);
-        logger_log_info("Finished processing update template task: %s",
+        logger_log_info(" ———————————— Finished processing update template task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理新增工作表任务
     void FileTaskProcessor::processAddWorksheetTask(const FileTask &task)
     {
-        logger_log_info("Processing add worksheet task: %s",
+        logger_log_info(" ------------ Processing add worksheet task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
@@ -729,14 +795,14 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing add worksheet task: %s",
+        logger_log_info(" ———————————— Finished processing add worksheet task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理删除工作表任务
     void FileTaskProcessor::processRemoveWorksheetTask(const FileTask &task)
     {
-        logger_log_info("Processing remove worksheet task: %s",
+        logger_log_info(" ------------ Processing remove worksheet task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
 
         try
@@ -793,14 +859,14 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing remove worksheet task: %s",
+        logger_log_info(" ———————————— Finished processing remove worksheet task: %s",
                         filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
     }
 
     // 处理重命名工作表任务
     void FileTaskProcessor::processRenameWorksheetTask(const FileTask &task)
     {
-        logger_log_info("Processing rename worksheet task: %s", task.filename.c_str());
+        logger_log_info(" ------------ Processing rename worksheet task: %s", task.filename.c_str());
 
         try
         {
@@ -854,12 +920,12 @@ namespace filemanager
             return;
         }
 
-        logger_log_info("Finished processing rename worksheet task: %s", task.filename.c_str());
+        logger_log_info(" ———————————— Finished processing rename worksheet task: %s", task.filename.c_str());
     }
     // 处理重命名文件任务
     void FileTaskProcessor::processRenameFileTask(const FileTask &task)
     {
-        logger_log_info("Processing rename file task: %s", ensureOdsExtension(task.filename).c_str());
+        logger_log_info(" ------------ Processing rename file task: %s", ensureOdsExtension(task.filename).c_str());
 
         try
         {
@@ -915,13 +981,15 @@ namespace filemanager
 
             // 首先关闭源文件，如果已加载
             std::string docId = filemanager::DocumentManager::getInstance().openDocument(convertOUStringToString(oldAbsoluteFilePath), filemanager::DocumentType::SPREADSHEET);
-            if (!docId.empty()) {
+            if (!docId.empty())
+            {
                 filemanager::DocumentManager::getInstance().closeDocument(docId);
             }
 
             // 检查目标文件是否存在
             FileInfo fileInfo = filemanager::FileQueueManager::getInstance().getFileInfo(newFilename);
-            if (fileInfo.filename == newFilename && fileInfo.status != FILE_STATUS_NOT_FOUND) {
+            if (fileInfo.filename == newFilename && fileInfo.status != FILE_STATUS_NOT_FOUND)
+            {
                 logger_log_error("file %s exists:", newFilename.c_str());
                 filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Target file already exists");
                 return; // 如果新文件名存在直接返回报错
@@ -965,13 +1033,13 @@ namespace filemanager
             filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown exception occurred");
         }
 
-        logger_log_info("Finished processing rename file task: %s", ensureOdsExtension(task.filename).c_str());
+        logger_log_info(" ———————————— Finished processing rename file task: %s", ensureOdsExtension(task.filename).c_str());
     }
 
     // 处理获取工作表数据任务
     void FileTaskProcessor::processSheetDataTask(const FileTask &task)
     {
-        logger_log_info("Processing sheet data task");
+        logger_log_info(" ------------ Processing sheet data task");
 
         try
         {
@@ -1003,7 +1071,7 @@ namespace filemanager
             logger_log_error("Unknown exception in processSheetDataTask");
         }
 
-        logger_log_info("Finished processing sheet data task");
+        logger_log_info(" ———————————— Finished processing sheet data task");
     }
 
     // 移除文件信息

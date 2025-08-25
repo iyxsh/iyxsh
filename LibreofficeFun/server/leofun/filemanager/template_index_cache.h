@@ -47,10 +47,20 @@ namespace filemanager
         // languageType -> bodyname -> character -> CharacterInfo
         std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::vector<CharacterInfo>>>> data;
 
+        // 检查数据是否为空
+        bool isEmpty() const
+        {
+            return data.empty();
+        }
+
         // 构建索引
         void build(const std::vector<LanguageGroup> &groups)
         {
             data.clear();
+            if (groups.empty())
+            {
+                return; // 空数据直接返回
+            }
             for (const auto &group : groups)
             {
                 std::unordered_set<std::string> seenBodies;
@@ -81,6 +91,8 @@ namespace filemanager
         std::vector<TextCharInfo> query(const std::string &languageType, const std::string &bodyname, const std::string &character) const
         {
             std::vector<TextCharInfo> result;
+            if (data.empty())
+                return result;
             auto langIt = data.find(languageType);
             if (langIt == data.end())
                 return result;
@@ -101,6 +113,8 @@ namespace filemanager
         std::vector<TextCharInfo> queryByBody(const std::string &languageType, const std::string &bodyname) const
         {
             std::vector<TextCharInfo> result;
+            if (data.empty())
+                return result;
             auto langIt = data.find(languageType);
             if (langIt == data.end())
                 return result;
@@ -121,6 +135,8 @@ namespace filemanager
         std::vector<TextCharInfo> queryAll(const std::string &character) const
         {
             std::vector<TextCharInfo> result;
+            if (data.empty())
+                return result;
             for (const auto &langPair : data)
             {
                 const std::string &languageType = langPair.first;
@@ -144,6 +160,8 @@ namespace filemanager
         std::vector<TextCharInfo> getAll() const
         {
             std::vector<TextCharInfo> result;
+            if (data.empty())
+                return result;
             for (const auto &langPair : data)
             {
                 const std::string &languageType = langPair.first;
