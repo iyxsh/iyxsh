@@ -79,11 +79,10 @@ set(HEADERS
 add_executable(${PROJECT_NAME} ${GUI_TYPE} ${SOURCES} ${HEADERS})
 
 # 设置包含目录
-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} /usr/local/lib/libreoffice/sdk/include /usr/local/lib/libreoffice/sdk/cppheaders)
 # 链接系统库
 if(WIN32) # windows
+    target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ./include/Windows/libreoffice)
     set(UNO_LIB_PATH "/usr/local/lib/libreoffice/sdk/lib")
-    set(LEPRO_LIB_PATH "/usr/local/lib/libreoffice/program")
     # LibreOffice UNO C++ 库
     target_link_libraries(${PROJECT_NAME}
         ${UNO_LIB_PATH}/uno_cppuhelper.lib
@@ -93,8 +92,8 @@ if(WIN32) # windows
     #find_library(SWE_LIB NAMES swedll32 PATHS ${UNO_LIB_PATH})
     #target_link_libraries(${PROJECT_NAME} ${UNO_LIB_PATH}/swedll32.lib)
 elseif(APPLE) #macos
+    target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ./include/Apple/libreoffice)
     set(UNO_LIB_PATH "/usr/local/lib/libreoffice/sdk/lib")
-    set(LEPRO_LIB_PATH "/usr/local/lib/libreoffice/program")
     # LibreOffice UNO C++ 库
     target_link_libraries(${PROJECT_NAME}
         ${UNO_LIB_PATH}/libuno_cppuhelper.dylib
@@ -105,8 +104,8 @@ elseif(APPLE) #macos
     #target_link_libraries(${PROJECT_NAME} ${UNO_LIB_PATH}/libswe.a)
 elseif(UNIX AND NOT APPLE)
     if(CMAKE_SYSTEM_NAME MATCHES "Android")
+        target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ./include/Android/libreoffice)
         set(UNO_LIB_PATH "/usr/local/lib/libreoffice/sdk/lib")
-        set(LEPRO_LIB_PATH "/usr/local/lib/libreoffice/program")
         # LibreOffice UNO C++ 库
         target_link_libraries(${PROJECT_NAME}
             ${UNO_LIB_PATH}/libuno_cppuhelpergcc3.so.3
@@ -117,6 +116,8 @@ elseif(UNIX AND NOT APPLE)
         #target_link_libraries(${PROJECT_NAME} ${UNO_LIB_PATH}/swedll32.a)
     else()    # linux
         #set(UNO_LIB_PATH "/usr/local/lib/libreoffice/sdk/lib")
+        target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ./include/FreeBSD/libreoffice ./sdk/FreeBSD/sdk/cppheaders)
+
         add_definitions(-DLINUX)
         # 添加编译选项
         add_compile_options(-finput-charset=UTF-8)
@@ -129,11 +130,10 @@ elseif(UNIX AND NOT APPLE)
         find_package(Threads REQUIRED)
         message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
         message(STATUS "OpenSSL libraries: ${OPENSSL_LIBRARIES}")
-        # LibreOffice UNO C++ 库
         # 优先查找常见的 libreoffice program 路径
-        find_library(UNO_CPPUHELPER NAMES uno_cppuhelper libuno_cppuhelpergcc3.so.3 HINTS /usr/lib/libreoffice/program /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
-        find_library(UNO_CPPU NAMES uno_cppu libuno_cppu.so.3 HINTS /usr/lib/libreoffice/program /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
-        find_library(UNO_SAL NAMES uno_sal libuno_sal.so.3 HINTS /usr/lib/libreoffice/program /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
+        find_library(UNO_CPPUHELPER NAMES uno_cppuhelper libuno_cppuhelpergcc3.so.3 HINTS /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
+        find_library(UNO_CPPU NAMES uno_cppu libuno_cppu.so.3 HINTS /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
+        find_library(UNO_SAL NAMES uno_sal libuno_sal.so.3 HINTS /usr/local/lib/libreoffice/program /usr/lib /usr/local/lib)
         message(STATUS "UNO_CPPUHELPER: ${UNO_CPPUHELPER}")
         message(STATUS "UNO_CPPU: ${UNO_CPPU}")
         message(STATUS "UNO_SAL: ${UNO_SAL}")

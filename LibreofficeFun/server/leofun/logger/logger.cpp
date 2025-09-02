@@ -54,11 +54,24 @@ static int sort_backup(const struct dirent **a, const struct dirent **b);
 // 创建日志文件
 static int create_log_file() {
     if (g_logger.path) {
-        g_logger.file = fopen(g_logger.path, "a");
+        // 以二进制模式打开，避免Windows下的CRLF转换和编码问题
+        g_logger.file = fopen(g_logger.path, "ab");
         if (!g_logger.file) {
             perror("无法创建日志文件");
             return -1;
         }
+        
+        // 检查文件大小，如果是新文件则写入UTF-8 BOM
+        fseek(g_logger.file, 0, SEEK_END);
+        long fileSize = ftell(g_logger.file);
+        rewind(g_logger.file);
+        
+        if (fileSize == 0) {
+            // 写入UTF-8 BOM (0xEF, 0xBB, 0xBF)
+            const unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+            fwrite(bom, sizeof(unsigned char), 3, g_logger.file);
+        }
+        
         // 设置行缓冲
         setvbuf(g_logger.file, NULL, _IOLBF, BUFSIZ);
         return 0;
@@ -319,11 +332,24 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
     
     // 写入日志内容
     if (result >= 0) {
+        // 在Windows环境下确保UTF-8字符串正确输出
+        #ifdef _WIN32
+        // 对于Windows系统，使用fwrite直接写入UTF-8字节
+        char buffer[4096];
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        result = fwrite(buffer, sizeof(char), strlen(buffer), g_logger.file);
+        if (result < 0) {
+            fflush(g_logger.file);
+            result = fwrite(buffer, sizeof(char), strlen(buffer), g_logger.file);
+        }
+        #else
+        // 其他系统继续使用vfprintf
         result = vfprintf(g_logger.file, format, args);
         if (result < 0) {
             fflush(g_logger.file);
             result = vfprintf(g_logger.file, format, args);
         }
+        #endif
     }
     
     // 写入换行符
@@ -347,12 +373,41 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
                 filename = strrchr(file, '\\');
             }
             filename = filename ? filename + 1 : file;
+            
+            #ifdef _WIN32
+            // Windows下使用fwrite输出到标准错误
+            char headerBuffer[256];
+            snprintf(headerBuffer, sizeof(headerBuffer), "[%s] [%s] [%s:%d] ", timestr, log_level_names[level], filename, line);
+            fwrite(headerBuffer, sizeof(char), strlen(headerBuffer), stderr);
+            
+            char contentBuffer[4096];
+            vsnprintf(contentBuffer, sizeof(contentBuffer), format, args);
+            fwrite(contentBuffer, sizeof(char), strlen(contentBuffer), stderr);
+            fwrite("\n", sizeof(char), 1, stderr);
+            #else
+            // 其他系统继续使用标准输出函数
             fprintf(stderr, "[%s] [%s] [%s:%d] ", timestr, log_level_names[level], filename, line);
+            vfprintf(stderr, format, args);
+            fprintf(stderr, "\n");
+            #endif
         } else {
+            #ifdef _WIN32
+            // Windows下使用fwrite输出到标准错误
+            char headerBuffer[256];
+            snprintf(headerBuffer, sizeof(headerBuffer), "[%s] [%s] ", timestr, log_level_names[level]);
+            fwrite(headerBuffer, sizeof(char), strlen(headerBuffer), stderr);
+            
+            char contentBuffer[4096];
+            vsnprintf(contentBuffer, sizeof(contentBuffer), format, args);
+            fwrite(contentBuffer, sizeof(char), strlen(contentBuffer), stderr);
+            fwrite("\n", sizeof(char), 1, stderr);
+            #else
+            // 其他系统继续使用标准输出函数
             fprintf(stderr, "[%s] [%s] ", timestr, log_level_names[level]);
+            vfprintf(stderr, format, args);
+            fprintf(stderr, "\n");
+            #endif
         }
-        vfprintf(stderr, format, args);
-        fprintf(stderr, "\n");
     }
     
     pthread_mutex_unlock(&g_logger.mutex);

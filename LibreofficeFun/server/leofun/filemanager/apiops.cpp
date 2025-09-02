@@ -330,7 +330,7 @@ namespace filemanager
         // 如果有上送的文件名采用重命名逻辑实现
         if (!inputfileName.empty())
         {
-            // 创建文件任务
+            // 重命名文件任务
             filemanager::FileTask task;
             task.type = filemanager::TASK_RENAME_FILE;
             task.filename = fileName;

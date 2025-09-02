@@ -9,6 +9,7 @@
 #include <thread>
 #include <memory>
 #include <chrono>
+#include <vector>
 #include "../cJSON/cJSON.h" // 使用相对当前文件的路径
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/lang/XComponent.hpp>
@@ -151,7 +152,7 @@ namespace filemanager
         bool getNextTask(FileTask &task);
 
         // 等待文件状态变化
-        bool waitForFileStatus(const std::string &filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds);
+        bool waitForFileStatus(const std::string &filename, const std::vector<FileStatus>& targetStatuses, int timeoutSeconds);
 
         // 启动任务处理线程
         void startTaskProcessor();

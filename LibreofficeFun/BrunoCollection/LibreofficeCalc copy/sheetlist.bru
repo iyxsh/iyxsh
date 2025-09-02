@@ -1,0 +1,15 @@
+meta {
+  name: sheetlist
+  type: http
+  seq: 12
+}
+
+post {
+  url: https://192.168.0.6:8443/api/sheetlist
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {"filename":"搞大幅度"}
+}

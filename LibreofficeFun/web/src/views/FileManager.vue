@@ -1,21 +1,21 @@
 <template>
   <div class="file-manager">
-    <h1>修文管理器</h1>
+    <h1>内容管理</h1>
 
     <!-- 导航区域 -->
     <div class="navigation">
       <router-link to="/" class="home-link">返回首页</router-link>
     </div>
 
-    <!-- 修文列表区域 -->
+    <!-- 内容列表区域 -->
     <div class="file-list-container">
       <el-card class="file-list-card">
         <template #header>
           <div class="card-header">
-            <span>修文列表</span>
+            <span>内容列表</span>
             <div>
               <el-button type="primary" @click="showAddFileDialog" size="small">
-                添加修文
+                添加内容
               </el-button>
               <el-button type="primary" @click="loadFileList" :loading="loading" size="small">
                 刷新
@@ -26,7 +26,7 @@
 
         <el-table :data="fileList" v-loading="loading" highlight-current-row @row-click="handleFileSelect"
           style="width: 100%">
-          <el-table-column prop="name" label="修文名" width="200"></el-table-column>
+          <el-table-column prop="name" label="内容名称" width="200"></el-table-column>
           <el-table-column prop="status" label="状态" width="120"></el-table-column>
           <el-table-column prop="modified" label="修改时间" width="200">
             <template #default="scope">
@@ -56,7 +56,7 @@
       <el-card class="file-content-card">
         <template #header>
           <div class="card-header">
-            <span>修文内容: {{ selectedFile.name }}</span>
+            <span>内容名称: {{ selectedFile.name }}</span>
             <div>
               <el-button type="success" @click="useInPageManager" size="small">
                 在页面管理器中使用
@@ -69,17 +69,17 @@
         <div class="file-content">
           <pre v-if="fileContent">{{ JSON.stringify(fileContent, null, 2) }}</pre>
           <div v-else class="no-content">
-            未加载修文内容
+            未加载内容
           </div>
         </div>
       </el-card>
     </div>
 
     <!-- 添加修文对话框 -->
-    <el-dialog v-model="addFileDialogVisible" title="添加修文" width="500px">
+    <el-dialog v-model="addFileDialogVisible" title="添加内容" width="500px">
       <el-form>
-        <el-form-item label="修文名称">
-          <el-input v-model="newFileName" placeholder="请输入修文名称"></el-input>
+        <el-form-item label="内容名称">
+          <el-input v-model="newFileName" placeholder="请输入内容名称"></el-input>
         </el-form-item>
       </el-form>
       <template #footer>

@@ -1,0 +1,17 @@
+meta {
+  name: renamefile
+  type: http
+  seq: 9
+}
+
+post {
+  url: https://192.168.0.6:8443/api/renamefile
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "oldFilename":"好嘞好嘞健康","newFilename":"福大福都是"
+  }
+}

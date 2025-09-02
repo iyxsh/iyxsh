@@ -3,57 +3,45 @@ import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
 export default defineConfig({
-  // 添加 define 配置
-  define: {
-    __VUE_OPTIONS_API__: true,
-    __VUE_PROD_DEVTOOLS__: false,
-    process: {
-      env: {}
-    }
-  },
   plugins: [
     vue()
   ],
-  // 明确指定构建选项
   build: {
-    // 调整块大小警告限制
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1000, // 调整chunk大小警告限制为1000kB
     rollupOptions: {
-      external: [],
-      // 添加详细的输入配置
-      input: {
-        main: path.resolve(__dirname, './index.html')
-      },
-      // 添加 manualChunks 配置以改善代码分割
       output: {
-        manualChunks: {
-          // 将第三方库单独打包
-          'vue-vendor': ['vue', 'vue-router', 'pinia'],
-          'element-plus': ['element-plus'],
-          'axios': ['axios']
+        // 手动配置chunk分割
+        manualChunks(id) {
+          // 将大型依赖分离到单独的chunk中
+          if (id.includes('node_modules')) {
+            if (id.includes('element-plus')) {
+              return 'element-plus'
+            } else if (id.includes('axios')) {
+              return 'axios'
+            } else if (id.includes('lodash')) {
+              return 'lodash'
+            } else if (id.includes('@vueuse')) {
+              return 'vueuse'
+            } else if (id.includes('pinia')) {
+              return 'pinia'
+            } else if (id.includes('@vue')) {
+              return 'vue'
+            }
+            // 其他第三方库统一放在vendors chunk中
+            return 'vendors'
+          }
         }
       }
     }
   },
-  // 配置别名
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@components': path.resolve(__dirname, './src/components'),
-      '@pages': path.resolve(__dirname, './src/pages'),
-      '@utils': path.resolve(__dirname, './src/utils')
+      '@': path.resolve(__dirname, './src')
     },
-    // 确保正确解析.vue文件
     extensions: ['.js', '.vue', '.json', '.css', '.scss','.ts']
   },
-  // 配置服务器选项
   server: {
-    open: true,
     port: 3000,
-    strictPort: false,
-    host: true,
-    watch: {
-      usePolling: true
-    }
+    host: true
   }
 })

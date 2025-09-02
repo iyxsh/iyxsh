@@ -1,4 +1,3 @@
-// service-worker.js
 // PWA Service Worker，支持缓存静态资源和API数据，后台同步
 
 const CACHE_NAME = 'libreofficefun-cache-v1';
@@ -9,35 +8,16 @@ const STATIC_ASSETS = [
   '/src/main.js',
   '/src/App.vue',
   '/src/style.css',
-  '/vite.svg'
-  // 自动缓存所有 /assets/ 下静态资源
+  '/logo.svg'
 ];
 
+// 修复语法错误和重复的install事件监听器
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       // 预缓存静态资源
       await cache.addAll(STATIC_ASSETS);
-      // 动态缓存 /assets/ 下所有静态文件
-      try {
-        const assets = await fetch('/assets-manifest.json').then(res => res.json());
-        if (Array.isArray(assets)) {
-          await cache.addAll(assets);
-        }
-      } catch (e) {
-        // 忽略 manifest 加载失败
-      }
       return;
-    })
-  );
-  self.skipWaiting();
-});
-];
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS);
     })
   );
   self.skipWaiting();
@@ -56,14 +36,24 @@ self.addEventListener('activate', event => {
 });
 
 // 拦截fetch请求，静态资源优先缓存，API数据支持后台同步
+// 为SSL环境优化fetch处理
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+  
+  // 确保只处理本域请求，避免跨域SSL问题
+  if (url.origin !== self.origin) {
+    return;
+  }
+  
+  // 为开发环境添加宽松的安全策略
+  const request = event.request;
+  
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
-      caches.match(event.request).then(response => {
-        return response || fetch(event.request).then(res => {
+      caches.match(request).then(response => {
+        return response || fetch(request).then(res => {
           return caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, res.clone());
+            cache.put(request, res.clone());
             return res;
           });
         });
@@ -71,18 +61,21 @@ self.addEventListener('fetch', event => {
     );
   } else if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(event.request)
+      fetch(request, {
+        credentials: 'same-origin',
+        redirect: 'follow'
+      })
         .then(res => {
           // API数据缓存
           const clonedRes = res.clone();
           caches.open(API_CACHE_NAME).then(cache => {
-            cache.put(event.request, clonedRes);
+            cache.put(request, clonedRes);
           });
           return res;
         })
         .catch(() => {
           // 离线时返回缓存API数据
-          return caches.match(event.request);
+          return caches.match(request);
         })
     );
   }
@@ -140,7 +133,9 @@ async function syncApiQueue() {
       await fetch(item.url, {
         method: item.method,
         headers: item.headers,
-        body: item.body
+        body: item.body,
+        credentials: 'same-origin',
+        redirect: 'follow'
       });
     } catch (e) {
       // 后台同步失败，保留队列

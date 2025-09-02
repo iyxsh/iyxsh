@@ -1,0 +1,34 @@
+[Unit]
+Description=LibreofficeFun Server
+After=network.target
+Documentation=https://example.com/docs
+
+[Service]
+Type=forking
+User=root
+WorkingDirectory=<PROJECT_PATH>/bin
+Environment=URE_BOOTSTRAP=file:///usr/local/lib/libreoffice/program/fundamentalrc
+ExecStart=<PROJECT_PATH>/bin/start.sh
+ExecStop=<PROJECT_PATH>/bin/stop.sh
+Restart=on-failure
+RestartSec=5s
+# 限制资源使用
+MemoryLimit=2G
+CPUQuota=50%
+# 日志配置
+StandardOutput=append:<PROJECT_PATH>/log/systemd.log
+StandardError=append:<PROJECT_PATH>/log/systemd_error.log
+# 超时设置
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+
+# 使用说明：
+# 1. 将<PROJECT_PATH>替换为实际的项目路径，例如：/opt/LibreofficeFun/server
+# 2. 将此文件复制到/etc/systemd/system/目录
+# 3. 运行以下命令启用并启动服务：
+#    systemctl daemon-reload
+#    systemctl enable libreofficefun
+#    systemctl start libreofficefun

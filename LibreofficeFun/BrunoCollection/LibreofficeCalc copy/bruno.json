@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "LibreofficeCalc测试环境",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}

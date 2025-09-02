@@ -1,0 +1,25 @@
+meta {
+  name: newfile
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://192.168.0.6:8443/api/newfile
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filename":"见面噶第三方都是"
+  }
+}
+
+docs {
+  # 新建文件支持有body和没有body
+  有body 必须指定文件名： filename 按照此文件名生成
+  没有body
+  ## 注意
+  因为UNO API只支持单例模式，删除文件后新建同名文件会报错异常，目前采用新建文件时后台统一新建临时文件，然后进行重命名的方式进行处理
+}

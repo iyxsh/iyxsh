@@ -1,0 +1,24 @@
+meta {
+  name: default
+  type: http
+  seq: 13
+}
+
+get {
+  url: https://192.168.0.6:8443/api/default
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "text":"fdafdjsafdsajkfjdskafjdskf dsfsd发动机阿珂放假啊但是范德萨分独守空房第三方打撒客服都是,fdsjkafjdsakfjdskfjkds,l,;l,;l.,.,.,l,l,=p=----=-=-=-=\\'';''..'.'''2132132132@!#%@#@%^%#&^"
+  }
+}
+
+docs {
+  # 查询默认模板库数据
+  输入 text 内容，任意文字字符
+  body无内容，返回库中全部（全部返回buffer有限制）
+  # 此接口可以查询也可以维护公共模板，查不到就直接维护添加到公共模板文件
+}

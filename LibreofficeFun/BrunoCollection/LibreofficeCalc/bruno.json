@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "name": "LibreofficeCalc",
+  "name": "LibreofficeCalc开发环境",
   "type": "collection",
   "ignore": [
     "node_modules",

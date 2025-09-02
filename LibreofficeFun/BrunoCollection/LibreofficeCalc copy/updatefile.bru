@@ -1,0 +1,22 @@
+meta {
+  name: updatefile
+  type: http
+  seq: 3
+}
+
+post {
+  url: https://192.168.0.6:8443/api/updatefile
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {"filename":"福大福都是",
+  "updatedata":[{
+    "sheetname":"Sheet1",
+    "updatecells":{"额官的呀":"A1","额官的呀":"A2","额官的呀":"A3"}
+  },{
+    "sheetname":"testaddsheet",
+    "updatecells":{"额官的呀":"A1","额官的呀":"A2","额官的呀":"A3"}
+  }]}
+}

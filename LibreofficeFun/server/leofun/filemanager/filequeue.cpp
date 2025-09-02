@@ -191,11 +191,20 @@ namespace filemanager
     {
         logger_log_info("Stopping task processor...");
         
-        // 设置停止标志
-        {
-            std::lock_guard<std::mutex> lock(taskMutex);
+        // 设置停止标志并通知条件变量，避免在FreeBSD上出现线程队列错误
+        {   
+            // 首先锁定任务互斥量
+            std::unique_lock<std::mutex> lock(taskMutex);
+            
+            // 设置停止标志
             shouldStop = true;
+            
+            // 在持有锁的情况下通知条件变量
+            // 这确保了通知不会在设置shouldStop之前发出，避免竞态条件
+            logger_log_info("Notifying all waiting threads and setting stop flag...");
+            taskCondition.notify_all();
         }
+        // 锁在此处自动释放，以避免在join期间持有锁
         
         // 关闭所有未关闭的文件
         logger_log_info("Closing all open files...");
@@ -252,13 +261,31 @@ namespace filemanager
         
         logger_log_info("Closed %d files during task processor shutdown", closedFileCount);
         
-        // 通知条件变量，唤醒可能在等待的线程
-        taskCondition.notify_all();
-        
         // 等待任务处理线程结束
-        if (taskProcessorThread.joinable())
+        try
         {
-            taskProcessorThread.join();
+            if (taskProcessorThread.joinable())
+            {
+                logger_log_info("Waiting for task processor thread to join...");
+                taskProcessorThread.join();
+                logger_log_info("Task processor thread joined successfully");
+            }
+        }
+        catch (const std::system_error& e)
+        {
+            logger_log_error("System error when joining thread: %s", e.what());
+            logger_log_error("Error code: %d, Category: %s", e.code().value(), e.code().category().name());
+            // 记录错误但继续执行，避免程序崩溃
+        }
+        catch (const std::exception& e)
+        {
+            logger_log_error("Exception when joining thread: %s", e.what());
+            // 记录错误但继续执行，避免程序崩溃
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown error when joining thread");
+            // 记录错误但继续执行，避免程序崩溃
         }
         
         logger_log_info("File task processor stopped");
@@ -267,62 +294,123 @@ namespace filemanager
     // 任务处理线程函数
     void FileQueueManager::processTasks()
     {
-        while (!shouldStop)
+        logger_log_info("Task processor thread started");
+        
+        try
         {
-            FileTask task;
+            while (true)
             {
-                std::unique_lock<std::mutex> lock(taskMutex);
-                taskCondition.wait(lock, [this]
-                                   { return !taskQueue.empty() || shouldStop; });
-
-                if (shouldStop)
-                    break;
-
-                task = taskQueue.front();
-                taskQueue.pop();
-            }
-
-            switch (task.type)
-            {
-            case TASK_CREATE_FILE:
-                taskProcessor.processCreateFileTask(task);
-                break;
-            case TASK_UPDATE_FILE:
-                taskProcessor.processUpdateFileTask(task);
-                break;
-            case TASK_CLOSE_FILE:
-                taskProcessor.processCloseFileTask(task);
-                break;
-            case TASK_DELETE_FILE:
-                taskProcessor.processDeleteFileTask(task);
-                break;
-            case TASK_UPDATE_TEMPLATE:
-                taskProcessor.processUpdateTemplateTask(task);
-                break;
-            case TASK_ADD_WORKSHEET:
-                taskProcessor.processAddWorksheetTask(task);
-                break;
-            case TASK_REMOVE_WORKSHEET:
-                taskProcessor.processRemoveWorksheetTask(task);
-                break;
-            case TASK_RENAME_WORKSHEET:
-                taskProcessor.processRenameWorksheetTask(task);
-                break;
-            case TASK_RENAME_FILE:
-                taskProcessor.processRenameFileTask(task);
-                break;
-            case TASK_SHEET_DATA:
-                taskProcessor.processSheetDataTask(task);
-                break;
-            default:
-                logger_log_error("Unknown task type for file: %s", task.filename.c_str());
-                break;
+                FileTask task;
+                bool taskAvailable = false;
+                
+                {
+                    std::unique_lock<std::mutex> lock(taskMutex);
+                    
+                    // 检查是否应该停止（在获取锁之后立即检查）
+                    if (shouldStop)
+                    {
+                        logger_log_info("Task processor received stop signal, exiting...");
+                        break;
+                    }
+                    
+                    // 等待任务或停止信号
+                    // 使用wait的谓词形式确保只在条件满足时返回，避免虚假唤醒
+                    taskCondition.wait(lock, [this] { return !taskQueue.empty() || shouldStop; });
+                    
+                    // 再次检查是否应该停止（防止虚假唤醒）
+                    if (shouldStop)
+                    {
+                        logger_log_info("Task processor received stop signal after wait, exiting...");
+                        break;
+                    }
+                    
+                    // 如果队列非空，获取任务
+                    if (!taskQueue.empty())
+                    {
+                        task = taskQueue.front();
+                        taskQueue.pop();
+                        taskAvailable = true;
+                    }
+                }
+                
+                // 如果有任务要处理，在锁外处理任务
+                if (taskAvailable)
+                {
+                    try
+                    {
+                        logger_log_info("Processing task type %d for file: %s", task.type, task.filename.c_str());
+                        
+                        switch (task.type)
+                        {
+                        case TASK_CREATE_FILE:
+                            taskProcessor.processCreateFileTask(task);
+                            break;
+                        case TASK_UPDATE_FILE:
+                            taskProcessor.processUpdateFileTask(task);
+                            break;
+                        case TASK_CLOSE_FILE:
+                            taskProcessor.processCloseFileTask(task);
+                            break;
+                        case TASK_DELETE_FILE:
+                            taskProcessor.processDeleteFileTask(task);
+                            break;
+                        case TASK_UPDATE_TEMPLATE:
+                            taskProcessor.processUpdateTemplateTask(task);
+                            break;
+                        case TASK_ADD_WORKSHEET:
+                            taskProcessor.processAddWorksheetTask(task);
+                            break;
+                        case TASK_REMOVE_WORKSHEET:
+                            taskProcessor.processRemoveWorksheetTask(task);
+                            break;
+                        case TASK_RENAME_WORKSHEET:
+                            taskProcessor.processRenameWorksheetTask(task);
+                            break;
+                        case TASK_RENAME_FILE:
+                            taskProcessor.processRenameFileTask(task);
+                            break;
+                        case TASK_SHEET_DATA:
+                            taskProcessor.processSheetDataTask(task);
+                            break;
+                        default:
+                            logger_log_error("Unknown task type for file: %s", task.filename.c_str());
+                            break;
+                        }
+                    }
+                    catch (const std::exception& e)
+                    {
+                        logger_log_error("Exception processing task for file %s: %s", task.filename.c_str(), e.what());
+                        // 更新文件状态为错误
+                        updateFileStatus(task.filename, FILE_STATUS_ERROR, std::string("Task processing error: ") + e.what());
+                    }
+                    catch (...)
+                    {
+                        logger_log_error("Unknown exception processing task for file: %s", task.filename.c_str());
+                        // 更新文件状态为错误
+                        updateFileStatus(task.filename, FILE_STATUS_ERROR, "Unknown task processing error");
+                    }
+                }
             }
         }
+        catch (const std::system_error& e)
+        {
+            logger_log_error("System error in task processor thread: %s", e.what());
+            logger_log_error("Error code: %d, Category: %s", e.code().value(), e.code().category().name());
+        }
+        catch (const std::exception& e)
+        {
+            logger_log_error("Exception in task processor thread: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown error in task processor thread");
+        }
+        
+        logger_log_info("Task processor thread exited");
     }
 
     // 等待文件状态变化
-    bool FileQueueManager::waitForFileStatus(const std::string &filename, FileStatus targetStatus1, FileStatus targetStatus2, int timeoutSeconds)
+    bool FileQueueManager::waitForFileStatus(const std::string &filename, const std::vector<FileStatus>& targetStatuses, int timeoutSeconds)
     {
         try
         {
@@ -330,15 +418,26 @@ namespace filemanager
             auto now = std::chrono::system_clock::now();
             auto timeout = now + std::chrono::seconds(timeoutSeconds);
 
+            // 检查目标状态列表是否为空
+            if (targetStatuses.empty())
+            {
+                logger_log_error("waitForFileStatus called with empty target status list");
+                return false;
+            }
+
             // 检查当前状态是否已经符合要求
             auto it = fileStatusMap.find(filename);
             if (it != fileStatusMap.end())
             {
                 FileStatus currentStatus = it->second.status;
-                if (currentStatus == targetStatus1 || currentStatus == targetStatus2)
+                // 检查当前状态是否在目标状态列表中
+                for (const auto& targetStatus : targetStatuses)
                 {
-                    logger_log_info("File %s already in target status %d", filename.c_str(), currentStatus);
-                    return true;
+                    if (currentStatus == targetStatus)
+                    {
+                        logger_log_info("File %s already in target status %d", filename.c_str(), currentStatus);
+                        return true;
+                    }
                 }
             }
             else
@@ -347,6 +446,14 @@ namespace filemanager
                 // 因为新文件或没有状态记录的文件可以被更新
                 logger_log_info("File %s not found in status map, treating as ready for processing", filename.c_str());
                 return true;
+            }
+
+            // 构建目标状态字符串用于日志
+            std::string targetStatusStr;
+            for (size_t i = 0; i < targetStatuses.size(); ++i)
+            {
+                if (i > 0) targetStatusStr += ", ";
+                targetStatusStr += std::to_string(static_cast<int>(targetStatuses[i]));
             }
 
             // 等待状态变化或超时
@@ -358,8 +465,8 @@ namespace filemanager
                 // 检查是否超时
                 if (cvStatus == std::cv_status::timeout)
                 {
-                    logger_log_error("Timeout waiting for file %s to reach status %d or %d",
-                                     filename.c_str(), targetStatus1, targetStatus2);
+                    logger_log_error("Timeout waiting for file %s to reach status(es): %s",
+                                     filename.c_str(), targetStatusStr.c_str());
                     return false;
                 }
 
@@ -368,10 +475,14 @@ namespace filemanager
                 if (it != fileStatusMap.end())
                 {
                     FileStatus currentStatus = it->second.status;
-                    if (currentStatus == targetStatus1 || currentStatus == targetStatus2)
+                    // 检查当前状态是否在目标状态列表中
+                    for (const auto& targetStatus : targetStatuses)
                     {
-                        logger_log_info("File %s reached target status %d", filename.c_str(), currentStatus);
-                        return true;
+                        if (currentStatus == targetStatus)
+                        {
+                            logger_log_info("File %s reached target status %d", filename.c_str(), currentStatus);
+                            return true;
+                        }
                     }
 
                     // 如果文件出错，也返回失败
@@ -416,7 +527,7 @@ namespace filemanager
         return false;
     }
 
-    // 处理文件创建任务
+    // 处理文件创建任务 统一生成后台默认规则的文件名，实际文件名通过重命名来实现，所以此任务处理完毕文件状态未 FILE_STATUS_CREATED
     void FileTaskProcessor::processCreateFileTask(const FileTask &task)
     {
         logger_log_info(" ------------ Processing create file task: %s",
@@ -425,7 +536,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为创建状态或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_CREATED, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_CREATED, FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for creating, timeout or error occurred",
@@ -441,8 +553,8 @@ namespace filemanager
             int res = filemanager::createfile(task.filename);
             if (res == 0)
             {
-                // 更新文件状态为就绪
-                filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_READY);
+                // 更新文件状态为创建
+                filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_CREATED);
                 logger_log_info("Successfully created file: %s",
                                 filemanager::convertOUStringToString(filemanager::convertStringToOUString(task.filename.c_str())).c_str());
             }
@@ -481,7 +593,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为就绪或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_READY, FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for updating, timeout or error occurred",
@@ -744,7 +857,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为就绪或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_READY, FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for adding worksheet, timeout or error occurred",
@@ -808,7 +922,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为就绪或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_CREATED, FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for removing worksheet, timeout or error occurred",
@@ -871,7 +986,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为就绪或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_CREATED, FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for renaming worksheet, timeout or error occurred", task.filename.c_str());
@@ -930,7 +1046,8 @@ namespace filemanager
         try
         {
             // 等待文件状态变为就绪或关闭状态
-            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, FILE_STATUS_READY, FILE_STATUS_CLOSED, 30);
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_CREATED, FILE_STATUS_READY,FILE_STATUS_CLOSED};
+            bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {
                 logger_log_error("File %s is not ready for renaming, timeout or error occurred", ensureOdsExtension(task.filename).c_str());

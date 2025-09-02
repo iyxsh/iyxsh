@@ -1,0 +1,23 @@
+meta {
+  name: sheetdata
+  type: http
+  seq: 11
+}
+
+post {
+  url: https://192.168.0.6:8443/api/sheetdata
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "filename":"哈佛的身份",
+    "sheetname":"Sheet1",
+    "pageSize":10,
+    "pageIndex":0,
+    "batchSize":0,
+    "enableStreaming":false,
+    "enableCompression":false
+  }
+}
