@@ -260,26 +260,68 @@ export default {
     const loadFileList = async () => {
       try {
         loading.value = true;
-        // 使用ApiService新功能获取修文列表
-        const response = await callApi(ApiService.getFileList);
-        console.log('获取修文列表:', response);
-        if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
-          console.error('加载文件列表失败:', response);
-          ElMessage.error('加载文件列表失败: ' + (response.errorMessage || '未知错误'));
-          return;
+        // 设置最大重试次数，避免无限循环
+        const MAX_RETRIES = 5;
+        let retryCount = 0;
+        let hasSpreadsheetFiles = true;
+        let response = null;
+
+        // 循环检查并重新查询，直到没有spreadsheet_开头的文件或达到最大重试次数
+        while (hasSpreadsheetFiles && retryCount < MAX_RETRIES) {
+          // 使用ApiService新功能获取修文列表
+          response = await callApi(ApiService.getFileList);
+          console.log('获取修文列表:', response);
+          if (response.errorCode !== 1000 || response.errorMessage !== "Success") {
+            console.error('加载文件列表失败:', response);
+            ElMessage.error('加载文件列表失败: ' + (response.errorMessage || '未知错误'));
+            return;
+          }
+
+          if (Array.isArray(response.files)) {
+            // 检查是否有以spreadsheet_开头的文件
+            hasSpreadsheetFiles = response.files.some(item => 
+              item.filename && item.filename.startsWith('spreadsheet_')
+            );
+
+            if (hasSpreadsheetFiles) {
+              retryCount++;
+              console.log(`发现spreadsheet_开头的文件，正在第${retryCount}次重新查询...`);
+              // 添加短暂延迟后重新查询
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              // 没有spreadsheet_开头的文件，处理并显示文件列表
+              fileList.value = response.files.map((item, index) => ({
+                id: index,
+                name: item.filename ? removeFileExtension(item.filename) : `文件${index + 1}`,
+                status: item.filestatus || '未知',
+                modified: parseDate(item.lastModified) || new Date(),
+                type: 'ods',
+                size: item.size || 0
+              }));
+              break;
+            }
+          } else {
+            // 没有文件，直接设置为空数组
+            fileList.value = [];
+            hasSpreadsheetFiles = false;
+          }
         }
 
-        if (Array.isArray(response.files)) {
-          fileList.value = response.files.map((item, index) => ({
-            id: index,
-            name: item.filename ? removeFileExtension(item.filename) : `文件${index + 1}`,
-            status: item.filestatus || '未知',
-            modified: parseDate(item.lastModified) || new Date(),
-            type: 'ods',
-            size: item.size || 0
-          }));
-        } else {
-          fileList.value = [];
+        // 如果达到最大重试次数，仍然有spreadsheet_开头的文件，提示用户
+        if (hasSpreadsheetFiles) {
+          console.warn(`达到最大重试次数(${MAX_RETRIES})，仍然存在spreadsheet_开头的文件`);
+          // 显示当前获取的文件列表
+          if (response && Array.isArray(response.files)) {
+            fileList.value = response.files.map((item, index) => ({
+              id: index,
+              name: item.filename ? removeFileExtension(item.filename) : `文件${index + 1}`,
+              status: item.filestatus || '未知',
+              modified: parseDate(item.lastModified) || new Date(),
+              type: 'ods',
+              size: item.size || 0
+            }));
+          }
+          ElMessage.warning(`文件列表中可能包含临时文件，请稍后刷新重试`);
         }
       } catch (error) {
         console.error('加载文件列表失败:', error);

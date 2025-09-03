@@ -535,8 +535,8 @@ namespace filemanager
 
         try
         {
-            // 等待文件状态变为创建状态或关闭状态
-            std::vector<FileStatus> targetStatuses = {FILE_STATUS_CREATED, FILE_STATUS_CLOSED};
+            // 等待文件状态变为不存在或关闭状态
+            std::vector<FileStatus> targetStatuses = {FILE_STATUS_NOT_FOUND, FILE_STATUS_CLOSED};
             bool isReady = filemanager::FileQueueManager::getInstance().waitForFileStatus(task.filename, targetStatuses, 30);
             if (!isReady)
             {

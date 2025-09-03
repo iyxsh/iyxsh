@@ -324,7 +324,8 @@ namespace filemanager
         task.type = filemanager::TASK_CREATE_FILE;
         task.filename = fileName;
         task.createTime = std::time(nullptr);
-        filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_CREATED);
+        //新创建文件时状态为不存在
+        filemanager::FileQueueManager::getInstance().addFileStatus(task.filename, filemanager::FILE_STATUS_NOT_FOUND);
         filemanager::FileQueueManager::getInstance().addFileTask(task);
 
         // 如果有上送的文件名采用重命名逻辑实现
