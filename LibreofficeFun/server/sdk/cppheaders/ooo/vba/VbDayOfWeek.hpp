@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_VBDAYOFWEEK_HPP
-#define INCLUDED_OOO_VBA_VBDAYOFWEEK_HPP
-
-#include "ooo/vba/VbDayOfWeek.hdl"
-
-#endif // INCLUDED_OOO_VBA_VBDAYOFWEEK_HPP

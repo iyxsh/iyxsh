@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDANIMATION_HPP
-#define INCLUDED_OOO_VBA_WORD_WDANIMATION_HPP
-
-#include "ooo/vba/word/WdAnimation.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDANIMATION_HPP

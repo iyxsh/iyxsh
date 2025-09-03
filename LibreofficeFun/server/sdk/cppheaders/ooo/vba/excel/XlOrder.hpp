@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_EXCEL_XLORDER_HPP
-#define INCLUDED_OOO_VBA_EXCEL_XLORDER_HPP
-
-#include "ooo/vba/excel/XlOrder.hdl"
-
-#endif // INCLUDED_OOO_VBA_EXCEL_XLORDER_HPP

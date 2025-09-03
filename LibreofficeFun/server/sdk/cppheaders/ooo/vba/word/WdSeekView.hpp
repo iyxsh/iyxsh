@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDSEEKVIEW_HPP
-#define INCLUDED_OOO_VBA_WORD_WDSEEKVIEW_HPP
-
-#include "ooo/vba/word/WdSeekView.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDSEEKVIEW_HPP

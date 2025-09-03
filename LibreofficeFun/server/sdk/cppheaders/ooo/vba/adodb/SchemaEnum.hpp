@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_ADODB_SCHEMAENUM_HPP
-#define INCLUDED_OOO_VBA_ADODB_SCHEMAENUM_HPP
-
-#include "ooo/vba/adodb/SchemaEnum.hdl"
-
-#endif // INCLUDED_OOO_VBA_ADODB_SCHEMAENUM_HPP

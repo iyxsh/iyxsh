@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_UI_ITEMSTYLE_HPP
-#define INCLUDED_COM_SUN_STAR_UI_ITEMSTYLE_HPP
-
-#include "com/sun/star/ui/ItemStyle.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_UI_ITEMSTYLE_HPP

@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_UCB_OPENMODE_HPP
-#define INCLUDED_COM_SUN_STAR_UCB_OPENMODE_HPP
-
-#include "com/sun/star/ucb/OpenMode.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_UCB_OPENMODE_HPP

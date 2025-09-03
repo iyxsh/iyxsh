@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_UCB_RULEACTION_HPP
-#define INCLUDED_COM_SUN_STAR_UCB_RULEACTION_HPP
-
-#include "com/sun/star/ucb/RuleAction.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_UCB_RULEACTION_HPP

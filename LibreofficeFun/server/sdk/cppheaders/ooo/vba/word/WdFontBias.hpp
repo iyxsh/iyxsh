@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDFONTBIAS_HPP
-#define INCLUDED_OOO_VBA_WORD_WDFONTBIAS_HPP
-
-#include "ooo/vba/word/WdFontBias.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDFONTBIAS_HPP

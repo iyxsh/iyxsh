@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_SHEET_DATETYPE_HPP
-#define INCLUDED_COM_SUN_STAR_SHEET_DATETYPE_HPP
-
-#include "com/sun/star/sheet/DateType.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_SHEET_DATETYPE_HPP

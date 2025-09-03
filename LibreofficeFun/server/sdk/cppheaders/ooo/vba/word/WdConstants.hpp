@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDCONSTANTS_HPP
-#define INCLUDED_OOO_VBA_WORD_WDCONSTANTS_HPP
-
-#include "ooo/vba/word/WdConstants.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDCONSTANTS_HPP

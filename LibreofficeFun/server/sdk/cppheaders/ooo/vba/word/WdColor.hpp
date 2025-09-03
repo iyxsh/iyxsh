@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDCOLOR_HPP
-#define INCLUDED_OOO_VBA_WORD_WDCOLOR_HPP
-
-#include "ooo/vba/word/WdColor.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDCOLOR_HPP

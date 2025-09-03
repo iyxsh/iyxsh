@@ -5,6 +5,19 @@
 #include <openssl/x509v3.h>
 #include <dirent.h>
 #include <sys/stat.h>
+
+// 添加获取本机IP所需的头文件
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <iphlpapi.h>
+    #pragma comment(lib, "iphlpapi.lib")
+    #pragma comment(lib, "ws2_32.lib")
+#else
+    #include <arpa/inet.h>
+    #include <ifaddrs.h>
+    #include <netdb.h>
+    #include <unistd.h>
+#endif
 #include "./apihandle/handle.h"
 #include "./logger/logger.h"
 #include "./config/json_config.h"
@@ -42,6 +55,91 @@ struct Route
     const char *path;
     route_handler handler;
 };
+
+// 获取本机IP地址的跨平台函数
+bool getLocalIP(char *ip, size_t ip_len) {
+    if (ip == NULL || ip_len < INET_ADDRSTRLEN) {
+        return false;
+    }
+
+#ifdef _WIN32
+    // Windows平台实现
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        fprintf(stderr, "WSAStartup failed\n");
+        return false;
+    }
+
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        fprintf(stderr, "gethostname failed\n");
+        WSACleanup();
+        return false;
+    }
+
+    struct hostent *hostinfo = gethostbyname(hostname);
+    if (hostinfo == NULL) {
+        fprintf(stderr, "gethostbyname failed\n");
+        WSACleanup();
+        return false;
+    }
+
+    for (int i = 0; hostinfo->h_addr_list[i] != NULL; i++) {
+        struct sockaddr_in *addr = (struct sockaddr_in *)hostinfo->h_addr_list[i];
+        const char *temp_ip = inet_ntoa(addr->sin_addr);
+        // 跳过环回地址
+        if (strcmp(temp_ip, "127.0.0.1") != 0) {
+            strncpy(ip, temp_ip, ip_len - 1);
+            ip[ip_len - 1] = '\0';
+            WSACleanup();
+            return true;
+        }
+    }
+
+    WSACleanup();
+    return false;
+#else
+    // Linux/Unix平台实现
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[NI_MAXHOST];
+
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return false;
+    }
+
+    // 遍历所有网络接口
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL) {
+            continue;
+        }
+
+        family = ifa->ifa_addr->sa_family;
+
+        // 只处理IPv4地址
+        if (family == AF_INET) {
+            s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+                           host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+            if (s != 0) {
+                fprintf(stderr, "getnameinfo() failed: %s\n", gai_strerror(s));
+                continue;
+            }
+
+            // 跳过环回地址
+            if (strcmp(host, "127.0.0.1") != 0) {
+                strncpy(ip, host, ip_len - 1);
+                ip[ip_len - 1] = '\0';
+                freeifaddrs(ifaddr);
+                return true;
+            }
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return false;
+#endif
+}
 
 /********************** HTTPS初始化 ***********************/
 SSL_CTX *create_ssl_context()
@@ -95,7 +193,20 @@ SSL_CTX *create_ssl_context()
 
     // 添加Subject Alternative Name扩展
     ASN1_IA5STRING *ia5 = ASN1_IA5STRING_new();
-    ASN1_STRING_set(ia5, "192.168.146.128", strlen("192.168.146.128"));
+    
+    // 获取本机IP地址
+    char local_ip[INET_ADDRSTRLEN];
+    bool ip_obtained = getLocalIP(local_ip, sizeof(local_ip));
+    
+    // 如果无法获取本机IP，使用回退地址
+    if (!ip_obtained) {
+        const char *fallback_ip = "127.0.0.1";
+        fprintf(stderr, "Failed to get local IP address, using fallback: %s\n", fallback_ip);
+        strncpy(local_ip, fallback_ip, sizeof(local_ip) - 1);
+        local_ip[sizeof(local_ip) - 1] = '\0';
+    }
+    
+    ASN1_STRING_set(ia5, local_ip, strlen(local_ip));
 
     X509_EXTENSION *ext = X509V3_EXT_conf_nid(NULL, NULL,
                                               NID_subject_alt_name,

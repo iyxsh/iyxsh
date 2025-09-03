@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_VBTRISTATE_HPP
-#define INCLUDED_OOO_VBA_VBTRISTATE_HPP
-
-#include "ooo/vba/VbTriState.hdl"
-
-#endif // INCLUDED_OOO_VBA_VBTRISTATE_HPP

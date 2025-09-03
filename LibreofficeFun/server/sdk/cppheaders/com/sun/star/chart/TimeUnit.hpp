@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_CHART_TIMEUNIT_HPP
-#define INCLUDED_COM_SUN_STAR_CHART_TIMEUNIT_HPP
-
-#include "com/sun/star/chart/TimeUnit.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_CHART_TIMEUNIT_HPP

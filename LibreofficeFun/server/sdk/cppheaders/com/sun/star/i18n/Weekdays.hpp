@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_I18N_WEEKDAYS_HPP
-#define INCLUDED_COM_SUN_STAR_I18N_WEEKDAYS_HPP
-
-#include "com/sun/star/i18n/Weekdays.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_I18N_WEEKDAYS_HPP

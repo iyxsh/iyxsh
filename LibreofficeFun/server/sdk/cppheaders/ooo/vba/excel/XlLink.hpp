@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_EXCEL_XLLINK_HPP
-#define INCLUDED_OOO_VBA_EXCEL_XLLINK_HPP
-
-#include "ooo/vba/excel/XlLink.hdl"
-
-#endif // INCLUDED_OOO_VBA_EXCEL_XLLINK_HPP

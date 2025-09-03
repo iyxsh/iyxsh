@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_EMBED_ACTIONS_HPP
-#define INCLUDED_COM_SUN_STAR_EMBED_ACTIONS_HPP
-
-#include "com/sun/star/embed/Actions.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_EMBED_ACTIONS_HPP

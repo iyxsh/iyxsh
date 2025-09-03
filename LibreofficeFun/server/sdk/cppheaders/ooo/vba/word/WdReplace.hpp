@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDREPLACE_HPP
-#define INCLUDED_OOO_VBA_WORD_WDREPLACE_HPP
-
-#include "ooo/vba/word/WdReplace.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDREPLACE_HPP

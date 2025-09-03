@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_MSFORMS_FMACTION_HPP
-#define INCLUDED_OOO_VBA_MSFORMS_FMACTION_HPP
-
-#include "ooo/vba/msforms/fmAction.hdl"
-
-#endif // INCLUDED_OOO_VBA_MSFORMS_FMACTION_HPP

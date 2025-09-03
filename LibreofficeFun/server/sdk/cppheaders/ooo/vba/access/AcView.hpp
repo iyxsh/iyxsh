@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_ACCESS_ACVIEW_HPP
-#define INCLUDED_OOO_VBA_ACCESS_ACVIEW_HPP
-
-#include "ooo/vba/access/AcView.hdl"
-
-#endif // INCLUDED_OOO_VBA_ACCESS_ACVIEW_HPP

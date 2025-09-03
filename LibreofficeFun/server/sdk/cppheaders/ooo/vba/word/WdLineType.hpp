@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDLINETYPE_HPP
-#define INCLUDED_OOO_VBA_WORD_WDLINETYPE_HPP
-
-#include "ooo/vba/word/WdLineType.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDLINETYPE_HPP

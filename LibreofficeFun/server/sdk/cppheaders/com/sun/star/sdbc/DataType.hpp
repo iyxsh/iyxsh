@@ -1,6 +1,0 @@
-#ifndef INCLUDED_COM_SUN_STAR_SDBC_DATATYPE_HPP
-#define INCLUDED_COM_SUN_STAR_SDBC_DATATYPE_HPP
-
-#include "com/sun/star/sdbc/DataType.hdl"
-
-#endif // INCLUDED_COM_SUN_STAR_SDBC_DATATYPE_HPP

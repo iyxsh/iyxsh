@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDFINDWRAP_HPP
-#define INCLUDED_OOO_VBA_WORD_WDFINDWRAP_HPP
-
-#include "ooo/vba/word/WdFindWrap.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDFINDWRAP_HPP

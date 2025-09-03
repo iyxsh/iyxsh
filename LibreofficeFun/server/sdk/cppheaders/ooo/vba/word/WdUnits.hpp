@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_WORD_WDUNITS_HPP
-#define INCLUDED_OOO_VBA_WORD_WDUNITS_HPP
-
-#include "ooo/vba/word/WdUnits.hdl"
-
-#endif // INCLUDED_OOO_VBA_WORD_WDUNITS_HPP

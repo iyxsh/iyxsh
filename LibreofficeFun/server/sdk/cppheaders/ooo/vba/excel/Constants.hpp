@@ -1,6 +1,0 @@
-#ifndef INCLUDED_OOO_VBA_EXCEL_CONSTANTS_HPP
-#define INCLUDED_OOO_VBA_EXCEL_CONSTANTS_HPP
-
-#include "ooo/vba/excel/Constants.hdl"
-
-#endif // INCLUDED_OOO_VBA_EXCEL_CONSTANTS_HPP
