@@ -7,14 +7,16 @@ import { SheetListRequest, SheetListResponse } from './apiTypes';
 // 重新导入 CardGroups 类型
 import { CardGroups } from './apiTypes';
 
-// 打印环境变量信息用于调试
-console.log('VITE_APP_API_BASE_URL:', import.meta.env.VITE_APP_API_BASE_URL);
-console.log('Current Origin:', window.location.origin);
+// 仅在开发环境下输出环境变量信息用于调试
+if (import.meta.env.DEV) {
+  console.log('VITE_APP_API_BASE_URL:', import.meta.env.VITE_APP_API_BASE_URL);
+  console.log('Current Origin:', window.location.origin);
+}
 
 // 创建高级axios实例，支持更多功能
 const advancedApiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_API_BASE_URL || 'https://192.168.0.3:8443/api', // 改为HTTP协议，移除端口8443
-  timeout: 30000, // 增加超时时间以支持大数据量
+  baseURL: import.meta.env.VITE_APP_API_BASE_URL || 'https://api.example.com/api',
+  timeout: Number(import.meta.env.VITE_APP_API_TIMEOUT) || 30000, // 从环境变量获取超时时间
   headers: {
     'Content-Type': 'application/json'
   },
@@ -35,16 +37,18 @@ advancedApiClient.interceptors.request.use(
       };
     }
     
-    // 记录请求信息用于调试
-    console.log('API Request:', {
-      method: config.method?.toUpperCase(),
-      url: config.url,
-      baseURL: config.baseURL,
-      fullURL: `${config.baseURL}${config.url}`,
-      data: config.data,
-      headers: config.headers,
-      withCredentials: config.withCredentials
-    });
+    // 仅在开发环境下记录请求信息用于调试
+    if (import.meta.env.DEV) {
+      console.log('API Request:', {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        baseURL: config.baseURL,
+        fullURL: `${config.baseURL}${config.url}`,
+        data: config.data,
+        headers: config.headers,
+        withCredentials: config.withCredentials
+      });
+    }
     
     // 可以在这里添加认证token等
     return config;
@@ -58,29 +62,37 @@ advancedApiClient.interceptors.request.use(
 // 响应拦截器
 advancedApiClient.interceptors.response.use(
   (response: any) => {
-    console.log('API Response:', {
-      status: response.status,
-      data: response.data,
-      url: response.config?.url
-    });
+    // 仅在开发环境下记录响应信息用于调试
+    if (import.meta.env.DEV) {
+      console.log('API Response:', {
+        status: response.status,
+        data: response.data,
+        url: response.config?.url
+      });
+    }
     return response.data;
   },
   (error: any) => {
     // 增强的错误处理
-    console.error('Advanced API Error:', error);
+    if (import.meta.env.DEV) {
+      console.error('Advanced API Error:', error);
+    }
     
     let friendlyMessage = '网络请求失败，请稍后重试';
     let errorCategory = '未知错误';
     
     if (error.response) {
-      console.error('Error Response:', {
-        status: error.response.status,
-        statusText: error.response.statusText,
-        data: error.response.data,
-        url: error.config?.url,
-        method: error.config?.method,
-        baseURL: error.config?.baseURL
-      });
+      // 仅在开发环境下记录详细错误信息
+      if (import.meta.env.DEV) {
+        console.error('Error Response:', {
+          status: error.response.status,
+          statusText: error.response.statusText,
+          data: error.response.data,
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL
+        });
+      }
       
       // 根据状态码提供更具体的错误信息
       switch (error.response.status) {

@@ -1,14 +1,42 @@
-# 打包脚本：将dist目录所有内容和Nginx配置文件打包
+# 打包脚本：支持将生产版本(dist)或开发版本(dist-dev)的内容和Nginx配置文件打包
 
 # 确保脚本在出错时停止执行
 $ErrorActionPreference = "Stop"
 
+# 默认打包生产版本
+$buildType = "prod"
+
+# 解析命令行参数
+for ($i = 0; $i -lt $args.Length; $i++) {
+    switch ($args[$i]) {
+        "--dev" {
+            $buildType = "dev"
+        }
+        "--prod" {
+            $buildType = "prod"
+        }
+        default {
+            Write-Host "未知参数: $($args[$i])"
+            Write-Host "用法: $($MyInvocation.MyCommand.Name) [--dev|--prod]"
+            Exit 1
+        }
+    }
+}
+
+# 根据构建类型设置目录
+if ($buildType -eq "dev") {
+    $DIST_DIR = "./dist-dev"
+    $packSuffix = "dev"
+} else {
+    $DIST_DIR = "./dist"
+    $packSuffix = "prod"
+}
+
 # 定义变量
-$DIST_DIR = "./dist"
 $NGINX_CONF_PATH = "/usr/local/etc/nginx/nginx.conf"
 $PACK_OUTPUT_DIR = "./pack_output"
 $PACK_TIMESTAMP = Get-Date -Format 'yyyyMMdd-HHmmss'
-$PACK_FILENAME = "libreofficefun-dist-with-nginx-$PACK_TIMESTAMP.zip"
+$PACK_FILENAME = "libreofficefun-dist-with-nginx-$packSuffix-$PACK_TIMESTAMP.zip"
 $PACK_PATH = Join-Path -Path $PACK_OUTPUT_DIR -ChildPath $PACK_FILENAME
 $LOG_FILE = "./package.log"
 
@@ -39,9 +67,17 @@ function Log-Message {
     }
 }
 
+# 确定要显示的版本名称
+if ($buildType -eq "dev") {
+    $buildTypeName = "开发版本"
+} else {
+    $buildTypeName = "生产版本"
+}
+
 # 欢迎信息
 Log-Message "=====================================================" -Color Green
 Log-Message "     LibreOfficeFun 项目打包脚本" -Color Green
+Log-Message "打包版本: $buildTypeName" -Color Green
 Log-Message "打包时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Green
 Log-Message "=====================================================" -Color Green
 

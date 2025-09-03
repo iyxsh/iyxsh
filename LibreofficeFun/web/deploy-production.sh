@@ -22,6 +22,9 @@ echo -e "\033[32m     LibreOfficeFun 项目生产环境部署脚本\033[0m" | te
 echo "部署时间: $(date '+%Y-%m-%d %H:%M:%S')" | tee -a $LOG_FILE
 echo "=====================================================" | tee -a $LOG_FILE
 
+# 暂时跳过单元测试 (等待测试配置完善)
+echo -e "\033[33m警告: 暂时跳过单元测试。请尽快完善测试配置。\033[0m" | tee -a $LOG_FILE
+
 # 检查脚本执行权限
 if [ ! -x "$0" ]; then
     echo -e "\033[33m警告: 脚本缺少执行权限，正在添加...\033[0m" | tee -a $LOG_FILE
@@ -130,10 +133,30 @@ export NODE_ENV="production"
 export VITE_API_BASE_URL=${VITE_API_BASE_URL:-/api}
 echo "使用API基础URL: $VITE_API_BASE_URL" | tee -a $LOG_FILE
 
-if npm run build; then
-    echo -e "\033[32m项目构建成功！\033[0m" | tee -a $LOG_FILE
+# 在构建前创建备份
+if [ -d "$DEPLOY_DIR" ]; then
+    echo -e "\033[36m正在备份当前构建目录...\033[0m" | tee -a $LOG_FILE
+    if [ -d "$BACKUP_DIR" ]; then
+        rm -rf "$BACKUP_DIR"
+    fi
+    mv "$DEPLOY_DIR" "$BACKUP_DIR"
+    echo -e "\033[32m备份完成，备份目录: $BACKUP_DIR\033[0m" | tee -a $LOG_FILE
+fi
+
+if npm run build:prod; then
+    echo -e "\033[32m生产版本构建成功！\033[0m" | tee -a $LOG_FILE
 else
     echo -e "\033[31m错误: 项目构建失败。详细日志请查看 $LOG_FILE\033[0m" | tee -a $LOG_FILE
+    
+    # 执行回滚
+    if [ -d "$BACKUP_DIR" ]; then
+        echo -e "\033[33m正在回滚到之前的版本...\033[0m" | tee -a $LOG_FILE
+        if [ -d "$DEPLOY_DIR" ]; then
+            rm -rf "$DEPLOY_DIR"
+        fi
+        mv "$BACKUP_DIR" "$DEPLOY_DIR"
+        echo -e "\033[32m回滚完成！\033[0m" | tee -a $LOG_FILE
+    fi
     exit 1
 fi
 

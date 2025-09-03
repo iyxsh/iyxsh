@@ -1,16 +1,48 @@
 #!/bin/bash
 
-# 打包脚本：将dist目录所有内容和Nginx配置文件打包
+# 打包脚本：支持将生产版本(dist)或开发版本(dist-dev)的内容和Nginx配置文件打包
 
 # 确保脚本在出错时停止执行
 set -e
 
+# 默认打包生产版本
+build_type="prod"
+
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    
+    case $key in
+        --dev)
+            build_type="dev"
+            shift
+            ;;
+        --prod)
+            build_type="prod"
+            shift
+            ;;
+        *)
+            echo "未知参数: $key"
+            echo "用法: $0 [--dev|--prod]"
+            exit 1
+            ;;
+    esac
+done
+
+# 根据构建类型设置目录
+if [ "$build_type" = "dev" ]; then
+    DIST_DIR="./dist-dev"
+    PACK_SUFFIX="dev"
+else
+    DIST_DIR="./dist"
+    PACK_SUFFIX="prod"
+fi
+
 # 定义变量
-DIST_DIR="./dist"
 NGINX_CONF_PATH="/usr/local/etc/nginx/nginx.conf"
 PACK_OUTPUT_DIR="./pack_output"
 PACK_TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
-PACK_FILENAME="libreofficefun-dist-with-nginx-$PACK_TIMESTAMP.tar.gz"
+PACK_FILENAME="libreofficefun-dist-with-nginx-$PACK_SUFFIX-$PACK_TIMESTAMP.tar.gz"
 PACK_PATH="$PACK_OUTPUT_DIR/$PACK_FILENAME"
 LOG_FILE="./package.log"
 
@@ -57,9 +89,17 @@ if [ ! -x "$0" ]; then
     exit 0
 fi
 
+# 确定要显示的版本名称
+if [ "$build_type" = "dev" ]; then
+    build_type_name="开发版本"
+else
+    build_type_name="生产版本"
+fi
+
 # 欢迎信息
 log_message "=====================================================" "green"
 log_message "     LibreOfficeFun 项目打包脚本" "green"
+log_message "打包版本: $build_type_name" "green"
 log_message "打包时间: $(date '+%Y-%m-%d %H:%M:%S')" "green"
 log_message "=====================================================" "green"
 

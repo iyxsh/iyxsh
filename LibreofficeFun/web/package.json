@@ -4,8 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build --debug",
+    "build": "vite build",
+    "build:dev": "NODE_ENV=development vite build --mode development --outDir dist-dev",
+    "build:prod": "NODE_ENV=production vite build --mode production --outDir dist",
+    "build:both": "npm run build:dev && npm run build:prod",
     "preview": "vite preview",
+    "preview:dev": "vite preview --outDir dist-dev",
     "test:unit": "jest",
     "test:unit:watch": "jest --watch",
     "test:coverage": "jest --coverage"

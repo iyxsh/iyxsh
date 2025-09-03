@@ -64,7 +64,7 @@ copy_files() {
     log info "开始复制文件..."
     
     # 创建必要的目录结构
-    mkdir -p "$PACKAGE_DIR/bin" "$PACKAGE_DIR/deploy"
+    mkdir -p "$PACKAGE_DIR/bin" "$PACKAGE_DIR/deploy" "$PACKAGE_DIR/data/default"
     
     # 复制bin目录下的指定文件
     local bin_files=("config.json" "start.sh" "stop.sh")
@@ -76,6 +76,15 @@ copy_files() {
             log warning "文件不存在，跳过: $BIN_DIR/$file"
         fi
     done
+
+    # 复制data目录下的所有内容
+    if [ -d "$DATA_DIR" ]; then
+        cp -r "$DATA_DIR"/default/default.ods "$PACKAGE_DIR/data/default/"
+        log info "已复制: $DATA_DIR/default/default.ods -> $PACKAGE_DIR/data/default/"
+    else
+        log error "目录不存在: $DATA_DIR"
+        return 1
+    fi
     
     # 复制deploy目录下的所有内容
     if [ -d "$DEPLOY_DIR" ]; then
@@ -159,6 +168,7 @@ main() {
     # 定义路径
     local PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local BIN_DIR="$PROJECT_DIR/bin"
+    local DATA_DIR="$PROJECT_DIR/data"
     local DEPLOY_DIR="$PROJECT_DIR/deploy"
     local BUILD_DIR="$PROJECT_DIR/build"
     local OUTPUT_DIR="$PROJECT_DIR"

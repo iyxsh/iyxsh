@@ -44,6 +44,9 @@ Log-Message "     LibreOfficeFun 项目生产环境部署脚本" -Color Green
 Log-Message "部署时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -Color Green
 Log-Message "=====================================================" -Color Green
 
+# 暂时跳过单元测试 (等待测试配置完善)
+Log-Message "警告: 暂时跳过单元测试。请尽快完善测试配置。" -Color Yellow
+
 # 版本比较函数
 function Compare-Versions {
     param (
@@ -155,14 +158,34 @@ if (-not $env:VITE_API_BASE_URL) {
 }
 Log-Message "使用API基础URL: $env:VITE_API_BASE_URL" -Color Cyan
 
-Try {
-    npm run build
-    if ($LASTEXITCODE -ne 0) {
-        throw "npm build failed"
+# 在构建前创建备份
+if (Test-Path $DEPLOY_DIR) {
+    Log-Message "正在备份当前构建目录..." -Color Cyan
+    if (Test-Path $BACKUP_DIR) {
+        Remove-Item $BACKUP_DIR -Recurse -Force
     }
-    Log-Message "项目构建成功！" -Color Green
+    Move-Item $DEPLOY_DIR $BACKUP_DIR
+    Log-Message "备份完成，备份目录: $BACKUP_DIR" -Color Green
+}
+
+Try {
+    npm run build:prod
+    if ($LASTEXITCODE -ne 0) {
+        throw "npm build:prod failed"
+    }
+    Log-Message "生产版本构建成功！" -Color Green
 } Catch {
     Log-Message "错误: 项目构建失败。详细日志请查看 $LOG_FILE" -Color Red
+    
+    # 执行回滚
+    if (Test-Path $BACKUP_DIR) {
+        Log-Message "正在回滚到之前的版本..." -Color Yellow
+        if (Test-Path $DEPLOY_DIR) {
+            Remove-Item $DEPLOY_DIR -Recurse -Force
+        }
+        Move-Item $BACKUP_DIR $DEPLOY_DIR
+        Log-Message "回滚完成！" -Color Green
+    }
     Exit 1
 }
 

@@ -1,5 +1,5 @@
 // jest.setup.js
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/extend-expect';
 
 // 添加全局样式
 import './tests/unit/global.css';

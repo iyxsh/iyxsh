@@ -8,7 +8,9 @@ const STATIC_ASSETS = [
   '/src/main.js',
   '/src/App.vue',
   '/src/style.css',
-  '/logo.svg'
+  '/logo.svg',
+  '/favicon.ico',
+  '/manifest.json'
 ];
 
 // 修复语法错误和重复的install事件监听器

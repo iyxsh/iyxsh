@@ -118,19 +118,22 @@ describe('FormCard.vue', () => {
     expect(wrapper.emitted('update:modelValue')[2][0].remark).toBe('New Remark');
   });
 
-  it('disables inputs when editable is false', () => {
-    wrapper.setProps({ editable: false });
-    wrapper.vm.$nextTick(() => {
-      wrapper.findAll('input').wrappers.forEach(input => {
-        expect(input.element.disabled).toBe(true);
-      });
-      wrapper.findAll('textarea').wrappers.forEach(textarea => {
-        expect(textarea.element.disabled).toBe(true);
-      });
-      wrapper.findAll('select').wrappers.forEach(select => {
+  it('disables inputs when editable is false', async () => {
+    await wrapper.setProps({ editable: false });
+    await wrapper.vm.$nextTick();
+    
+    wrapper.findAll('input').forEach(input => {
+      expect(input.element.disabled).toBe(true);
+    });
+    wrapper.findAll('textarea').forEach(textarea => {
+      expect(textarea.element.disabled).toBe(true);
+    });
+    const selectElements = wrapper.findAll('select');
+    if (selectElements.length > 0) {
+      selectElements.forEach(select => {
         expect(select.element.disabled).toBe(true);
       });
-    });
+    }
   });
 
   it('emits delete event when delete button is clicked', async () => {

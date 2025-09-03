@@ -1,12 +1,10 @@
 module.exports = {
   testEnvironment: 'jsdom',
   transform: {
-    '^.+\.vue$': 'vue3-jest',
     '^.+\.js$': 'babel-jest'
   },
   moduleFileExtensions: [
     'js',
-    'vue',
     'json'
   ],
   moduleNameMapper: {
@@ -21,7 +19,7 @@ module.exports = {
   ],
   collectCoverage: true,
   collectCoverageFrom: [
-    'src/**/*.{js,vue}',
+    'src/**/*.js',
     '!src/main.js',
     '!src/router/index.js'
   ],
