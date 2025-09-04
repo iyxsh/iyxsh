@@ -354,8 +354,7 @@ function cleanupResources() {
   cleanupTasks.forEach(task => task())
 }
 
-// 使用 import 替代 require
-import { defineExpose } from 'vue'
+// defineExpose is a compiler macro and no longer needs to be imported
 
 // 暴露方法
 defineExpose({

@@ -171,7 +171,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, defineProps, defineEmits, nextTick, onMounted } from 'vue';
+import { ref, reactive, computed, nextTick, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import StyleManager from './StyleManager.vue';
 import {
@@ -534,13 +534,6 @@ const saveCardRowStyleEdit = () => {
       // 修改: 确保样式正确应用，使用Object.assign保证样式对象正确合并
       // 修改为更明确的样式赋值方式，确保样式能正确应用
       cardRow.style = Object.assign({}, cardRow.style || {}, actualStyles, { _css: actualStyles });
-      
-      // 同时更新行内所有卡片的文本样式
-      if (cardRow.cards && cardRow.cards.length > 0) {
-        cardRow.cards.forEach(card => {
-          card.textStyle = Object.assign({}, card.textStyle || {}, actualStyles);
-        });
-      }
     });
   });
   

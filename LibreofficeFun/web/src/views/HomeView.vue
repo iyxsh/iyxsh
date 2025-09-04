@@ -56,7 +56,7 @@
       <div class="container">
         <div class="section-header">
           <h3>强大功能</h3>
-          <p>我们提供全面一直的构思广记工具，满足您的各种需求</p>
+          <p>我们提供全面一致的构思广记工具，满足您的各种需求</p>
         </div>
         <div class="features-grid">
           <!-- 特性卡片 1 -->

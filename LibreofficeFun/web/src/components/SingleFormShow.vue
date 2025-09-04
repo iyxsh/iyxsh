@@ -97,6 +97,7 @@ import { MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getMediaType, createMediaPreviewUrl } from '@/utils/mediaUtils'
 import { t } from '@/utils/i18n'
+import { toCSS } from '../utils/styleConfig'
 
 // 定义props并添加类型注释
 const props = defineProps({
@@ -147,20 +148,27 @@ const startWidth = ref(0)
 const startHeight = ref(0)
 const startLeft = ref(0)
 const startTop = ref(0)
+  
+  // 计算样式
+  const cardStyle = computed(() => {
+    const baseStyle = {
+      position: 'absolute',
+      left: `${props.position.x}px`,
+      top: `${props.position.y}px`,
+      width: `${props.size.width}px`,
+      height: `${props.size.height}px`,
+      zIndex: props.form.zIndex || 1
+    }
 
-// 计算样式
-const cardStyle = computed(() => {
-  const baseStyle = {
-    position: 'absolute',
-    left: `${props.position.x}px`,
-    top: `${props.position.y}px`,
-    width: `${props.size.width}px`,
-    height: `${props.size.height}px`,
-    zIndex: props.form.zIndex || 1
-  }
+    // 如果表单有设置样式，则直接使用styleConfig中的toCSS函数处理
+    if (props.form?.style) {
+      const computedFormStyle = toCSS(props.form.style)
+      // 合并样式，formStyle中的样式将覆盖baseStyle中的同名样式
+      return { ...baseStyle, ...computedFormStyle }
+    }
 
-  return baseStyle
-})
+    return baseStyle
+  })
 
 // 判断媒体是否为图片
 const isImageMedia = computed(() => {

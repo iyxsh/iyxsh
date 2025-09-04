@@ -195,7 +195,7 @@ const defaultStyle = () => ({
 
 // 默认的元素样式设置
 const defaultElementStyle = () => ({
-  enabled: false,
+  enabled: true,
   color: '#333333',
   fontSize: 14,
   fontWeight: 'normal'

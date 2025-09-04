@@ -19,6 +19,17 @@
       <h5 style="color: red;">"操作说明：单双击"设置样式 "Ctrl + 单击"切换样式可见性</h5>
     </div>
 
+    <!-- 样式启用开关 -->
+    <div class="style-enable-switch" style="margin: 10px; padding: 10px; background-color: #f5f7fa; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: #606266;">启用样式</span>
+      <el-switch 
+        v-model="localStyle.enabled" 
+        @change="updateStyle"
+        :active-color="'#13ce66'"
+        :inactive-color="'#bfcbd9'"
+      />
+    </div>
+    
     <div class="style-manager-content">
       <div v-for="category in allStylesTree" :key="category.id" class="toolbar-category">
         <div class="category-header">
@@ -126,6 +137,7 @@ import {
   MagicStick
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { toCSS as sharedToCSS, CSSto as sharedCSSto } from '@/utils/styleConfig'
 
 // 使用v-model替代props
 const modelValue = defineModel({ type: Object, default: () => ({}) })
@@ -785,6 +797,11 @@ const initializeLocalStyle = () => {
     console.log('localStyle: ', localStyle)
     // 处理自定义字体族
     initCustomFontFamily(localStyle.fontFamily)
+    
+    // 确保enabled属性存在，如果modelValue中没有设置，则默认为true
+    if (!localStyle.hasOwnProperty('enabled')) {
+      localStyle.enabled = true
+    }
   } else {
     // 如果没有传入样式，使用当前的初始化方式
     // 初始化所有样式属性
@@ -795,6 +812,9 @@ const initializeLocalStyle = () => {
       //全部默认值
       localStyle[key] = getDefaultValue(key)
     })
+    
+    // 确保enabled属性存在且默认值为true
+    localStyle.enabled = true
     
     // 初始化文本相关默认值
     Object.assign(localTextStyle, getTextStyleDefaults())
@@ -952,7 +972,18 @@ const updateStyle = () => {
 
 // 应用样式
 const applyStyle = () => {
-  emit('apply', { ...localStyle })
+  // 确保样式已启用
+  const styleToApply = { ...localStyle }
+  if (!styleToApply.hasOwnProperty('enabled')) {
+    styleToApply.enabled = true
+  }
+  emit('apply', styleToApply)
+}
+
+// 切换样式启用状态
+const toggleStyleEnabled = () => {
+  localStyle.enabled = !localStyle.enabled
+  updateStyle()
 }
 
 // 重置样式
@@ -964,269 +995,24 @@ const resetStyle = () => {
   updateStyle()
 }
 
-// 转换为CSS对象
+// 转换为CSS对象 - 使用共享的toCSS函数
 const toCSS = () => {
-  const css = {}
-
-  // 只处理可见的样式属性
-  const visibleStyleKeys = Array.from(visibleStyles.value)
-
-  // 常用设置
-  if (visibleStyles.value.has('fontSize') && localStyle.fontSize) css['font-size'] = `${localStyle.fontSize}px`
-  if (visibleStyles.value.has('color') && localStyle.color) css['color'] = localStyle.color
-  if (visibleStyles.value.has('fontFamily') && localStyle.fontFamily) {
+  // 准备传递给共享函数的样式对象，包含可见样式信息
+  const styleObj = {
+    ...localStyle,
     // 处理字体族，如果是自定义则使用customFontFamily的值
-    const fontFamilyValue = localStyle.fontFamily === 'custom' ? customFontFamily.value : localStyle.fontFamily
-    if (fontFamilyValue) css['font-family'] = fontFamilyValue
+    fontFamily: localStyle.fontFamily === 'custom' ? customFontFamily.value : localStyle.fontFamily,
+    // 传递可见样式集合
+    visibleStyles: visibleStyles.value
   }
-  if (visibleStyles.value.has('fontWeight') && localStyle.fontWeight && localStyle.fontWeight !== 'normal') css['font-weight'] = localStyle.fontWeight
-  if (visibleStyles.value.has('fontStyle') && localStyle.fontStyle && localStyle.fontStyle !== 'normal') css['font-style'] = localStyle.fontStyle
-  if (visibleStyles.value.has('textAlign') && localStyle.textAlign && localStyle.textAlign !== 'left') css['text-align'] = localStyle.textAlign
-  if (visibleStyles.value.has('lineHeight') && localStyle.lineHeight && localStyle.lineHeight !== 1.2) css['line-height'] = localStyle.lineHeight
-  if (visibleStyles.value.has('backgroundColor') && localStyle.backgroundColor) css['background-color'] = localStyle.backgroundColor
-  if (visibleStyles.value.has('opacity') && localStyle.opacity !== 1) css['opacity'] = localStyle.opacity
-
-  // 处理旋转和缩放 (textRotation和scale对应CSS的transform属性)
-  if (visibleStyles.value.has('textRotation') || visibleStyles.value.has('scale')) {
-    const rotation = localStyle.textRotation || 0;
-    const scale = localStyle.scale || 1;
-    css['transform'] = `rotate(${rotation}deg) scale(${scale})`;
-  } else if (visibleStyles.value.has('transform') && localStyle.transform) {
-    css['transform'] = localStyle.transform;
-  }
-
-  // 高级设置
-  if (visibleStyles.value.has('padding') && localStyle.padding !== undefined) css['padding'] = `${localStyle.padding}px`
-  if (visibleStyles.value.has('margin') && localStyle.margin !== undefined) css['margin'] = `${localStyle.margin}px`
-
-  // 边框设置
-  if (visibleStyles.value.has('borderStyle') && localStyle.borderStyle && localStyle.borderStyle !== 'none') {
-    if (visibleStyles.value.has('borderWidth')) css['border-width'] = `${localStyle.borderWidth}px`
-    css['border-style'] = localStyle.borderStyle
-    if (visibleStyles.value.has('borderColor') && localStyle.borderColor) css['border-color'] = localStyle.borderColor
-  } else if (visibleStyles.value.has('borderStyle') && localStyle.borderStyle === 'none') {
-    css['border'] = 'none'
-  }
-
-  if (visibleStyles.value.has('borderRadius') && localStyle.borderRadius !== undefined && localStyle.borderRadius !== 0) css['border-radius'] = `${localStyle.borderRadius}px`
-  if (visibleStyles.value.has('width') && localStyle.width) css['width'] = localStyle.width
-  if (visibleStyles.value.has('height') && localStyle.height) css['height'] = localStyle.height
-  if (visibleStyles.value.has('maxWidth') && localStyle.maxWidth) css['max-width'] = localStyle.maxWidth
-  if (visibleStyles.value.has('maxHeight') && localStyle.maxHeight) css['max-height'] = localStyle.maxHeight
-  if (visibleStyles.value.has('minWidth') && localStyle.minWidth) css['min-width'] = localStyle.minWidth
-  if (visibleStyles.value.has('minHeight') && localStyle.minHeight) css['min-height'] = localStyle.minHeight
-  if (visibleStyles.value.has('display') && localStyle.display) css['display'] = localStyle.display
-  if (visibleStyles.value.has('position') && localStyle.position && localStyle.position !== 'static') {
-    css['position'] = localStyle.position
-    if (visibleStyles.value.has('left') && localStyle.left) css['left'] = localStyle.left
-    if (visibleStyles.value.has('top') && localStyle.top) css['top'] = localStyle.top
-    if (visibleStyles.value.has('right') && localStyle.right) css['right'] = localStyle.right
-    if (visibleStyles.value.has('bottom') && localStyle.bottom) css['bottom'] = localStyle.bottom
-  }
-  if (visibleStyles.value.has('boxShadow') && localStyle.boxShadow) css['box-shadow'] = localStyle.boxShadow
-  if (visibleStyles.value.has('textDecoration') && localStyle.textDecoration && localStyle.textDecoration !== 'none') css['text-decoration'] = localStyle.textDecoration
-  if (visibleStyles.value.has('textTransform') && localStyle.textTransform && localStyle.textTransform !== 'none') css['text-transform'] = localStyle.textTransform
-  if (visibleStyles.value.has('letterSpacing') && localStyle.letterSpacing) css['letter-spacing'] = `${localStyle.letterSpacing}px`
-  if (visibleStyles.value.has('wordSpacing') && localStyle.wordSpacing) css['word-spacing'] = `${localStyle.wordSpacing}px`
-  if (visibleStyles.value.has('fontFamily') && localStyle.fontFamily) css['font-family'] = localStyle.fontFamily
-  if (visibleStyles.value.has('fontVariant') && localStyle.fontVariant && localStyle.fontVariant !== 'normal') css['font-variant'] = localStyle.fontVariant
-  if (visibleStyles.value.has('verticalAlign') && localStyle.verticalAlign && localStyle.verticalAlign !== 'baseline') css['vertical-align'] = localStyle.verticalAlign
-  if (visibleStyles.value.has('overflow') && localStyle.overflow && localStyle.overflow !== 'visible') css['overflow'] = localStyle.overflow
-  if (visibleStyles.value.has('cursor') && localStyle.cursor && localStyle.cursor !== 'default') css['cursor'] = localStyle.cursor
-  if (visibleStyles.value.has('visibility') && localStyle.visibility && localStyle.visibility !== 'visible') css['visibility'] = localStyle.visibility
-  if (visibleStyles.value.has('zIndex') && localStyle.zIndex && localStyle.zIndex !== 0) css['z-index'] = localStyle.zIndex
-  if (visibleStyles.value.has('float') && localStyle.float && localStyle.float !== 'none') css['float'] = localStyle.float
-  if (visibleStyles.value.has('clear') && localStyle.clear && localStyle.clear !== 'none') css['clear'] = localStyle.clear
-
-  // Flexbox相关属性
-  if (visibleStyles.value.has('display') && localStyle.display === 'flex') {
-    if (visibleStyles.value.has('flexDirection') && localStyle.flexDirection && localStyle.flexDirection !== 'row') css['flex-direction'] = localStyle.flexDirection
-    if (visibleStyles.value.has('flexWrap') && localStyle.flexWrap && localStyle.flexWrap !== 'nowrap') css['flex-wrap'] = localStyle.flexWrap
-    if (visibleStyles.value.has('justifyContent') && localStyle.justifyContent && localStyle.justifyContent !== 'flex-start') css['justify-content'] = localStyle.justifyContent
-    if (visibleStyles.value.has('alignItems') && localStyle.alignItems && localStyle.alignItems !== 'stretch') css['align-items'] = localStyle.alignItems
-    if (visibleStyles.value.has('placeContent') && localStyle.placeContent) css['place-content'] = localStyle.placeContent
-  }
-
-  // Grid相关属性
-  if (visibleStyles.value.has('display') && localStyle.display === 'grid') {
-    if (visibleStyles.value.has('gridTemplateColumns') && localStyle.gridTemplateColumns) css['grid-template-columns'] = localStyle.gridTemplateColumns
-    if (visibleStyles.value.has('gridTemplateRows') && localStyle.gridTemplateRows) css['grid-template-rows'] = localStyle.gridTemplateRows
-    if (visibleStyles.value.has('gridColumnGap') && localStyle.gridColumnGap) css['grid-column-gap'] = `${localStyle.gridColumnGap}px`
-    if (visibleStyles.value.has('gridRowGap') && localStyle.gridRowGap) css['grid-row-gap'] = `${localStyle.gridRowGap}px`
-    if (visibleStyles.value.has('placeContent') && localStyle.placeContent) css['place-content'] = localStyle.placeContent
-  }
-
-  // 背景相关属性
-  if (visibleStyles.value.has('backgroundImage') && localStyle.backgroundImage) css['background-image'] = localStyle.backgroundImage
-  if (visibleStyles.value.has('backgroundRepeat') && localStyle.backgroundRepeat && localStyle.backgroundRepeat !== 'repeat') css['background-repeat'] = localStyle.backgroundRepeat
-  if (visibleStyles.value.has('backgroundSize') && localStyle.backgroundSize && localStyle.backgroundSize !== 'auto') css['background-size'] = localStyle.backgroundSize
-  if (visibleStyles.value.has('backgroundPosition') && localStyle.backgroundPosition) css['background-position'] = localStyle.backgroundPosition
-  if (visibleStyles.value.has('backgroundAttachment') && localStyle.backgroundAttachment && localStyle.backgroundAttachment !== 'scroll') css['background-attachment'] = localStyle.backgroundAttachment
-
-  // 文本相关属性
-  if (visibleStyles.value.has('textIndent') && localStyle.textIndent) css['text-indent'] = `${localStyle.textIndent}px`
-  if (visibleStyles.value.has('textShadow') && localStyle.textShadow) css['text-shadow'] = localStyle.textShadow
-  if (visibleStyles.value.has('textOverflow') && localStyle.textOverflow) css['text-overflow'] = localStyle.textOverflow
-  if (visibleStyles.value.has('wordBreak') && localStyle.wordBreak && localStyle.wordBreak !== 'normal') css['word-break'] = localStyle.wordBreak
-  if (visibleStyles.value.has('wordWrap') && localStyle.wordWrap && localStyle.wordWrap !== 'normal') css['word-wrap'] = localStyle.wordWrap
-  if (visibleStyles.value.has('whiteSpace') && localStyle.whiteSpace && localStyle.whiteSpace !== 'normal') css['white-space'] = localStyle.whiteSpace
-
-  // 列表样式属性
-  if (visibleStyles.value.has('listStyleType') && localStyle.listStyleType && localStyle.listStyleType !== 'none') css['list-style-type'] = localStyle.listStyleType
-  if (visibleStyles.value.has('listStylePosition') && localStyle.listStylePosition && localStyle.listStylePosition !== 'outside') css['list-style-position'] = localStyle.listStylePosition
-  if (visibleStyles.value.has('listStyleImage') && localStyle.listStyleImage) css['list-style-image'] = localStyle.listStyleImage
-
-  // 过渡和动画属性
-  if (visibleStyles.value.has('transition') && localStyle.transition) css['transition'] = localStyle.transition
-  if (visibleStyles.value.has('animation') && localStyle.animation) css['animation'] = localStyle.animation
-
-  // 滤镜属性
-  if (visibleStyles.value.has('filter') && localStyle.filter) css['filter'] = localStyle.filter
-
-  // outline属性
-  if (visibleStyles.value.has('outline') && localStyle.outline) css['outline'] = localStyle.outline
-
-  // 用户选择属性
-  if (visibleStyles.value.has('userSelect') && localStyle.userSelect) css['user-select'] = localStyle.userSelect
-
-  // 盒模型属性
-  if (visibleStyles.value.has('boxSizing') && localStyle.boxSizing) css['box-sizing'] = localStyle.boxSizing
-
-  // 方向属性
-  if (visibleStyles.value.has('direction') && localStyle.direction && localStyle.direction !== 'ltr') css['direction'] = localStyle.direction
-  if (visibleStyles.value.has('writingMode') && localStyle.writingMode && localStyle.writingMode !== 'horizontal-tb') css['writing-mode'] = localStyle.writingMode
-
-  return css
+  
+  return sharedToCSS(styleObj)
 }
 
 // 从CSS对象转换为localStyle对象
 const CSSto = (cssObj) => {
-  const localStyleObj = {}
-  
-  // CSS属性名到localStyle键名的映射
-  const cssToStyleKeyMap = {
-    'font-size': 'fontSize',
-    'font-family': 'fontFamily',
-    'font-weight': 'fontWeight',
-    'font-style': 'fontStyle',
-    'text-align': 'textAlign',
-    'line-height': 'lineHeight',
-    'background-color': 'backgroundColor',
-    'border-width': 'borderWidth',
-    'border-style': 'borderStyle',
-    'border-color': 'borderColor',
-    'border-radius': 'borderRadius',
-    'max-width': 'maxWidth',
-    'max-height': 'maxHeight',
-    'min-width': 'minWidth',
-    'min-height': 'minHeight',
-    'box-shadow': 'boxShadow',
-    'text-decoration': 'textDecoration',
-    'text-transform': 'textTransform',
-    'letter-spacing': 'letterSpacing',
-    'word-spacing': 'wordSpacing',
-    'font-variant': 'fontVariant',
-    'vertical-align': 'verticalAlign',
-    'z-index': 'zIndex',
-    'grid-template-columns': 'gridTemplateColumns',
-    'grid-template-rows': 'gridTemplateRows',
-    'grid-column-gap': 'gridColumnGap',
-    'grid-row-gap': 'gridRowGap',
-    'place-content': 'placeContent',
-    'background-image': 'backgroundImage',
-    'background-repeat': 'backgroundRepeat',
-    'background-size': 'backgroundSize',
-    'background-position': 'backgroundPosition',
-    'background-attachment': 'backgroundAttachment',
-    'text-indent': 'textIndent',
-    'text-shadow': 'textShadow',
-    'text-overflow': 'textOverflow',
-    'word-break': 'wordBreak',
-    'word-wrap': 'wordWrap',
-    'white-space': 'whiteSpace',
-    'list-style-type': 'listStyleType',
-    'list-style-position': 'listStylePosition',
-    'list-style-image': 'listStyleImage',
-    'user-select': 'userSelect',
-    'box-sizing': 'boxSizing',
-    'writing-mode': 'writingMode'
-  }
-  
-  // 处理特殊属性
-  for (const [cssKey, cssValue] of Object.entries(cssObj)) {
-    // 获取对应的localStyle键名
-    const localStyleKey = cssToStyleKeyMap[cssKey] || cssKey
-    
-    // 特殊处理font-size（去除px单位）
-    if (cssKey === 'font-size' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理letter-spacing和word-spacing（去除px单位）
-    if ((cssKey === 'letter-spacing' || cssKey === 'word-spacing') && 
-        typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理border-radius（去除px单位）
-    if (cssKey === 'border-radius' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理grid-column-gap和grid-row-gap（去除px单位）
-    if ((cssKey === 'grid-column-gap' || cssKey === 'grid-row-gap') && 
-        typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理text-indent（去除px单位）
-    if (cssKey === 'text-indent' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理padding和margin（去除px单位）
-    if ((cssKey === 'padding' || cssKey === 'margin') && 
-        typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理border-width（去除px单位）
-    if (cssKey === 'border-width' && typeof cssValue === 'string' && cssValue.endsWith('px')) {
-      localStyleObj[localStyleKey] = parseFloat(cssValue)
-      continue
-    }
-    
-    // 特殊处理transform属性（提取旋转角度和缩放比例）
-    if (cssKey === 'transform') {
-      // 解析类似 rotate(30deg) scale(1.2) 的transform值
-      const transformValue = cssValue
-      const rotationMatch = transformValue.match(/rotate\((\d+)deg\)/)
-      const scaleMatch = transformValue.match(/scale\((\d+(?:\.\d+)?)\)/)
-      
-      if (rotationMatch) {
-        localStyleObj['textRotation'] = parseInt(rotationMatch[1], 10)
-      }
-      
-      if (scaleMatch) {
-        localStyleObj['scale'] = parseFloat(scaleMatch[1])
-      }
-      
-      // 保留原始transform值
-      localStyleObj[localStyleKey] = cssValue
-      continue
-    }
-    
-    // 一般情况直接赋值
-    localStyleObj[localStyleKey] = cssValue
-  }
-  
-  return localStyleObj
+  // 使用从styleConfig.ts导入的共享CSSto函数
+  return sharedCSSto(cssObj)
 }
 
 // 处理字体族变化
