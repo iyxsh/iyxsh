@@ -8,10 +8,14 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
+#include <limits.h>
+#include <assert.h>
 #include "../config/json_config.h"
 
 #define DEFAULT_LOG_SIZE 10 * 1024 * 1024  // 默认10MB
 #define DEFAULT_BACKUPS 30                 // 默认保留30个备份
+#define MAX_PATH_LENGTH 1024               // 增加路径缓冲区大小以避免溢出
 
 // 日志系统状态结构体
 typedef struct {
@@ -51,39 +55,114 @@ static void create_backup();
 static int filter_backup(const struct dirent *entry);
 static int sort_backup(const struct dirent **a, const struct dirent **b);
 
+// 创建目录函数
+static int create_directory(const char* path) {
+    #ifdef _WIN32
+    return _mkdir(path) == 0 ? 0 : -1;
+    #else
+    return mkdir(path, 0755) == 0 ? 0 : -1;
+    #endif
+}
+
+// 创建日志文件目录（递归创建多级目录）
+static int create_log_directory(const char* filepath) {
+    char* path = strdup(filepath);
+    if (!path) {
+        return -1;
+    }
+    
+    char* last_slash = strrchr(path, '/');
+    #ifdef _WIN32
+    if (!last_slash) {
+        last_slash = strrchr(path, '\\');
+    }
+    #endif
+    
+    if (last_slash) {
+        *last_slash = '\0';
+        
+        // 递归创建目录
+        char* ptr = path;
+        char* next;
+        
+        #ifdef _WIN32
+        if (path[0] && path[1] == ':') {
+            ptr += 2; // 跳过驱动器号
+        }
+        #endif
+        
+        while ((next = strpbrk(ptr, "/\\"))) {
+            *next = '\0';
+            if (strlen(path) > 0) {
+                create_directory(path);
+            }
+            *next = '/';
+            ptr = next + 1;
+        }
+        
+        if (strlen(path) > 0) {
+            create_directory(path);
+        }
+    }
+    
+    free(path);
+    return 0;
+}
+
 // 创建日志文件
 static int create_log_file() {
-    if (g_logger.path) {
-        // 以二进制模式打开，避免Windows下的CRLF转换和编码问题
-        g_logger.file = fopen(g_logger.path, "ab");
-        if (!g_logger.file) {
-            perror("无法创建日志文件");
+    if (!g_logger.path) {
+        return -1;
+    }
+    
+    // 确保日志目录存在
+    if (create_log_directory(g_logger.path) != 0) {
+        fprintf(stderr, "无法创建日志目录: %s\n", strerror(errno));
+        return -1;
+    }
+    
+    // 以二进制模式打开，避免Windows下的CRLF转换和编码问题
+    g_logger.file = fopen(g_logger.path, "ab");
+    if (!g_logger.file) {
+        fprintf(stderr, "无法创建日志文件 %s: %s\n", g_logger.path, strerror(errno));
+        return -1;
+    }
+    
+    // 检查文件大小，如果是新文件则写入UTF-8 BOM
+    fseek(g_logger.file, 0, SEEK_END);
+    long fileSize = ftell(g_logger.file);
+    rewind(g_logger.file);
+    
+    if (fileSize == 0) {
+        // 写入UTF-8 BOM (0xEF, 0xBB, 0xBF)
+        const unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
+        size_t written = fwrite(bom, sizeof(unsigned char), 3, g_logger.file);
+        if (written != 3) {
+            fprintf(stderr, "无法写入UTF-8 BOM: %s\n", strerror(errno));
+            fclose(g_logger.file);
+            g_logger.file = NULL;
             return -1;
         }
-        
-        // 检查文件大小，如果是新文件则写入UTF-8 BOM
-        fseek(g_logger.file, 0, SEEK_END);
-        long fileSize = ftell(g_logger.file);
-        rewind(g_logger.file);
-        
-        if (fileSize == 0) {
-            // 写入UTF-8 BOM (0xEF, 0xBB, 0xBF)
-            const unsigned char bom[3] = {0xEF, 0xBB, 0xBF};
-            fwrite(bom, sizeof(unsigned char), 3, g_logger.file);
-        }
-        
-        // 设置行缓冲
-        setvbuf(g_logger.file, NULL, _IOLBF, BUFSIZ);
-        return 0;
     }
-    return -1;
+    
+    // 设置行缓冲
+    if (setvbuf(g_logger.file, NULL, _IOLBF, BUFSIZ) != 0) {
+        fprintf(stderr, "无法设置缓冲模式: %s\n", strerror(errno));
+    }
+    
+    return 0;
 }
 
 // 关闭日志文件
 static void close_log_file() {
     if (g_logger.file) {
+        // 先刷新缓冲区
         fflush(g_logger.file);
-        fclose(g_logger.file);
+        
+        // 安全关闭文件
+        if (fclose(g_logger.file) != 0) {
+            fprintf(stderr, "关闭日志文件失败: %s\n", strerror(errno));
+        }
         g_logger.file = NULL;
     }
 }
@@ -93,7 +172,11 @@ static int check_log_size() {
     if (!g_logger.path) return 0;
     
     struct stat st;
-    if (stat(g_logger.path, &st) == 0 && st.st_size > g_logger.max_size) {
+    if (stat(g_logger.path, &st) == 0) {
+        // 处理文件大小溢出问题
+        if (st.st_size > 0 && st.st_size < (off_t)g_logger.max_size) {
+            return 0;
+        }
         return 1;
     }
     return 0;
@@ -104,6 +187,11 @@ static int filter_backup(const struct dirent *entry) {
     if (!g_logger.path) return 0;
     
     const char *base = strrchr(g_logger.path, '/');
+    #ifdef _WIN32
+    if (!base) {
+        base = strrchr(g_logger.path, '\\');
+    }
+    #endif
     base = base ? base + 1 : g_logger.path;
     
     // 匹配格式：原文件名_YYYYMMDDHH.log
@@ -117,8 +205,18 @@ static int filter_backup(const struct dirent *entry) {
 // 备份文件排序函数
 static int sort_backup(const struct dirent **a, const struct dirent **b) {
     // 提取时间戳部分进行比较：原文件名_2024060512.log -> 2024060512
-    long ts1 = strtol((*a)->d_name + strlen((*a)->d_name) - 14, NULL, 10);
-    long ts2 = strtol((*b)->d_name + strlen((*b)->d_name) - 14, NULL, 10);
+    char* endptr1;
+    char* endptr2;
+    
+    long ts1 = strtol((*a)->d_name + strlen((*a)->d_name) - 14, &endptr1, 10);
+    long ts2 = strtol((*b)->d_name + strlen((*b)->d_name) - 14, &endptr2, 10);
+    
+    // 检查转换是否成功
+    if (endptr1 == (*a)->d_name + strlen((*a)->d_name) - 14 || 
+        endptr2 == (*b)->d_name + strlen((*b)->d_name) - 14) {
+        return 0; // 转换失败，保持原有顺序
+    }
+    
     return ts2 - ts1; // 降序排列（最新在前）
 }
 
@@ -128,14 +226,32 @@ static void create_backup() {
     
     // 获取当前时间
     time_t now = time(NULL);
+    if (now == (time_t)-1) {
+        fprintf(stderr, "无法获取当前时间: %s\n", strerror(errno));
+        return;
+    }
+    
     struct tm *tm = localtime(&now);
+    if (!tm) {
+        fprintf(stderr, "无法转换时间: %s\n", strerror(errno));
+        return;
+    }
+    
     char timestamp[20];
-    strftime(timestamp, sizeof(timestamp), "%Y%m%d%H", tm);
+    if (strftime(timestamp, sizeof(timestamp), "%Y%m%d%H", tm) == 0) {
+        fprintf(stderr, "无法格式化时间\n");
+        return;
+    }
     
     // 构造备份文件名
-    char backup_path[512];
-    snprintf(backup_path, sizeof(backup_path), "%s_%s.log", 
+    char backup_path[MAX_PATH_LENGTH];
+    int ret = snprintf(backup_path, sizeof(backup_path), "%s_%s.log", 
             g_logger.path, timestamp);
+    
+    if (ret < 0 || ret >= (int)sizeof(backup_path)) {
+        fprintf(stderr, "备份文件路径过长\n");
+        return;
+    }
     
     // 关闭当前日志文件
     close_log_file();
@@ -143,20 +259,26 @@ static void create_backup() {
     // 重命名文件
     if (rename(g_logger.path, backup_path) != 0) {
         // 即使重命名失败，也要尝试重新打开日志文件
-        perror("日志备份失败");
+        fprintf(stderr, "日志备份失败: %s\n", strerror(errno));
     }
     
     // 重新打开日志文件
     if (create_log_file() != 0) {
-        perror("重新打开日志文件失败");
+        fprintf(stderr, "重新打开日志文件失败\n");
     }
 
     // 备份轮转逻辑
     if (g_logger.max_backups > 0) {
-        struct dirent **namelist;
-        char path[512];
+        struct dirent **namelist = NULL;
+        char path[MAX_PATH_LENGTH];
+        
         snprintf(path, sizeof(path), "%s", g_logger.path);
         char *last_slash = strrchr(path, '/');
+        #ifdef _WIN32
+        if (!last_slash) {
+            last_slash = strrchr(path, '\\');
+        }
+        #endif
         
         // 获取日志目录路径
         if (last_slash) {
@@ -169,16 +291,25 @@ static void create_backup() {
         int n = scandir(path, &namelist, filter_backup, sort_backup);
         if (n < 0) {
             // 扫描失败，不处理备份文件
+            fprintf(stderr, "扫描备份文件失败: %s\n", strerror(errno));
             return;
         }
         
         // 删除超出数量的旧备份
         for (int i = g_logger.max_backups; i < n; i++) {
-            char fullpath[1024];
-            snprintf(fullpath, sizeof(fullpath), "%s/%s", path, namelist[i]->d_name);
-            remove(fullpath);
+            char fullpath[MAX_PATH_LENGTH];
+            ret = snprintf(fullpath, sizeof(fullpath), "%s/%s", path, namelist[i]->d_name);
+            
+            if (ret >= 0 && ret < (int)sizeof(fullpath)) {
+                if (remove(fullpath) != 0) {
+                    fprintf(stderr, "删除旧备份失败 %s: %s\n", fullpath, strerror(errno));
+                }
+            }
+            
             free(namelist[i]);
+            namelist[i] = NULL;
         }
+        
         free(namelist);
     }
 }
@@ -187,7 +318,32 @@ static void create_backup() {
 int logger_init_with_config(const LoggerConfig* config) {
     if (!config) return -1;
     
-    pthread_mutex_lock(&g_logger.mutex);
+    // 初始化互斥锁（如果还没初始化的话）
+    static int mutex_initialized = 0;
+    if (!mutex_initialized) {
+        pthread_mutexattr_t attr;
+        int result = pthread_mutexattr_init(&attr);
+        if (result == 0) {
+            // 设置为可递归锁，防止同一线程重复获取锁导致死锁
+            pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+            result = pthread_mutex_init(&g_logger.mutex, &attr);
+            pthread_mutexattr_destroy(&attr);
+        }
+        
+        if (result != 0) {
+            fprintf(stderr, "初始化日志互斥锁失败: %s\n", strerror(result));
+            return -1;
+        }
+        
+        mutex_initialized = 1;
+    }
+    
+    // 加锁保护
+    int lock_result = pthread_mutex_lock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "获取日志互斥锁失败: %s\n", strerror(lock_result));
+        return -1;
+    }
     
     // 设置配置
     g_logger.level = config->level;
@@ -206,18 +362,27 @@ int logger_init_with_config(const LoggerConfig* config) {
     // 设置新路径
     g_logger.path = strdup(config->file_path);
     if (!g_logger.path) {
+        fprintf(stderr, "内存分配失败\n");
         pthread_mutex_unlock(&g_logger.mutex);
         return -1;
     }
     
     // 创建日志文件
     if (create_log_file() != 0) {
+        free(g_logger.path);
+        g_logger.path = NULL;
         pthread_mutex_unlock(&g_logger.mutex);
         return -1;
     }
     
     g_logger.initialized = 1;
-    pthread_mutex_unlock(&g_logger.mutex);
+    
+    // 解锁
+    lock_result = pthread_mutex_unlock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "释放日志互斥锁失败: %s\n", strerror(lock_result));
+    }
+    
     return 0;
 }
 
@@ -235,16 +400,35 @@ void logger_init(const char* path) {
 
 // 设置日志级别
 void logger_set_level(LogLevel level) {
-    pthread_mutex_lock(&g_logger.mutex);
+    int lock_result = pthread_mutex_lock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "获取日志互斥锁失败: %s\n", strerror(lock_result));
+        return;
+    }
+    
     g_logger.level = level;
-    pthread_mutex_unlock(&g_logger.mutex);
+    
+    lock_result = pthread_mutex_unlock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "释放日志互斥锁失败: %s\n", strerror(lock_result));
+    }
 }
 
 // 获取当前日志级别
 LogLevel logger_get_level() {
-    pthread_mutex_lock(&g_logger.mutex);
+    int lock_result = pthread_mutex_lock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "获取日志互斥锁失败: %s\n", strerror(lock_result));
+        return LOG_LEVEL_ERROR; // 返回默认错误级别
+    }
+    
     LogLevel level = g_logger.level;
-    pthread_mutex_unlock(&g_logger.mutex);
+    
+    lock_result = pthread_mutex_unlock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "释放日志互斥锁失败: %s\n", strerror(lock_result));
+    }
+    
     return level;
 }
 
@@ -255,7 +439,12 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
         return;
     }
     
-    pthread_mutex_lock(&g_logger.mutex);
+    // 加锁保护
+    int lock_result = pthread_mutex_lock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "获取日志互斥锁失败: %s\n", strerror(lock_result));
+        return;
+    }
     
     // 检查日志系统是否已初始化
     if (!g_logger.initialized) {
@@ -296,18 +485,28 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
 
     // 生成时间戳
     time_t now = time(NULL);
-    char timestr[20];
-    struct tm *tm_info = localtime(&now);
-    strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm_info);
+    char timestr[20]; // 添加timestr变量声明
+    if (now == (time_t)-1) {
+        strcpy(timestr, "[时间错误]");
+    } else {
+        struct tm *tm_info = localtime(&now);
+        if (!tm_info) {
+            strcpy(timestr, "[时间错误]");
+        } else {
+            strftime(timestr, sizeof(timestr), "%Y-%m-%d %H:%M:%S", tm_info);
+        }
+    }
     
     // 写入日志前缀
-    int result;
+    int result = 0;
     if (file) {
         // 提取文件名（去掉路径）
         const char* filename = strrchr(file, '/');
+        #ifdef _WIN32
         if (!filename) {
             filename = strrchr(file, '\\');
         }
+        #endif
         filename = filename ? filename + 1 : file;
         
         result = fprintf(g_logger.file, "[%s] [%s] [%s:%d] ", timestr, log_level_names[level], filename, line);
@@ -320,9 +519,11 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
         fflush(g_logger.file);
         if (file) {
             const char* filename = strrchr(file, '/');
+            #ifdef _WIN32
             if (!filename) {
                 filename = strrchr(file, '\\');
             }
+            #endif
             filename = filename ? filename + 1 : file;
             result = fprintf(g_logger.file, "[%s] [%s] [%s:%d] ", timestr, log_level_names[level], filename, line);
         } else {
@@ -369,9 +570,11 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
         // 如果写入失败，输出到标准错误
         if (file) {
             const char* filename = strrchr(file, '/');
+            #ifdef _WIN32
             if (!filename) {
                 filename = strrchr(file, '\\');
             }
+            #endif
             filename = filename ? filename + 1 : file;
             
             #ifdef _WIN32
@@ -410,7 +613,11 @@ static void log_message(LogLevel level, const char* file, int line, const char* 
         }
     }
     
-    pthread_mutex_unlock(&g_logger.mutex);
+    // 解锁
+    lock_result = pthread_mutex_unlock(&g_logger.mutex);
+    if (lock_result != 0) {
+        fprintf(stderr, "释放日志互斥锁失败: %s\n", strerror(lock_result));
+    }
 }
 
 // 记录日志信息

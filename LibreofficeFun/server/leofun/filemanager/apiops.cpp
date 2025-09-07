@@ -355,7 +355,7 @@ namespace filemanager
         }
     }
     // 切换模板备份文件
-    void newfile(cJSON *results, const char *body)
+    void newfile(cJSON *results, const char */*body*/)
     {
         // newfile不需要请求体，所以即使body为空也继续处理
         cJSON_AddStringToObject(results, "filestatus", "processing");

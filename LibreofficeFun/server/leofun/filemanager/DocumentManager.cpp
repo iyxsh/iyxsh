@@ -329,7 +329,28 @@ namespace filemanager
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         return m_documents.size();
+}
+
+void DocumentManager::cleanupForShutdown()
+{
+    try {
+        logger_log_info("DocumentManager: Starting cleanup for shutdown");
+        
+        // 关闭所有文档
+        closeAllDocuments();
+        
+        logger_log_info("DocumentManager: All documents closed during cleanup");
+        
+        // 清空所有映射表，确保没有资源泄漏
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_documents.clear();
+        m_pathToDocId.clear();
+        
+        logger_log_info("DocumentManager: Cleanup for shutdown completed");
+    } catch (const std::exception &e) {
+        logger_log_error("DocumentManager: Exception during cleanup for shutdown: %s", e.what());
     }
+}
 
     std::string DocumentManager::generateDocId() const
     {
@@ -380,10 +401,26 @@ namespace filemanager
             switch (type)
             {
             case DocumentType::SPREADSHEET:
-                doc = std::make_shared<SpreadsheetDocument>(docId, filePath);
+                try
+                {
+                    doc = std::make_shared<SpreadsheetDocument>(docId, filePath);
+                }
+                catch (const std::runtime_error &e)
+                {
+                    logger_log_error("Runtime error creating spreadsheet document: %s", e.what());
+                    return nullptr;
+                }
                 break;
             case DocumentType::TEXT:
-                doc = std::make_shared<TextDocument>(docId, filePath);
+                try
+                {
+                    doc = std::make_shared<TextDocument>(docId, filePath);
+                }
+                catch (const std::runtime_error &e)
+                {
+                    logger_log_error("Runtime error creating text document: %s", e.what());
+                    return nullptr;
+                }
                 break;
             default:
                 logger_log_error("Unsupported document type");
@@ -400,6 +437,11 @@ namespace filemanager
         catch (const std::exception &e)
         {
             logger_log_error("std exception: %s", e.what());
+            return nullptr;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception in openDocumentImpl");
             return nullptr;
         }
     }

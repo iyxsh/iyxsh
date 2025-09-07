@@ -159,12 +159,17 @@ namespace filemanager
         void setMaxDocuments(size_t maxDocs);
 
         /**
-         * 获取当前打开的文档数
-         * @return 文档数
-         */
-        size_t getDocumentCount() const;
+     * 获取当前打开的文档数
+     * @return 文档数
+     */
+    size_t getDocumentCount() const;
+    
+    /**
+     * 主动清理资源（用于程序退出前调用）
+     */
+    void cleanupForShutdown();
 
-    private:
+private:
         // 私有构造函数，防止外部实例化
         DocumentManager();
         // 析构函数

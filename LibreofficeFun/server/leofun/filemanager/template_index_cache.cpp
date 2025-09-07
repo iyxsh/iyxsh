@@ -10,6 +10,11 @@
 #include "filequeue.h"
 #include "../error/error_codes.h"
 
+// 包含必要的头文件以支持sig_atomic_t类型
+#include <signal.h>
+// 在全局命名空间中声明全局变量
+extern volatile sig_atomic_t g_running;
+
 namespace filemanager
 {
     bool TemplateIndexCacheManager::isLoading() const
@@ -120,14 +125,14 @@ namespace filemanager
                 logger_log_error("Failed to open document: %s", convertOUStringToString(absoluteFilePath).c_str());
                 return -1;
             }
-            
+
             if (!writeCharacterInfosToSheet(docId, sheetName, infos))
             {
                 filemanager::DocumentManager::getInstance().closeDocument(docId);
                 logger_log_error("Failed to write character infos to sheet");
                 return -1;
             }
-            
+
             // 关闭文档
             filemanager::DocumentManager::getInstance().closeDocument(docId);
             {
@@ -141,7 +146,7 @@ namespace filemanager
         }
         return 0;
     }
-    //缓存新加保存机制，与备份功能相反
+    // 缓存新加保存机制，与备份功能相反
     int TemplateIndexCacheManager::setnewTodefaultfile()
     {
         // 生成唯一文件名
@@ -186,14 +191,14 @@ namespace filemanager
                 logger_log_error("Failed to open document: %s", convertOUStringToString(absoluteFilePath).c_str());
                 return -1;
             }
-            
+
             if (!writeCharacterInfosToSheet(docId, sheetName, infos))
             {
                 filemanager::DocumentManager::getInstance().closeDocument(docId);
                 logger_log_error("Failed to write character infos to sheet");
                 return -1;
             }
-            
+
             // 关闭文档
             filemanager::DocumentManager::getInstance().closeDocument(docId);
             {
@@ -207,7 +212,6 @@ namespace filemanager
         }
         return 0;
     }
-    
 
     void TemplateIndexCacheManager::initializeDataPathFiles()
     {
@@ -286,12 +290,15 @@ namespace filemanager
             }
         }
         struct stat fileStat;
-        if (stat(convertOUStringToString(filePath).c_str(), &fileStat) == 0) {
+        if (stat(convertOUStringToString(filePath).c_str(), &fileStat) == 0)
+        {
             setLastModified(fileStat.st_mtime);
             reloadTemplateIndex(filePath, sheetName);
-            //重新更换当前所有文件的状态和模板数据
+            // 重新更换当前所有文件的状态和模板数据
             initializeDataPathFiles();
-        } else {
+        }
+        else
+        {
             logger_log_error("stat failed for file %s", convertOUStringToString(filePath).c_str());
             return nullptr;
         }
@@ -365,44 +372,117 @@ namespace filemanager
 
     void TemplateIndexCacheManager::monitorTemplateFile(const std::string &filePath, const std::string &sheetName)
     {
-        std::thread([this, filePath, sheetName]()
-                    {
-        lastModified = getLastModified();
-        while (true) {
-            try {
-                std::this_thread::sleep_for(std::chrono::seconds(30));
-                struct stat fileStat;
-                if (stat(filePath.c_str(), &fileStat) == 0) {
-                    if (fileStat.st_mtime > lastModified) {
-                        //启动时没有缓存，不进行备份，只有重载才进行备份
-                        if(lastModified != 0)
-                        {
-                            //重载前进行缓存备份到文件
-                            int res = backupdefaultfile();
-                            if(res != 0)
-                            {
-                                logger_log_error("backupdefaultfile failed!!!!!!!!!!!!!!!!!!!!!!!!!");
+        // 保存线程句柄而不是立即detach
+        std::lock_guard<std::mutex> lock(monitorThreadMutex);
+        // 检查是否已有监控线程在运行，如果有则不创建新线程
+        if (monitorThreadPtr != nullptr && monitorThreadPtr->joinable())
+        {
+            logger_log_info("Template file monitor thread already running");
+            return;
+        }
+
+        // 创建新的监控线程
+        monitorThreadPtr = new std::thread([this, filePath, sheetName]()
+                                           {
+                logger_log_info("Template file monitor thread started");
+                lastModified = getLastModified();
+                
+                // 使用全局退出标志作为循环条件，而不是死循环
+                while (::g_running) {
+                    try {
+                        // 使用更小的睡眠间隔，以便能够更快响应退出信号
+                        for (int i = 0; i < 30 && ::g_running; ++i) {
+                            std::this_thread::sleep_for(std::chrono::seconds(1));
+                        }
+                        
+                        // 再次检查退出标志
+                        if (!::g_running) break;
+                        
+                        struct stat fileStat;
+                        if (stat(filePath.c_str(), &fileStat) == 0) {
+                            if (fileStat.st_mtime > lastModified) {
+                                //启动时没有缓存，不进行备份，只有重载才进行备份
+                                if(lastModified != 0)
+                                {
+                                    //重载前进行缓存备份到文件
+                                    int res = backupdefaultfile();
+                                    if(res != 0)
+                                    {
+                                        logger_log_error("backupdefaultfile failed!!!!!!!!!!!!!!!!!!!!!!!!!");
+                                    }
+                                }
+                                else
+                                {
+                                    logger_log_info("First run not backup!!!!!");
+                                }
+                                setLastModified(fileStat.st_mtime);
+                                rtl::OUString filePathOU = convertStringToOUString(filePath.c_str());
+                                rtl::OUString sheetNameOU = convertStringToOUString(sheetName.c_str());
+                                //重载默认模板文件
+                                reloadTemplateIndex(filePathOU, sheetNameOU);
+                                //重新更换当前所有文件的状态和模板数据
+                                initializeDataPathFiles();
                             }
                         }
-                        else
-                        {
-                            logger_log_info("First run not backup!!!!!");
-                        }
-                        setLastModified(fileStat.st_mtime);
-                        rtl::OUString filePathOU = convertStringToOUString(filePath.c_str());
-                        rtl::OUString sheetNameOU = convertStringToOUString(sheetName.c_str());
-                        //重载默认模板文件
-                        reloadTemplateIndex(filePathOU, sheetNameOU);
-                        //重新更换当前所有文件的状态和模板数据
-                        initializeDataPathFiles();
+                    } catch (const std::exception& e) {
+                        logger_log_error("Exception in monitorTemplateFile thread: %s", e.what());
+                    } catch (...) {
+                        logger_log_error("Unknown exception in monitorTemplateFile thread");
                     }
                 }
-            } catch (const std::exception& e) {
-                logger_log_error("Exception in monitorTemplateFile thread: %s", e.what());
-            } catch (...) {
-                logger_log_error("Unknown exception in monitorTemplateFile thread");
+                
+                logger_log_info("Template file monitor thread exited gracefully"); });
+
+        // 不detach线程，而是让它在程序退出时通过stopMonitorThread方法join
+    }
+
+    // 添加一个方法来停止监控线程
+    void TemplateIndexCacheManager::stopMonitorThread()
+    {
+        std::lock_guard<std::mutex> lock(monitorThreadMutex);
+
+        if (monitorThreadPtr != nullptr)
+        {
+            if (monitorThreadPtr->joinable())
+            {
+                logger_log_info("Waiting for template monitor thread to exit...");
+                // 设置::g_running为0应该已经被外部代码处理了
+                // 这里只需要等待线程结束
+                try
+                {
+                    monitorThreadPtr->join();
+                    logger_log_info("Template monitor thread joined successfully");
+                }
+                catch (const std::exception &e)
+                {
+                    logger_log_error("Exception when joining template monitor thread: %s", e.what());
+                }
+                catch (...)
+                {
+                    logger_log_error("Unknown exception when joining template monitor thread");
+                }
             }
-        } })
-            .detach();
+            // 无论是否成功join，都需要释放资源
+            delete monitorThreadPtr;
+            monitorThreadPtr = nullptr;
+        }
+    }
+    
+    void TemplateIndexCacheManager::cleanupForShutdown()
+    {
+        try {
+            logger_log_info("TemplateIndexCacheManager: Starting cleanup for shutdown");
+            
+            // 停止监控线程
+            stopMonitorThread();
+            
+            // 清空缓存，释放资源
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            indexCache.clear();
+            
+            logger_log_info("TemplateIndexCacheManager: Cleanup for shutdown completed");
+        } catch (const std::exception &e) {
+            logger_log_error("TemplateIndexCacheManager: Exception during cleanup for shutdown: %s", e.what());
+        }
     }
 } // namespace filemanager

@@ -135,7 +135,16 @@ namespace filemanager
                              rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
             return false;
         }
-        return true;
+        catch (const std::exception &e)
+        {
+            logger_log_error("Standard Exception: %s", e.what());
+            return false;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown Exception during LibreOffice connection");
+            return false;
+        }
     }
 
     bool LibreOfficeService::initialize()
@@ -161,9 +170,19 @@ namespace filemanager
             LibreOfficeService::m_xContext = localContext;
             LibreOfficeService::m_xServiceManager = localServiceManager;
         }
+        catch (const cppu::BootstrapException &e)
+        {
+            logger_log_error("Bootstrap Exception: %s", rtl::OUStringToOString(e.getMessage(), RTL_TEXTENCODING_UTF8).getStr());
+            return false;
+        }
         catch (const Exception &e)
         {
             logger_log_error("Failed to create initial context: %s", rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
+            return false;
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown exception occurred during LibreOffice initialization");
             return false;
         }
 
@@ -1135,8 +1154,16 @@ namespace filemanager
             // 重置初始化状态
             LibreOfficeService::m_initialized = false;
 
-            // 添加短暂延迟确保资源完全释放
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            // 添加短暂延迟确保资源完全释放，但处理可能的系统错误
+            try
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+            catch (const std::system_error& e)
+            {
+                // 当程序收到终止信号时，sleep操作可能会被中断，这是正常的
+                logger_log_debug("Sleep interrupted during shutdown: %s", e.what());
+            }
 
             logger_log_info("LibreOffice service shutdown completed");
         }
@@ -1145,9 +1172,20 @@ namespace filemanager
             logger_log_error("Shutdown error: %s",
                              rtl::OUStringToOString(e.Message, RTL_TEXTENCODING_UTF8).getStr());
         }
+        // 专门捕获libc++中的system_error异常
+        catch (const std::__1::system_error& e)
+        {
+            logger_log_error("libc++ System error during shutdown: %s", e.what());
+        }
+        // 捕获标准库中的异常
         catch (const std::exception &e)
         {
             logger_log_error("STL Exception during shutdown: %s", e.what());
+        }
+        // 捕获所有其他异常
+        catch (...)
+        {
+            logger_log_error("Unknown exception during LibreOffice shutdown");
         }
     }
 }

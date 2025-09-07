@@ -181,9 +181,25 @@ namespace filemanager
     // 启动任务处理线程
     void FileQueueManager::startTaskProcessor()
     {
-        shouldStop = false;
-        taskProcessorThread = std::thread(&FileQueueManager::processTasks, this);
-        logger_log_info("File task processor started");
+        try
+        {
+            shouldStop = false;
+            taskProcessorThread = std::thread(&FileQueueManager::processTasks, this);
+            logger_log_info("File task processor started");
+        }
+        catch (const std::system_error& e)
+        {
+            logger_log_error("System error creating task processor thread: %s", e.what());
+            logger_log_error("Error code: %d, Category: %s", e.code().value(), e.code().category().name());
+        }
+        catch (const std::exception& e)
+        {
+            logger_log_error("Exception creating task processor thread: %s", e.what());
+        }
+        catch (...)
+        {
+            logger_log_error("Unknown error creating task processor thread");
+        }
     }
 
     // 停止任务处理线程
@@ -658,7 +674,7 @@ namespace filemanager
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_PROCESSING);
 
         // 删除文件信息记状态记录
-        int res = filemanager::fileclose(task.taskData);
+        filemanager::fileclose(task.taskData);
 
         // 更新文件状态为已关闭
         filemanager::FileQueueManager::getInstance().updateFileStatus(task.filename, FILE_STATUS_CLOSED);

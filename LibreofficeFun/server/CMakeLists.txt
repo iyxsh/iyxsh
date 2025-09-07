@@ -10,13 +10,16 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-# Debug 模式配置
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -ggdb")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -ggdb")
+# Debug 模式配置 - 增强 gdb 支持
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -ggdb -O0 -Wall -Wextra -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g -ggdb -O0 -Wall -Wextra -fno-omit-frame-pointer")
 
-# Release 模式配置
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3")
+# Release 模式配置 - 添加 core 文件支持
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -g -fno-omit-frame-pointer")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -g -fno-omit-frame-pointer")
+
+# 生成 core 文件配置
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -rdynamic")
 
 # 平台相关定义
 if(WIN32)
@@ -78,6 +81,17 @@ set(HEADERS
 # 创建可执行文件
 add_executable(${PROJECT_NAME} ${GUI_TYPE} ${SOURCES} ${HEADERS})
 
+# Linux平台设置RPATH
+if(UNIX AND NOT APPLE)
+    # Linux 平台设置 core 文件模式和路径
+    add_compile_options(-Wl,--enable-new-dtags)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        LINK_FLAGS "-Wl,-rpath,$ORIGIN/../lib")
+endif()
+
+# 查找线程库（适用于所有平台）
+find_package(Threads REQUIRED)
+
 # 设置包含目录
 # 链接系统库
 if(WIN32) # windows
@@ -88,6 +102,7 @@ if(WIN32) # windows
         ${UNO_LIB_PATH}/uno_cppuhelper.lib
         ${UNO_LIB_PATH}/uno_cppu.lib
         ${UNO_LIB_PATH}/uno_sal.lib
+        ${CMAKE_THREAD_LIBS_INIT}  # 添加pthread支持
     )
     #find_library(SWE_LIB NAMES swedll32 PATHS ${UNO_LIB_PATH})
     #target_link_libraries(${PROJECT_NAME} ${UNO_LIB_PATH}/swedll32.lib)
@@ -99,6 +114,7 @@ elseif(APPLE) #macos
         ${UNO_LIB_PATH}/libuno_cppuhelper.dylib
         ${UNO_LIB_PATH}/libuno_cppu.dylib
         ${UNO_LIB_PATH}/libuno_sal.dylib
+        ${CMAKE_THREAD_LIBS_INIT}  # 添加pthread支持
     )
     #find_library(SWE_LIB NAMES swedll32 PATHS ${UNO_LIB_PATH})
     #target_link_libraries(${PROJECT_NAME} ${UNO_LIB_PATH}/libswe.a)
@@ -127,7 +143,6 @@ elseif(UNIX AND NOT APPLE)
         # 如有自定义 OpenSSL 路径请取消下一行注释并设置路径
         # set(OPENSSL_ROOT_DIR "/usr/local/ssl")
         find_package(OpenSSL REQUIRED)
-        find_package(Threads REQUIRED)
         message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
         message(STATUS "OpenSSL libraries: ${OPENSSL_LIBRARIES}")
         # 优先查找常见的 libreoffice program 路径
@@ -137,6 +152,7 @@ elseif(UNIX AND NOT APPLE)
         message(STATUS "UNO_CPPUHELPER: ${UNO_CPPUHELPER}")
         message(STATUS "UNO_CPPU: ${UNO_CPPU}")
         message(STATUS "UNO_SAL: ${UNO_SAL}")
+        message(STATUS "Thread libraries: ${CMAKE_THREAD_LIBS_INIT}")
         if(NOT UNO_CPPUHELPER OR NOT UNO_CPPU OR NOT UNO_SAL)
             message(FATAL_ERROR "Could not find LibreOffice UNO libraries. Please install LibreOffice and set the correct path in CMakeLists.txt!")
         endif()

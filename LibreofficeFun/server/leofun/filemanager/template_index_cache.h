@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
+#include <thread>
 #include <ctime>
 #include <vector>
 #include <rtl/ustring.hxx>
@@ -197,6 +198,12 @@ namespace filemanager
         std::shared_ptr<CharacterIndex> getTemplateIndex(const rtl::OUString &filePath, const rtl::OUString &sheetName);
         void reloadTemplateIndex(const rtl::OUString &filePath, const rtl::OUString &sheetName);
         void monitorTemplateFile(const std::string &filePath, const std::string &sheetName);
+        void stopMonitorThread();
+    
+    /**
+     * 主动清理资源（用于程序退出前调用）
+     */
+    void cleanupForShutdown();
         std::shared_ptr<CharacterIndex> getCharacterInfos(const rtl::OUString &filePath, const rtl::OUString &sheetName);
         bool isLoading() const;
         time_t getLastModified() const;
@@ -217,6 +224,8 @@ namespace filemanager
         mutable std::mutex cacheMutex;
         std::atomic<bool> loading{false};
         time_t lastModified; // 最后一次修改时间
+        std::thread* monitorThreadPtr{nullptr}; // 模板监控线程指针
+        mutable std::mutex monitorThreadMutex; // 保护monitorThreadPtr的互斥锁
     };
 }
 

@@ -361,7 +361,7 @@ namespace filemanager
                                     const rtl::OUString &sheetName,
                                     const rtl::OUString &cellAddress,
                                     const rtl::OUString &newValue,
-                                    const rtl::OUString &cellType)
+                                    const rtl::OUString &/*cellType*/)
     {
         try
         {

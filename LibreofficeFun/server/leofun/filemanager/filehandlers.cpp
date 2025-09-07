@@ -884,7 +884,7 @@ namespace filemanager
                                  const uno::Sequence<rtl::OUString> &sheetNames,
                                  const rtl::OUString &defaultSheetName,
                                  const rtl::OUString &tempSheetName,
-                                 cJSON *sheetArray)
+                                 cJSON */*sheetArray*/)
     {
         for (sal_Int32 i = 0; i < sheetNames.getLength(); ++i)
         {
