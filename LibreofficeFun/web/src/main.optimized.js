@@ -6,6 +6,13 @@ import { t, setLocale, getLocale } from './utils/i18n'
 // 导入全局样式
 import './styles/index.css'
 
+// 导入 Element Plus 及其样式
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+
+// 导入 Element Plus 图标
+import * as ElementPlusIconsVue from '@element-plus/icons-vue';
+
 console.log('开始创建Vue应用');
 
 // 创建Vue实例
@@ -92,6 +99,14 @@ app.config.globalProperties.$setLocale = setLocale
 app.config.globalProperties.$getLocale = getLocale
 
 console.log('全局属性已设置');
+
+// 添加 Element Plus 插件
+app.use(ElementPlus);
+
+// 全局注册 Element Plus 图标
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
 
 // 注册路由
 app.use(router)

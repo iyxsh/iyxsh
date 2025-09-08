@@ -1208,7 +1208,6 @@ int main()
         fprintf(stderr, "Failed to initialize configuration\n");
         return 1;
     }
-
     // 初始化 LibreOffice 连接
     std::cout << "Attempting to initialize LibreOffice connection..." << std::endl;
     try {
@@ -1252,7 +1251,6 @@ int main()
         // 继续运行服务，但会有一些功能受限
         logger_log_warn("Service will continue to run, but LibreOffice-related features will not work until connection is established.");
     }
-
     // 初始化文件队列管理器并启动任务处理器
     filemanager::FileQueueManager::getInstance().startTaskProcessor();
     logger_log_info("File queue manager started");
@@ -1277,7 +1275,6 @@ int main()
     catch (...) {
         logger_log_error("未知异常 during template cache initialization");
     }
-
     // 启动服务
     int port = json_config_get_int("port");
     if (port == 0)

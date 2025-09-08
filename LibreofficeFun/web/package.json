@@ -18,7 +18,7 @@
   "dependencies": {
     "@vueuse/core": "^10.9.0",
     "axios": "^1.11.0",
-    "element-plus": "^2.3.6",
+    "element-plus": "^2.11.1",
     "lodash-es": "^4.17.21",
     "pinia": "^2.1.7",
     "resize-observer-polyfill": "^1.5.1",

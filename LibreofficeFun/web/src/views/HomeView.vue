@@ -279,10 +279,10 @@
         <div class="footer-bottom">
           <p>&copy; 2025 易雅熙世. 保留所有权利。</p>
           <div class="social-links">
-            <a href="#" class="social-link"><el-icon><Star /></el-icon></a>
-            <a href="#" class="social-link"><el-icon><Menu /></el-icon></a>
-            <a href="#" class="social-link"><el-icon><Check /></el-icon></a>
-          </div>
+          <a href="#" class="social-link"><el-icon><Star /></el-icon></a>
+          <a href="#" class="social-link"><el-icon><Menu /></el-icon></a>
+          <a href="#" class="social-link"><el-icon><Check /></el-icon></a>
+        </div>
         </div>
       </div>
     </footer>

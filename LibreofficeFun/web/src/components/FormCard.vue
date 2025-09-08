@@ -27,17 +27,20 @@
                 <el-button :disabled="!editable" @click.stop="editForm(form.id)">
                   <el-icon>
                     <EditPen />
-                  </el-icon>Edit
+                  </el-icon>
+                  Edit
                 </el-button>
                 <el-button @click.stop="openDetail(form.id)">
                   <el-icon>
                     <View />
-                  </el-icon>Detail
+                  </el-icon>
+                  Detail
                 </el-button>
                 <el-button type="danger" :disabled="!editable" @click.stop="confirmDelete(form.id)">
                   <el-icon>
                     <Delete />
-                  </el-icon>Delete
+                  </el-icon>
+                  Delete
                 </el-button>
               </div>
             </div>
@@ -71,6 +74,7 @@
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox, ElDialog } from 'element-plus'  // 添加了缺失的 ElMessageBox 和 ElDialog 导入
 import { useEventBus } from '../utils/eventBus'
+import { EditPen, View, Delete, Plus } from '@element-plus/icons-vue'
 
 const { on, off } = useEventBus()
 

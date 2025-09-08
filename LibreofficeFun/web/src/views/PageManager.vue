@@ -113,12 +113,16 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="debugButton('cancel')" class="toolbar-button cancel-button">
-            <el-icon name="DocumentRemove"></el-icon>
+            <el-icon>
+              <DocumentRemove />
+            </el-icon>
             <span class="button-text">{{ i18nTrans('pageManager.cancel') }}</span>
           </el-button>
           <el-button type="primary" @click="debugButton('create')" :loading="isCreatingPage"
             :disabled="!selectedPageSize" class="toolbar-button create-button">
-            <el-icon name="DocumentAdd"></el-icon>
+            <el-icon>
+              <DocumentAdd />
+            </el-icon>
             <span class="button-text">{{ i18nTrans('pageManager.create') }}</span>
           </el-button>
         </span>
@@ -132,7 +136,7 @@
 <script setup>
 import { ref, reactive, watch, onMounted, computed, nextTick, onUnmounted, getCurrentInstance } from 'vue'
 import { ElMessage, ElButton, ElIcon, ElMessageBox } from 'element-plus'
-import { DataAnalysis, Document } from '@element-plus/icons-vue'
+import { DataAnalysis, Document, DocumentRemove, DocumentAdd } from '@element-plus/icons-vue'
 import { usePages } from '../stores/usePages'
 import FormGrid from '../components/FormGrid.vue'
 import Toolbar from '../components/Toolbar.vue'

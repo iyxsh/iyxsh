@@ -50,6 +50,11 @@ self.addEventListener('fetch', event => {
   // 为开发环境添加宽松的安全策略
   const request = event.request;
   
+  // Skip caching for HEAD requests since Cache API doesn't support them
+  if (request.method === 'HEAD') {
+    return;
+  }
+  
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
       caches.match(request).then(response => {

@@ -5,7 +5,7 @@ echo "脚本目录: $script_dir"
 
 
 # 指定需要转换的目录（当前目录）
-TARGET_DIR="$script_dir/../../"
+TARGET_DIR="$script_dir/../"
 
 # 查找并转换文本文件（保持与readme.txt中的命令一致）
 echo "开始转换文本文件格式..."

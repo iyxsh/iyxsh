@@ -68,7 +68,7 @@
 2. 使用修改后的启动脚本启动服务（会自动配置 Core Dump）：
    ```bash
    cd bin
-   ./start.sh
+   bash ./start.sh
    ```
 
 3. 当服务崩溃时，Core 文件将保存在配置的目录中（默认 `/var/core/`）

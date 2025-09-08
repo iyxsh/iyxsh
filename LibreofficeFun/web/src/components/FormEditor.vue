@@ -2,7 +2,12 @@
   <div class="form-editor">
     <div class="form-editor-header">
       <h3>{{ isEdit ? '编辑表单' : '新建表单' }}</h3>
-      <el-button @click="cancel" size="small" type="default" icon="Close">取消</el-button>
+      <el-button @click="cancel" size="small" type="default">
+        <el-icon>
+          <Close />
+        </el-icon>
+        取消
+      </el-button>
     </div>
 
     <el-form :model="formState" label-position="top" :rules="rules" ref="formRef" class="form-content"

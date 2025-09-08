@@ -4,15 +4,11 @@
       <h3>样式管理器</h3>
       <div class="header-actions">
         <el-button size="small" @click="copyStyle" title="复制当前样式">
-          <el-icon>
-            <CopyDocument />
-          </el-icon>
-        </el-button>
-        <el-button size="small" @click="pasteStyle" title="粘贴样式">
-          <el-icon>
-            <DocumentCopy />
-          </el-icon>
-        </el-button>
+      <el-icon><CopyDocument /></el-icon>
+    </el-button>
+    <el-button size="small" @click="pasteStyle" title="粘贴样式">
+      <el-icon><DocumentCopy /></el-icon>
+    </el-button>
       </div>
     </div>
     <div>
@@ -92,8 +88,8 @@
               :type="localStyle[currentSettingItem.key] === btn.value ? 'primary' : 'default'"
               @click="localStyle[currentSettingItem.key] = btn.value; updateStyle()" :title="btn.title">
               <el-icon v-if="btn.icon">
-                <component :is="btn.icon" />
-              </el-icon>
+              <component :is="btn.icon" />
+            </el-icon>
               <span v-else>{{ btn.label }}</span>
             </el-button>
           </div>

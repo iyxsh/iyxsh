@@ -13,6 +13,9 @@ import errorLogService from './services/errorLogService'
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
 
+// 导入 Element Plus 图标
+import * as ElementPlusIconsVue from '@element-plus/icons-vue';
+
 // 创建Vue实例
 const app = createApp(App)
 
@@ -21,6 +24,11 @@ app.config.globalProperties.$errorLogService = errorLogService
 
 // 添加 Element Plus 插件
 app.use(ElementPlus);
+
+// 全局注册 Element Plus 图标
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
 
 // 使用 Vue Router
 app.use(router);

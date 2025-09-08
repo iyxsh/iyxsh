@@ -9,12 +9,12 @@
     <div class="toolbar-actions">
       <el-button circle size="small" @click="toggleMinimize" class="toolbar-action-button">
         <el-icon>
-          <component :is="isMinimized ? 'Plus' : 'Minus'"></component>
+          <component :is="isMinimized ? Plus : Minus" />
         </el-icon>
       </el-button>
       <el-button circle size="small" @click="toggleDock" class="toolbar-action-button">
         <el-icon>
-          <component :is="isDocked ? 'TakeawayBox' : 'Position'"></component>
+          <component :is="isDocked ? Box : Position" />
         </el-icon>
       </el-button>
     </div>
@@ -63,10 +63,9 @@
             @click="toggleEditPage"
           >
             <el-icon>
-              <Lock v-if="!isEditable" />
-              <Unlock v-else />
+              <component :is="!isEditable ? Lock : Unlock" />
             </el-icon>
-            <span class="button-text">{{ isEditable ? '锁定' : '解锁' }}</span>
+              <span class="button-text">{{ isEditable ? '锁定' : '解锁' }}</span>
           </el-button>
         </el-tooltip>
 
@@ -141,7 +140,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick, watch, getCurrentInstance } from 'vue'
 import { ElMessage, ElMessageBox, ElDialog, ElButton, ElTooltip, ElInput } from 'element-plus'
 import { useEventBus } from '../utils/eventBus'
-import { DocumentAdd, Delete, Upload, Download, Position, Rank, Plus, Minus, Refresh, Lock, Unlock } from '@element-plus/icons-vue'
+import { DocumentAdd, Delete, Upload, Download, Position, Rank, Plus, Minus, Refresh, Lock, Unlock, Box } from '@element-plus/icons-vue'
 import { Share as Save } from '@element-plus/icons-vue'
 import errorLogService from '../services/errorLogService'
 import apiService,{ callApi } from '../services/ApiService'

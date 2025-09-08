@@ -36,14 +36,26 @@
           <el-table-column label="操作" width="120">
             <template #default="scope">
               <el-tooltip content="编辑" placement="top">
-                <el-button type="primary" icon="Edit" size="small" circle @click.stop="useInPageManager(scope.row)" />
+                <el-button type="primary" size="small" circle @click.stop="useInPageManager(scope.row)">
+                <el-icon>
+                  <Edit />
+                </el-icon>
+              </el-button>
               </el-tooltip>
               <el-tooltip content="加载" placement="top">
-                <el-button type="success" icon="Download" size="small" circle
-                  @click.stop="loadFileContent(scope.row)" />
+                <el-button type="success" size="small" circle
+                  @click.stop="loadFileContent(scope.row)">
+                <el-icon>
+                  <Download />
+                </el-icon>
+              </el-button>
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
-                <el-button type="danger" icon="Delete" size="small" circle @click.stop="deleteFile(scope.row)" />
+                <el-button type="danger" size="small" circle @click.stop="deleteFile(scope.row)">
+                <el-icon>
+                  <Delete />
+                </el-icon>
+              </el-button>
               </el-tooltip>
             </template>
           </el-table-column>
@@ -100,6 +112,7 @@
 import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { Edit, Download, Delete } from '@element-plus/icons-vue';
 import { createApp } from 'vue';
 import ApiService, { callApi } from '../services/ApiService';
 
